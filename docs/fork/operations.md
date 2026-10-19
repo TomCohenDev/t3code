@@ -277,6 +277,25 @@ Use these steps only when the join dialog says "No tunnel", for example when the
    systemctl --user daemon-reload && systemctl --user restart t3code.service
    ```
 
+## Central build caches
+
+Set `T3_FORK_CENTRAL_BUILD_CACHE=1` before running Vite tools or Expo prebuild. It defaults off. Set `XDG_CACHE_HOME` to choose a base outside the checkout; otherwise the base is `~/.cache`.
+
+- Vite uses `t3-vite/<SHA-256 of canonical checkout path>/<app>`. All six owned Vite configs use the same helper; vendored reference configs are unchanged.
+- The Expo plugin links only `apps/mobile/android/app/build` to `t3-gradle/workspaces/<hash>/app/<generation>`. A clean prebuild removes the link and creates a fresh generation. It does not reuse the previous app outputs. Gradle's build cache can restore tasks (`org.gradle.caching=true` in `~/.gradle/gradle.properties`). Root `android/build`, dependency codegen and `.cxx` keep their original locations.
+- Existing physical `app/build` folders are refused, not migrated. Run `expo prebuild --clean --platform android` when opting in. Turning the variable off leaves existing links alone; a clean prebuild restores local outputs.
+
+```sh
+node scripts/fork-build-cache-prune.ts --dry-run
+node scripts/fork-build-cache-prune.ts --days 14
+```
+
+Prune removes whole central workspace folders for missing checkouts or expired last-use records, and Android generations that the current link no longer names. Current generations are kept until the workspace expires. A later Gradle build recreates an expired link target. The script reports allocated bytes removed (or planned); filesystem clones and compression can change the actual free-space gain. It never removes anything in a checkout, follows payload links, or removes unknown/unregistered folders. It does not clean legacy local outputs.
+
+Vite holds a PID lock for the tool process. Gradle holds one from app configuration through build completion. Live or unrecognized locks block removal; dead-PID locks do not. Builds and pruning share a short `.gate` directory lock. A concurrent setup fails safely: retry it. If a process dies inside that critical section, first confirm no cache operation is running, then remove only the central root's empty `.gate` directory. No background cleanup is installed.
+
+A later T3 storage-cleanup hook can spawn `node scripts/fork-build-cache-prune.ts --days 14` from the checkout, with the build user's `HOME` and `XDG_CACHE_HOME`. Pass `--dry-run` for its preview. Do not add checkout deletion to that hook.
+
 ## Android APK build
 
 `.github/workflows/fork-android.yml` ("Fork Android") adds `t3code-<version>-android.apk` to the release after each successful Fork Release of main. It is a local Gradle build with `scripts/fork-android-apk.sh`, so the fork needs no Expo or Google Play account. How users install it: [Android APK](features.md#android-apk).
@@ -342,3 +361,4 @@ Use these raw-emulator steps only after the owner approves a workaround:
 | `T3_AGENT_WEBHOOK_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`                | secret, optional   | Webhook URL of the repair agent task, and the Cloudflare Access service token that the call needs. Without the URL, no agent is notified.                                                 |
 | `CLOUDFLARE_DEPLOY_TOKEN`                                                               | secret             | Deploy of the machine map portal. See [apps/machine-map/README.md](../../apps/machine-map/README.md#deploy).                                                                              |
 | `CLERK_PUBLISHABLE_KEY`, `CLERK_JWT_TEMPLATE`, `CLERK_CLI_OAUTH_CLIENT_ID`, `RELAY_URL` | variable, optional | T3 Connect config. Without them, the build has no T3 Connect.                                                                                                                             |
+| `T3_FORK_CENTRAL_BUILD_CACHE`, `XDG_CACHE_HOME`                                         | variable, optional | Opt in to [central build caches](#central-build-caches), and choose their base directory.                                                                                                 |

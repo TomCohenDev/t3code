@@ -332,6 +332,7 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    "./plugins/fork-central-build-cache.cjs",
     "expo-asset",
     "react-native-pdf-jsi",
     [
