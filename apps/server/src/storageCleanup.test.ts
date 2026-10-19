@@ -463,15 +463,7 @@ const cleanupTestLayer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(NodeServices.layer),
 );
 const runCleanupTest = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    | FileSystem.FileSystem
-    | ServerConfig.ServerConfig
-    | GitVcsDriver.GitVcsDriver
-    | Path.Path
-    | Scope.Scope
-  >,
+  effect: Effect.Effect<A, E, Layer.Success<typeof cleanupTestLayer> | Scope.Scope>,
 ) => effect.pipe(Effect.provide(cleanupTestLayer), Effect.scoped);
 
 const submoduleCleanupFixture = () =>

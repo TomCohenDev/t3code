@@ -246,6 +246,10 @@ export const MobileNewThreadProject = Schema.Literals(["picker", "last", "none"]
 export type MobileNewThreadProject = typeof MobileNewThreadProject.Type;
 
 export const ForkServerSettingsFields = {
+  worktreeArtifactEviction: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  worktreeArtifactEvictionDays: Schema.Int.check(
+    Schema.isBetween({ minimum: 1, maximum: 3650 }),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(14))),
   restoreWorktreesOnResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: use the joined machine map name as the environment label. */
   environmentLabelFromMachineMap: Schema.Boolean.pipe(
@@ -367,6 +371,10 @@ export const ForkServerSettingsFields = {
 };
 
 export const ForkServerSettingsPatchFields = {
+  worktreeArtifactEviction: Schema.optionalKey(Schema.Boolean),
+  worktreeArtifactEvictionDays: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  ),
   restoreWorktreesOnResume: Schema.optionalKey(Schema.Boolean),
   environmentLabelFromMachineMap: Schema.optionalKey(Schema.Boolean),
   worktreePathTemplate: Schema.optionalKey(TrimmedString),

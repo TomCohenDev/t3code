@@ -19,6 +19,8 @@ const FORK_PAGE_ROWS: Record<
   SettingsSearchItemId | { readonly notListed: string }
 > = {
   restoreWorktreesOnResume: "restore-worktrees-on-resume",
+  worktreeArtifactEviction: "worktree-artifact-eviction",
+  worktreeArtifactEvictionDays: "worktree-artifact-eviction-days",
   confirmTerminalClose: "terminal-close-confirmation",
   terminalAppShortcutsFirst: "terminal-app-shortcuts-first",
   appToggleShortcuts: "app-toggle-shortcuts",

@@ -12,6 +12,9 @@ import {
   type OrchestrationV2Run,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -25,10 +28,12 @@ import * as Settings from "../serverSettings.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as Resume from "./ForkWorktreeResume.ts";
+import { makeSetupMarker } from "./forkWorktreeSetup.ts";
+import * as Tracker from "../project/WorktreeSetupTracker.ts";
 
 const layerGit = Git.layer.pipe(
   Layer.provide(VcsProcess.layer),
-  Layer.provide(Config.layerTest(process.cwd(), { prefix: "fork-worktree-resume-" })),
+  Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "fork-worktree-resume-" })),
   Layer.provideMerge(NodeServices.layer),
 );
 
@@ -63,12 +68,13 @@ const fixture = Effect.gen(function* () {
     } as OrchestrationV2Run,
     attemptId: RunAttemptId.make("resume-attempt"),
     providerThreadId: ProviderThreadId.make("resume-provider-thread"),
-    ordinal: 1,
+    turnItems: [],
   };
   const activities: unknown[] = [];
   let setups = 0;
-  const layer = (enabled = true, exitCode = 0) =>
+  const layer = (enabled = true, exitCode = 0, trackerLayer = Tracker.layer) =>
     Resume.layer.pipe(
+      Layer.provide(trackerLayer),
       Layer.provide(
         Layer.mergeAll(
           Settings.layerTest({ restoreWorktreesOnResume: enabled }),
@@ -117,10 +123,10 @@ const fixture = Effect.gen(function* () {
         ),
       ),
     );
-  const prepare = (enabled = true, exitCode = 0) =>
+  const prepare = (enabled = true, exitCode = 0, trackerLayer = Tracker.layer) =>
     Effect.gen(function* () {
       yield* (yield* Resume.ForkWorktreeResume).prepare(input);
-    }).pipe(Effect.provide(layer(enabled, exitCode)));
+    }).pipe(Effect.provide(layer(enabled, exitCode, trackerLayer)));
   return { fs, path, exec, cwd, repository, input, activities, prepare, setups: () => setups };
 });
 
@@ -159,6 +165,51 @@ it.effect("does nothing while off", () =>
     const f = yield* fixture;
     yield* f.prepare(false);
     assert.isFalse(yield* f.fs.exists(f.cwd));
+    assert.strictEqual(f.setups(), 0);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("restores evicted dependencies even when the restore setting is off", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    const marker = yield* (yield* makeSetupMarker)(f.cwd);
+    yield* marker.mark;
+    yield* f.prepare(false);
+    assert.strictEqual(f.setups(), 1);
+    assert.isFalse(yield* marker.pending);
+    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules")));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("waits for the launcher's existing async setup instead of starting another", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    const waiting = yield* Deferred.make<void>();
+    const complete = yield* Deferred.make<void>();
+    const trackerLayer = Layer.mock(Tracker.WorktreeSetupTracker)({
+      get: () =>
+        Effect.succeed({
+          phase: "running",
+          stages: [{ id: "setup-script", status: "running" }],
+        } as never),
+      stream: () =>
+        Stream.fromEffect(
+          Deferred.succeed(waiting, undefined).pipe(
+            Effect.andThen(Deferred.await(complete)),
+            Effect.as(null),
+          ),
+        ),
+    });
+    const startup = yield* f
+      .prepare(true, 0, trackerLayer)
+      .pipe(Effect.forkChild({ startImmediately: true }));
+    yield* Deferred.await(waiting);
+    assert.strictEqual(f.setups(), 0);
+    yield* f.fs.makeDirectory(f.path.join(f.cwd, "node_modules"));
+    yield* Deferred.succeed(complete, undefined);
+    yield* Fiber.join(startup);
     assert.strictEqual(f.setups(), 0);
   }).pipe(Effect.provide(layerGit)),
 );

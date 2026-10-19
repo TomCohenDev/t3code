@@ -1,4 +1,5 @@
 import { ScopedSwitch } from "./ScopedSwitch";
+import { Input } from "../ui/input";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
@@ -21,5 +22,49 @@ export function RestoreWorktreesSettingsRow() {
         />
       }
     />
+  );
+}
+
+export function WorktreeArtifactSettingsRows() {
+  const settings = useScopedSettings();
+  const update = useUpdateScopedSettings();
+  return (
+    <>
+      <SettingsRow
+        {...searchableSetting("worktree-artifact-eviction")}
+        serverScoped
+        settingKeys={["worktreeArtifactEviction"]}
+        description="Remove only ignored, untracked dependency and build directories from settled or inactive worktrees. Keeps the checkout and branch. Skips shared or busy worktrees. Requires project setup, which runs before the next turn. This does not disable the upstream whole-worktree cleanup rules."
+        control={
+          <ScopedSwitch
+            settingKeys={["worktreeArtifactEviction"]}
+            checked={settings.worktreeArtifactEviction}
+            onCheckedChange={(checked) => update({ worktreeArtifactEviction: Boolean(checked) })}
+            aria-label="Evict worktree artifacts"
+          />
+        }
+      />
+      <SettingsRow
+        {...searchableSetting("worktree-artifact-eviction-days")}
+        serverScoped
+        settingKeys={["worktreeArtifactEvictionDays"]}
+        description="Unsettled threads must be inactive for this many days. Settled threads are eligible after their settle script grace period."
+        control={
+          <Input
+            key={settings.worktreeArtifactEvictionDays}
+            type="number"
+            min={1}
+            max={3650}
+            defaultValue={settings.worktreeArtifactEvictionDays}
+            aria-label="Artifact eviction inactivity days"
+            onBlur={(event) => {
+              const days = Number(event.target.value);
+              if (Number.isInteger(days) && days >= 1 && days <= 3650)
+                update({ worktreeArtifactEvictionDays: days });
+            }}
+          />
+        }
+      />
+    </>
   );
 }

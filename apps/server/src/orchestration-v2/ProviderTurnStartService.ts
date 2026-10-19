@@ -481,13 +481,7 @@ export const layer: Layer.Layer<
         run,
         attemptId: attempt.id,
         providerThreadId: providerThread.id,
-        ordinal:
-          Math.max(
-            0,
-            ...projection.turnItems
-              .filter((item) => item.runId === run.id)
-              .map((item) => item.ordinal),
-          ) + 1,
+        turnItems: projection.turnItems,
       });
       if (worktreePath !== null && branch !== null) {
         const exists = yield* fileSystem

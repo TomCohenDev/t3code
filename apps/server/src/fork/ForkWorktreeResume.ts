@@ -13,12 +13,15 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as Settings from "../serverSettings.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
+import { makeSetupMarker } from "./forkWorktreeSetup.ts";
+import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 
 export class WorktreeResumeError extends Schema.TaggedError<WorktreeResumeError>()(
   "WorktreeResumeError",
@@ -41,7 +44,7 @@ export class ForkWorktreeResume extends Context.Service<
       readonly run: OrchestrationV2Run;
       readonly attemptId: RunAttemptId;
       readonly providerThreadId: ProviderThreadId;
-      readonly ordinal: number;
+      readonly turnItems: ReadonlyArray<Pick<OrchestrationV2TurnItem, "runId" | "ordinal">>;
     }) => Effect.Effect<void, WorktreeResumeError>;
   }
 >()("t3/fork/ForkWorktreeResume") {}
@@ -55,14 +58,39 @@ const make = Effect.gen(function* () {
   const git = yield* Git.GitVcsDriver;
   const sink = yield* EventSink.EventSinkV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
+  const markerFor = yield* makeSetupMarker;
+  const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
 
   const prepare: ForkWorktreeResume["Service"]["prepare"] = (input) =>
     Effect.gen(function* () {
-      if (!(yield* settings.getSettings).restoreWorktreesOnResume) return;
       const { thread, run } = input;
       const cwd = thread.worktreePath;
       if (cwd === null) return;
+      const marker = yield* markerFor(cwd);
+      const pendingSetup = yield* marker.pending;
+      if (!(yield* settings.getSettings).restoreWorktreesOnResume && !pendingSetup) return;
       const fail = (reason: string) => new WorktreeResumeError({ cwd, reason });
+      // A new launch can release its first turn while its async setup is still running.
+      // Wait for that setup rather than typing a second install into its terminal.
+      const ongoing = yield* tracker.get(thread.id);
+      if (
+        ongoing?.phase === "running" &&
+        ongoing.stages.some((stage) => stage.id === "setup-script" && stage.status === "running")
+      ) {
+        const finished = yield* tracker.stream(thread.id).pipe(
+          Stream.filter((snapshot) => snapshot?.phase !== "running"),
+          Stream.runHead,
+        );
+        if (
+          Option.isSome(finished) &&
+          finished.value !== null &&
+          (finished.value.phase !== "done" ||
+            finished.value.stages.some(
+              (stage) => stage.id === "setup-script" && stage.status === "failed",
+            ))
+        )
+          return yield* fail("Project setup did not succeed. Retry setup before continuing.");
+      }
       if (!path.isAbsolute(cwd) || thread.branch === null)
         return yield* fail("The saved worktree path or branch is missing.");
       const project = yield* projects.getById(thread.projectId);
@@ -85,7 +113,10 @@ const make = Effect.gen(function* () {
       if (Option.isSome(link))
         return yield* fail("The saved path is a symbolic link; it was left untouched.");
       const exists = yield* fs.exists(cwd);
+      if (exists && (yield* fs.stat(cwd)).type !== "Directory")
+        return yield* fail("The saved path exists but is not a directory; it was left untouched.");
       const needsSetup =
+        pendingSetup ||
         !exists ||
         ((yield* fs.exists(path.join(cwd, "package.json"))) &&
           !(yield* fs.exists(path.join(cwd, "node_modules"))));
@@ -93,13 +124,26 @@ const make = Effect.gen(function* () {
         Effect.result,
       );
       if (branch._tag === "Failure")
-        return yield* fail("The saved local branch does not exist; no branch was created.");
+        return yield* new WorktreeResumeError({
+          cwd,
+          reason: "The saved local branch does not exist or cannot be read; no branch was created.",
+          cause: branch.failure,
+        });
       if (exists) {
         const [actualCommon, actualBranch, top] = yield* Effect.all([
           exec(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd),
           exec(["symbolic-ref", "HEAD"], cwd),
           exec(["rev-parse", "--show-toplevel"], cwd),
-        ]);
+        ]).pipe(
+          Effect.mapError(
+            (cause) =>
+              new WorktreeResumeError({
+                cwd,
+                reason: "The saved path is not the expected worktree; it was left untouched.",
+                cause,
+              }),
+          ),
+        );
         const [expectedCommon, worktreeCommon, worktreeRoot, savedRoot] = yield* Effect.all([
           fs.realPath(common.stdout.trim()),
           fs.realPath(actualCommon.stdout.trim()),
@@ -119,6 +163,7 @@ const make = Effect.gen(function* () {
         yield* exec(["worktree", "add", "--no-guess-remote", "--", cwd, thread.branch]);
       }
       if (!needsSetup) return;
+      yield* marker.mark;
       const startedAt = yield* DateTime.now;
       const activity = (status: "running" | "completed" | "failed", output: string) =>
         Effect.gen(function* () {
@@ -132,7 +177,13 @@ const make = Effect.gen(function* () {
             providerTurnId: null,
             nativeItemRef: null,
             parentItemId: null,
-            ordinal: input.ordinal,
+            ordinal:
+              Math.max(
+                0,
+                ...input.turnItems
+                  .filter((item) => item.runId === run.id)
+                  .map((item) => item.ordinal),
+              ) + 1,
             type: "command_execution",
             status,
             title: exists ? "Restoring worktree dependencies" : "Restored missing worktree",
@@ -179,6 +230,11 @@ const make = Effect.gen(function* () {
               "Project setup did not succeed. The checkout and branch were kept; retry setup before continuing.",
             );
         }
+        if (pendingSetup && result.status === "no-script")
+          return yield* fail(
+            "Artifacts were removed, but no project setup script is configured. Configure setup before continuing.",
+          );
+        yield* marker.clear;
         yield* activity(
           "completed",
           result.status === "no-script"
