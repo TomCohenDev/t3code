@@ -281,7 +281,7 @@ Use these steps only when the join dialog says "No tunnel", for example when the
 
 Set `T3_FORK_CENTRAL_BUILD_CACHE=1` before running Vite tools or Expo prebuild. It defaults off. Set `XDG_CACHE_HOME` to choose a base outside the checkout; otherwise the base is `~/.cache`.
 
-- Vite uses `t3-vite/<SHA-256 of canonical checkout path>/<app>`. All six owned Vite configs use the same helper; vendored reference configs are unchanged.
+- Vite uses `t3-vite/<SHA-256 of canonical checkout path>/<app>`. All six owned Vite configs and Astro's embedded Vite config use the same helper; vendored reference configs are unchanged.
 - The Expo plugin links only `apps/mobile/android/app/build` to `t3-gradle/workspaces/<hash>/app/<generation>`. A clean prebuild removes the link and creates a fresh generation. It does not reuse the previous app outputs. Gradle's build cache can restore tasks (`org.gradle.caching=true` in `~/.gradle/gradle.properties`). Root `android/build`, dependency codegen and `.cxx` keep their original locations.
 - Existing physical `app/build` folders are refused, not migrated. Run `expo prebuild --clean --platform android` when opting in. Turning the variable off leaves existing links alone; a clean prebuild restores local outputs.
 

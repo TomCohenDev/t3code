@@ -4,8 +4,10 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 
 const enabled = () => process.env.T3_FORK_CENTRAL_BUILD_CACHE === "1";
-const cacheHome = () =>
-  path.resolve(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"));
+const cacheHome = () => {
+  const folder = path.resolve(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"));
+  return fs.existsSync(folder) ? fs.realpathSync(folder) : folder;
+};
 const hashPath = (canonicalPath) => crypto.createHash("sha256").update(canonicalPath).digest("hex");
 const inside = (parent, child) => child === parent || child.startsWith(parent + path.sep);
 

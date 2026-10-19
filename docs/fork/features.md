@@ -13,7 +13,7 @@ Each section names:
 Local builds can keep their disposable Vite caches and Android app outputs outside checkouts.
 
 - **Setting:** `T3_FORK_CENTRAL_BUILD_CACHE=1` in the build environment (off by default). `XDG_CACHE_HOME` chooses the cache base; otherwise it is `~/.cache`. No installed-app setting is needed.
-- **Works on:** local web, server, desktop and portal Vite tools, shared-client tests, and Android prebuilds. Each canonical checkout path has its own SHA-256 key. APKs remain at `apps/mobile/android/app/build/outputs/apk` through a link.
+- **Works on:** local web, server, desktop, portal and marketing Vite tools, shared-client tests, and Android prebuilds. Each canonical checkout path has its own SHA-256 key. APKs remain at `apps/mobile/android/app/build/outputs/apk` through a link.
 - **Limits:** existing local outputs are not moved or deleted. Enable before a clean Android prebuild. Root Android outputs, dependency codegen and `.cxx` stay in place. Disabling the variable does not remove an existing link; the next clean prebuild restores the normal layout. `node scripts/fork-build-cache-prune.ts --dry-run` previews central-only cleanup, with 14 days as the default age. See [operations](operations.md#central-build-caches).
 
 ## Remote access

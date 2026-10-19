@@ -106,6 +106,16 @@ describe("central build cache", () => {
     ).toBe(true);
   });
 
+  it("uses the same central cache through an XDG base alias", () => {
+    const paths = record("vite", 30);
+    const alias = NodePath.join(temp, "cache-alias");
+    NodeFS.symlinkSync(NodePath.join(temp, "cache"), alias, "junction");
+    vi.stubEnv("XDG_CACHE_HOME", alias);
+    expect(cache.workspacePaths(worktree, "vite").folder).toBe(paths.folder);
+    expect(cache.prune({ log: quiet })).toBeGreaterThan(0);
+    expect(NodeFS.existsSync(paths.folder)).toBe(false);
+  });
+
   it("preserves a current generation and drops a superseded one after a clean", () => {
     const paths = cache.androidBuildLink(worktree);
     const link = NodePath.join(worktree, "apps/mobile/android/app/build");
