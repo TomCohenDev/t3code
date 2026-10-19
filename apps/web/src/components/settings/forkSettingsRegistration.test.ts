@@ -18,6 +18,7 @@ const FORK_PAGE_ROWS: Record<
   ForkSettingKey,
   SettingsSearchItemId | { readonly notListed: string }
 > = {
+  restoreWorktreesOnResume: "restore-worktrees-on-resume",
   confirmTerminalClose: "terminal-close-confirmation",
   terminalAppShortcutsFirst: "terminal-app-shortcuts-first",
   appToggleShortcuts: "app-toggle-shortcuts",

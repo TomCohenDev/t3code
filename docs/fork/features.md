@@ -16,6 +16,16 @@ Local builds can keep their disposable Vite caches and Android app outputs outsi
 - **Works on:** local web, server, desktop, portal and marketing Vite tools, shared-client tests, and Android prebuilds. Each canonical checkout path has its own SHA-256 key. APKs remain at `apps/mobile/android/app/build/outputs/apk` through a link.
 - **Limits:** existing local outputs are not moved or deleted. Enable before a clean Android prebuild. Root Android outputs, dependency codegen and `.cxx` stay in place. Disabling the variable does not remove an existing link; the next clean prebuild restores the normal layout. `node scripts/fork-build-cache-prune.ts --dry-run` previews central-only cleanup, with 14 days as the default age. See [operations](operations.md#central-build-caches).
 
+## Worktrees
+
+### Restore worktrees on resume
+
+Restore a missing worktree at its saved path from its existing local branch before starting the next turn. Project setup runs before the agent starts. Setup also runs when a Node checkout has no `node_modules`. The thread shows the restore as an activity.
+
+- **Setting:** `restoreWorktreesOnResume` (server setting, off by default). Settings > Fork > Threads > Restore worktrees on resume.
+- **Works on:** server, for web, desktop, mobile, agent tools and scheduled turns.
+- **Limits:** a missing branch or a conflicting path stops recovery. No branch is created, moved or reset. Dependencies require a configured project setup script. Upstream's existing missing-worktree handling remains unchanged when this setting is off.
+
 ## Remote access
 
 ### Cloudflare Access login

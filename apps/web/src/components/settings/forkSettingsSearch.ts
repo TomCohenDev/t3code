@@ -19,6 +19,13 @@ export const CATEGORY_SCOPES: Readonly<Record<ForkSettingsPath, SettingsSearchSc
 
 export const WORKTREE_PATH_TEMPLATE_ITEMS = [
   {
+    id: "restore-worktrees-on-resume",
+    title: "Restore worktrees on resume",
+    to: "/settings/fork",
+    environmentOnly: true,
+    searchTerms: ["missing folder restore checkout dependencies setup node_modules"],
+  },
+  {
     id: "storage-worktree-path-template",
     title: "Worktree path template",
     to: "/settings/storage",

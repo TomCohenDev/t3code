@@ -246,6 +246,7 @@ export const MobileNewThreadProject = Schema.Literals(["picker", "last", "none"]
 export type MobileNewThreadProject = typeof MobileNewThreadProject.Type;
 
 export const ForkServerSettingsFields = {
+  restoreWorktreesOnResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: use the joined machine map name as the environment label. */
   environmentLabelFromMachineMap: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
@@ -366,6 +367,7 @@ export const ForkServerSettingsFields = {
 };
 
 export const ForkServerSettingsPatchFields = {
+  restoreWorktreesOnResume: Schema.optionalKey(Schema.Boolean),
   environmentLabelFromMachineMap: Schema.optionalKey(Schema.Boolean),
   worktreePathTemplate: Schema.optionalKey(TrimmedString),
   recoverInterruptedTurns: Schema.optionalKey(Schema.Boolean),

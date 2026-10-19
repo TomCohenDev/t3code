@@ -61,6 +61,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Threads**
 
+- **[Restore worktrees on resume](docs/fork/features.md#restore-worktrees-on-resume):** recover a missing checkout from its saved branch and run project setup before continuing (off by default).
 - **[Sidebar groups](docs/fork/features.md#sidebar-groups):** thread groups as tabs above the sidebar list, filled by drag or by rules. Mobile shows and edits them too.
 - **[Snooze quick options](docs/fork/features.md#snooze-quick-options):** edit the choices of the snooze menus.
 - **[Worktree path template](docs/fork/features.md#worktree-path-template):** a template decides where new worktrees go.
