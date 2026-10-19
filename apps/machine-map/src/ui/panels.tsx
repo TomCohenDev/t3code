@@ -31,7 +31,9 @@ import {
 } from "../rules/map.ts";
 import { DEFAULT_COMMAND_MINUTES, ROTATION_MINUTES } from "../rules/queue.ts";
 import { callApi, StepUpNeeded } from "./apiClient.ts";
-import { ApprovalsSetup, confirmWithPasskey, PasskeyStepUp } from "./Approvals.tsx";
+import { ApprovalsSetup, PasskeyStepUp } from "./Approvals.tsx";
+import { captureApproval } from "../rules/approval.ts";
+import { pendingApproval, startApproval } from "./pendingApproval.ts";
 import { usePortalContext, type CommandOptions, type Portal } from "./context.ts";
 import { buildStandings } from "./build.ts";
 import { BuildLabel, BuildSticker } from "./BuildLabel.tsx";
@@ -1395,18 +1397,75 @@ function PendingPanel({ thumbprint }: { thumbprint: string }) {
   return <PendingSignIn key={pending.thumbprint} pending={pending} />;
 }
 
-function PendingSignIn({ pending }: { pending: PendingClient }) {
+export function ClientAccessSummary({ clientId }: { clientId: ClientRecord["id"] }) {
+  const portal = usePortalContext();
+  const map = portal.snapshot.map;
+  const client = map.clients.find((c) => c.id === clientId);
+  if (!client)
+    return <p className="hint">This client is gone. Choose another client or make a new one.</p>;
+  return (
+    <>
+      <Section>Current access</Section>
+      {portal.draft !== null && (
+        <p className="hint">Current access of {client.name}. Held changes are not applied.</p>
+      )}
+      <ul className="list small break">
+        {map.machines.map((machine) => {
+          const arrow = findClientArrow(map, clientId, machine.id);
+          return (
+            <li key={machine.id}>
+              {machine.name}: {LEVEL_LABEL[arrow.level]}
+              {arrow.expiresAt && (
+                <>
+                  {" "}
+                  until {shortTime(arrow.expiresAt)}, then{" "}
+                  {LEVEL_LABEL[arrow.revertLevel ?? "none"]}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+export function PendingSignIn({
+  pending,
+  initialRequest,
+  done,
+}: {
+  pending: PendingClient;
+  initialRequest?: ApproveClientRequest;
+  done?: () => void;
+}) {
   const portal = usePortalContext();
   const { map, now } = portal;
   const thumbprint = pending.thumbprint;
   const [status, setStatus] = useState<ApprovalsStatus | null>(null);
   const [stepUp, setStepUp] = useState<StepUp>("checking");
   /** The client that the key joins: a new one, or an existing one by id. */
-  const [target, setTarget] = useState<ClientRecord["id"] | null>(null);
-  const [name, setName] = useState(pending.describedAs);
-  const [arrows, setArrows] = useState<Record<string, MachineLevel>>(() =>
-    startingArrows(map, pending),
+  const initialClient = initialRequest?.client;
+  const [target, setTarget] = useState<ClientRecord["id"] | null>(
+    initialClient?._tag === "existing" && map.clients.some((c) => c.id === initialClient.clientId)
+      ? initialClient.clientId
+      : null,
   );
+  const [name, setName] = useState(
+    initialClient?._tag === "new" ? initialClient.name : pending.describedAs,
+  );
+  const [arrows, setArrows] = useState<Record<string, MachineLevel>>(() =>
+    initialRequest
+      ? Object.fromEntries(
+          map.machines.map((m) => [
+            m.id,
+            initialRequest.arrows.find((a) => a.to === m.id)?.level ?? "none",
+          ]),
+        )
+      : startingArrows(map, pending),
+  );
+  const targetMissing =
+    target !== null && !portal.snapshot.map.clients.some((c) => c.id === target);
 
   useEffect(() => {
     let current = true;
@@ -1429,26 +1488,26 @@ function PendingSignIn({ pending }: { pending: PendingClient }) {
   }, []);
 
   const seenOn = findMachine(map, pending.seenOn);
+  const request = (): ApproveClientRequest => ({
+    thumbprint: pending.thumbprint,
+    client:
+      target === null ? { _tag: "new", name: name.trim() } : { _tag: "existing", clientId: target },
+    // MM-907: an existing client keeps its own arrows. Only a new client gets arrows here.
+    arrows:
+      target === null
+        ? map.machines.flatMap((machine) => {
+            const level = arrows[machine.id] ?? "none";
+            return level === "none" ? [] : [{ to: machine.id, level }];
+          })
+        : [],
+  });
   const approve = () => {
-    const request: ApproveClientRequest = {
-      thumbprint: pending.thumbprint,
-      client:
-        target === null
-          ? { _tag: "new", name: name.trim() }
-          : { _tag: "existing", clientId: target },
-      // MM-907: an existing client keeps its own arrows. Only a new client gets arrows here.
-      arrows:
-        target === null
-          ? map.machines.flatMap((machine) => {
-              const level = arrows[machine.id] ?? "none";
-              return level === "none" ? [] : [{ to: machine.id, level }];
-            })
-          : [],
-    };
+    const action = captureApproval({ _tag: "approve", request: request() }, portal);
     portal.call(async () => {
       try {
-        const result = await callApi<WriteResult>("POST", "/api/grant/approve", request);
+        const result = await callApi<WriteResult>("POST", "/api/grant/approve", action.request);
         portal.select(NO_SELECTION);
+        done?.();
         return result;
       } catch (error) {
         if (error instanceof StepUpNeeded) setStepUp("needed");
@@ -1575,9 +1634,20 @@ function PendingSignIn({ pending }: { pending: PendingClient }) {
             </>
           )}
 
+          {target !== null && <ClientAccessSummary clientId={target} />}
+
           <div className="actions spaced">
             {status?._tag === "ready" && stepUp === "needed" ? (
-              <button type="button" className="btn primary" onClick={confirmWithPasskey}>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={targetMissing || (target === null && name.trim() === "")}
+                onClick={() =>
+                  portal.call(async () =>
+                    startApproval(pendingApproval({ _tag: "approve", request: request() }, portal)),
+                  )
+                }
+              >
                 Confirm with passkey
               </button>
             ) : (
@@ -1586,6 +1656,7 @@ function PendingSignIn({ pending }: { pending: PendingClient }) {
                 className="btn primary"
                 disabled={
                   stepUp === "checking" ||
+                  targetMissing ||
                   status?._tag !== "ready" ||
                   (target === null && name.trim() === "")
                 }

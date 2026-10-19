@@ -38,6 +38,7 @@ const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 export const ChangesRequest = Schema.Struct({
   summary: Text,
   changes: Schema.Array(MapChange).check(Schema.isMinLength(1)),
+  expectedState: Schema.optionalKey(Schema.String),
 });
 export type ChangesRequest = typeof ChangesRequest.Type;
 
@@ -277,6 +278,7 @@ export const ApproveClientRequest = Schema.Struct({
     Schema.TaggedStruct("existing", { clientId: ClientId }),
   ]),
   arrows: Schema.Array(Schema.Struct({ to: MachineId, level: MachineLevel })),
+  expectedState: Schema.optionalKey(Schema.String),
 });
 export type ApproveClientRequest = typeof ApproveClientRequest.Type;
 
@@ -290,6 +292,7 @@ export const InviteRequest = Schema.Struct({
     Schema.TaggedStruct("existing", { clientId: ClientId }),
   ]),
   arrows: ApproveClientRequest.fields.arrows,
+  expectedState: Schema.optionalKey(Schema.String),
 });
 export type InviteRequest = typeof InviteRequest.Type;
 

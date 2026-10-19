@@ -120,7 +120,9 @@ Only the owner makes an invite, in the portal. "Invite an app" shows a QR code t
 
 To add a phone from the map, select "Add phone", or double-click empty map space (long-press on a phone) and select "Add phone here". Check the name and arrows, which start at `standard`, then make the invite with the passkey check. The same dialog shows the QR code, link and "Add with Obtainium". The phone card appears at the chosen point. "Invite an app" in Clients still starts new arrows at `none`.
 
-After a passkey check, the dialog returns and makes the invite without another click. On the same phone, select "Open in the T3 app" in the dialog or invite page, then tap Add environment in the app. Or copy the link, open the T3 app, open Environments, tap +, and paste it in Address. Older app builds need this copy-and-paste path.
+After a successful passkey check, the dialog returns and makes the invite without another click. Browser approvals and owner-only settings changes, including held changes, resume the same way. The saved request expires after 10 minutes. If confirmation fails or expires, select "Try again". If an affected item changed while you confirmed, the portal asks you to review it before applying anything.
+
+On the same phone, select "Open in the T3 app" in the dialog or invite page, then tap Add environment in the app. Or copy the link, open the T3 app, open Environments, tap +, and paste it in Address. Older app builds need this copy-and-paste path.
 
 - In the mobile app, scan the code in Add environment, or paste its link in Address. The app then pairs with every machine that it may reach.
 - The app keeps the token, also when a machine does not pair at once. It pairs again by itself when a machine ends its session, for example after an access change, an expiry, a resume or a `clientAccess` change.

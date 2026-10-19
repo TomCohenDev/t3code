@@ -1,11 +1,14 @@
 import * as NodeSqlite from "node:sqlite";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import * as Schema from "effect/Schema";
+import { MachineMapDocument } from "@t3tools/contracts/machineMap";
 
 import { CloudflareApi } from "./cloudflare.ts";
 import type { Env } from "./env.ts";
 import { MachineMapObject, type OwnerContext } from "./MachineMapObject.ts";
 import { emptyMap } from "./rules/map.ts";
 import { MAC, threeMachines } from "./rules/testMap.ts";
+import { APPROVAL_CHANGED, captureApproval } from "./rules/approval.ts";
 
 vi.mock("cloudflare:workers", () => ({
   DurableObject: class {
@@ -84,6 +87,7 @@ function portal(machines = false) {
     ACCOUNT_ID: "account",
     OWNER_EMAILS: owner.email,
     TEAM_DOMAIN: "team.cloudflareaccess.com",
+    DEV_FAKE_ACCESS: "1",
     ...(machines ? { CF_API_TOKEN: "test-only" } : {}),
   } as Env;
   return { db, ctx, env, object: new MachineMapObject(ctx, env), send, setAlarm };
@@ -195,4 +199,172 @@ it("supersedes a waiting rotation when the owner makes a join code", async () =>
   });
   expect((await object.enroll("127.0.0.1", join.value.code)).ok).toBe(true);
   expect(db.prepare("SELECT * FROM rotations").all()).toEqual([]);
+});
+
+const readMap = (db: NodeSqlite.DatabaseSync) =>
+  Schema.decodeUnknownSync(MachineMapDocument)(
+    JSON.parse(String(db.prepare("SELECT value FROM meta WHERE key = 'map'").get()?.value)),
+  );
+
+it("refuses stale owner-only changes at the server, without overwriting a newer value", async () => {
+  const { object, db } = portal(true);
+  const context = { snapshot: { map: readMap(db) }, pause: null, pending: [] };
+  const action = captureApproval(
+    {
+      _tag: "changes",
+      request: {
+        summary: "Enforce",
+        changes: [
+          {
+            _tag: "setSetting",
+            machineId: MAC,
+            scope: "server",
+            key: "clientAccess",
+            present: true,
+            value: "enforce",
+          },
+        ],
+      },
+    } as const,
+    context,
+  );
+  await object.changes(
+    owner,
+    {
+      summary: "Observe",
+      changes: [
+        {
+          _tag: "setSetting",
+          machineId: MAC,
+          scope: "server",
+          key: "clientAccess",
+          present: true,
+          value: "observe",
+        },
+      ],
+    },
+    true,
+  );
+  expect(await object.changes(owner, action.request, true)).toEqual({
+    ok: false,
+    status: 409,
+    error: APPROVAL_CHANGED,
+  });
+  expect(readMap(db).settings.overrides[MAC]?.server.clientAccess).toBe("observe");
+});
+
+it("allows a saved changes request after an unrelated note edit", async () => {
+  const { object, db } = portal(true);
+  const action = captureApproval(
+    {
+      _tag: "changes",
+      request: {
+        summary: "Enforce",
+        changes: [
+          {
+            _tag: "setSetting",
+            machineId: MAC,
+            scope: "server",
+            key: "clientAccess",
+            present: true,
+            value: "enforce",
+          },
+        ],
+      },
+    } as const,
+    { snapshot: { map: readMap(db) }, pause: null, pending: [] },
+  );
+  await object.changes(owner, {
+    summary: "Note",
+    changes: [
+      {
+        _tag: "putNote",
+        note: { id: "note", text: "Unrelated", color: "yellow", position: { x: 100, y: 100 } },
+      },
+    ],
+  });
+  expect((await object.changes(owner, action.request, true)).ok).toBe(true);
+  expect(readMap(db).settings.overrides[MAC]?.server.clientAccess).toBe("enforce");
+});
+
+it("rechecks a browser key after the asynchronous approval check", async () => {
+  const { object, db } = portal(true);
+  const pending = {
+    thumbprint: "pending-key",
+    email: owner.email,
+    describedAs: "Chrome",
+    seenOn: MAC,
+    state: "pending" as const,
+    firstSeenAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+  };
+  db.prepare("INSERT INTO pending_clients VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    pending.thumbprint,
+    pending.describedAs,
+    pending.email,
+    MAC,
+    pending.firstSeenAt,
+    pending.lastSeenAt,
+    pending.state,
+  );
+  const action = captureApproval(
+    {
+      _tag: "approve",
+      request: {
+        thumbprint: pending.thumbprint,
+        client: { _tag: "new", name: "Browser" },
+        arrows: [{ to: MAC, level: "standard" }],
+      },
+    } as const,
+    { snapshot: { map: readMap(db) }, pause: null, pending: [pending] },
+  );
+  const approving = object.approveClient(owner, "localhost", action.request);
+  db.prepare("UPDATE pending_clients SET email = ? WHERE thumbprint = ?").run(
+    "changed@example.com",
+    pending.thumbprint,
+  );
+  expect(await approving).toEqual({ ok: false, status: 409, error: APPROVAL_CHANGED });
+  expect(readMap(db).clients).toEqual([]);
+  db.prepare("UPDATE pending_clients SET email = ? WHERE thumbprint = ?").run(
+    owner.email,
+    pending.thumbprint,
+  );
+  expect((await object.approveClient(owner, "localhost", action.request)).ok).toBe(true);
+  expect(readMap(db).clients[0]?.keys[0]?.thumbprint).toBe(pending.thumbprint);
+});
+
+it("rechecks an invite after asynchronous work, without replacing the previous invite", async () => {
+  const { object, db } = portal(true);
+  const initial = captureApproval(
+    { _tag: "invite", request: { client: { _tag: "new", name: "Phone" }, arrows: [] } } as const,
+    { snapshot: { map: readMap(db) }, pause: null, pending: [] },
+  );
+  const first = await object.createInvite(owner, "localhost", initial.request);
+  if (!first.ok) throw new Error(first.error);
+  const previous = db.prepare("SELECT code_hash FROM client_invites").get()?.code_hash;
+  const action = captureApproval(
+    {
+      _tag: "invite",
+      request: { client: { _tag: "existing", clientId: first.value.clientId }, arrows: [] },
+    } as const,
+    { snapshot: { map: readMap(db) }, pause: null, pending: [] },
+  );
+  const inviting = object.createInvite(owner, "localhost", action.request);
+  await object.changes(owner, {
+    summary: "New access",
+    changes: [
+      {
+        _tag: "setClientArrow",
+        arrow: {
+          client: first.value.clientId,
+          to: MAC,
+          level: "admin",
+          expiresAt: null,
+          revertLevel: null,
+        },
+      },
+    ],
+  });
+  expect(await inviting).toEqual({ ok: false, status: 409, error: APPROVAL_CHANGED });
+  expect(db.prepare("SELECT code_hash FROM client_invites").get()?.code_hash).toBe(previous);
 });
