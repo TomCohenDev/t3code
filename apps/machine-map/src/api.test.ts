@@ -1,9 +1,40 @@
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { InviteRequest } from "./api.ts";
+import { ApproveClientRequest, ChangesRequest, InviteRequest } from "./api.ts";
 
 const decodeInvite = Schema.decodeUnknownSync(InviteRequest);
+
+it("keeps the saved-state precondition on each approval-path request", () => {
+  const client = { _tag: "new", name: "Phone" };
+  expect(decodeInvite({ client, arrows: [], expectedState: "before" }).expectedState).toBe(
+    "before",
+  );
+  expect(
+    Schema.decodeUnknownSync(ApproveClientRequest)({
+      thumbprint: "key",
+      client,
+      arrows: [],
+      expectedState: "before",
+    }).expectedState,
+  ).toBe("before");
+  expect(
+    Schema.decodeSync(ChangesRequest)({
+      summary: "Enforce",
+      changes: [
+        {
+          _tag: "setSetting",
+          machineId: "mac",
+          scope: "server",
+          key: "clientAccess",
+          present: true,
+          value: "enforce",
+        },
+      ],
+      expectedState: "before",
+    }).expectedState,
+  ).toBe("before");
+});
 
 it("keeps the chosen map point and arrows on a new app invite", () => {
   const request = {

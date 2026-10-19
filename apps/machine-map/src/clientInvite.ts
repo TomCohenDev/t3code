@@ -8,6 +8,8 @@ export const inviteAppUrl = (inviteUrl: string) =>
 
 export function passkeyReturnUrl(url: URL) {
   const then = url.searchParams.get("then") ?? "";
-  const resume = url.searchParams.get("resume") === "invite" ? "?resume=invite" : "";
+  const kind = url.searchParams.get("resume");
+  const resume =
+    kind === "invite" || kind === "approve" || kind === "changes" ? `?resume=${kind}` : "";
   return new URL(`/${resume}${then.startsWith("#/") ? then : ""}`, url).href;
 }

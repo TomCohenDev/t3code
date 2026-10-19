@@ -26,6 +26,10 @@ it("resumes only an invite on the same portal after the passkey step", () => {
   expect(passkeyReturnUrl(new URL(`${start}?then=%23%2Fclients`))).toBe(
     "https://portal.example.com/#/clients",
   );
+  for (const kind of ["approve", "changes"])
+    expect(passkeyReturnUrl(new URL(`${start}?resume=${kind}&then=%23%2Fclients`))).toBe(
+      `https://portal.example.com/?resume=${kind}#/clients`,
+    );
   expect(passkeyReturnUrl(new URL(`${start}?resume=other&then=https://evil.example`))).toBe(
     "https://portal.example.com/",
   );
