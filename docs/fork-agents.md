@@ -5,6 +5,7 @@ This guide maps owner tasks to the fork tools. It is for agents that operate the
 ## Rules
 
 - Before a plan or status report, list recent merged fork PRs for that area. See [Change the fork](fork/operations.md#change-the-fork).
+- Before you delegate with `isolation: worktree`, run `git fetch origin && git merge --ff-only origin/main` in your checkout. The child worktree starts from your local commit, not from `origin/main`.
 - Prefer upstream code and generic solutions. Isolate fork code with one-line upstream hooks; see [Change the fork](fork/operations.md#change-the-fork).
 - Never open or suggest PRs or issues on `pingdotgg/t3code`. Fork fixes stay in `Yarden-zamir/t3code`.
 - Never kill a process that you found by a name, a path or a pattern. Kill only a PID that you started.
