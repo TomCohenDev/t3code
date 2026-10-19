@@ -162,3 +162,42 @@ it("checks setting values and machine identity while allowing unrelated map edit
     }),
   ).toBe(false);
 });
+
+it("tracks pause identity, not display-only cut lists that can change for unrelated clients", () => {
+  const before = {
+    ...context(),
+    pause: {
+      pausedAt: "2026-10-01",
+      by: { _tag: "owner", email: "owner@example.com", device: "Phone" },
+      revision: 1,
+      cut: [],
+      cutClients: [{ client: PHONE, to: MAC, level: "standard" }],
+    },
+  } satisfies ApprovalContext;
+  const action = captureApproval(
+    {
+      _tag: "changes",
+      request: {
+        summary: "Enforce",
+        changes: [
+          {
+            _tag: "setSetting",
+            machineId: MAC,
+            scope: "server",
+            key: "clientAccess",
+            present: true,
+            value: "enforce",
+          },
+        ],
+      },
+    } as const,
+    before,
+  );
+  const after = {
+    ...before,
+    snapshot: { map: { ...before.snapshot.map, clients: [] } },
+    pause: { ...before.pause, cutClients: [] },
+  };
+  expect(approvalMatches(action, after)).toBe(true);
+  expect(approvalMatches(action, { ...after, pause: null })).toBe(false);
+});

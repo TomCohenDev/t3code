@@ -33,11 +33,16 @@ export interface ApprovalContext {
 /** Only facts the owner is approving count; presence, last use and unrelated map edits do not. */
 export function approvalState(action: ApprovalAction, context: ApprovalContext): string {
   const map = context.snapshot.map;
+  const pause = context.pause && {
+    pausedAt: context.pause.pausedAt,
+    by: context.pause.by,
+    revision: context.pause.revision,
+  };
   if (action._tag === "changes") {
     const inverse = applyChanges(map, action.request.changes).inverse;
     const touched = machinesTouched({ changes: action.request.changes, inverse });
     return stableStringify({
-      pause: context.pause,
+      pause,
       inverse,
       machines: map.machines
         .filter((m) => touched === "all" || touched.has(m.id))
@@ -67,7 +72,7 @@ export function approvalState(action: ApprovalAction, context: ApprovalContext):
       ? context.pending?.find((p) => p.thumbprint === action.request.thumbprint)
       : undefined;
   return stableStringify({
-    pause: context.pause,
+    pause,
     client,
     arrows: client
       ? map.clientArrows
