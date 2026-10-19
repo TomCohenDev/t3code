@@ -46,7 +46,7 @@ const fixture = Effect.gen(function* () {
   yield* exec(["config", "user.email", "test@example.com"]);
   yield* fs.writeFileString(
     path.join(repo, ".gitignore"),
-    "node_modules\nbuild\n.env\nunknown\nignored.txt\n.turbo\n.gradle\napps/mobile/android\n",
+    "node_modules\nbuild\n.env\nunknown\nignored.txt\n.turbo\n.gradle\n.cxx\napps/mobile/android\napps/*/dist\ndist-electron\nrelease/\nrelease-mock/\n",
   );
   yield* fs.writeFileString(path.join(repo, "source.ts"), "original");
   yield* exec(["add", "."]);
@@ -99,6 +99,9 @@ it.effect(
       const result = yield* f.evict();
       assert.strictEqual(result.directories, 2);
       assert.strictEqual(result.bytes, 8);
+      assert.deepStrictEqual(result.artifactBreakdown, [
+        { folderType: "node_modules", logicalBytes: 8, folders: 2 },
+      ]);
       assert.include(result.reason, "Artifacts removed");
       assert.isFalse(yield* f.fs.exists(f.path.join(f.cwd, "node_modules")));
       assert.strictEqual(yield* f.fs.readFileString(f.path.join(f.cwd, ".env")), "secret");
@@ -194,12 +197,74 @@ it.effect("limits Gradle removal to known mobile artifact paths", () =>
     yield* f.file("apps/mobile/android/.gradle/cache");
     yield* f.file("apps/mobile/android/app/build/output");
     yield* f.file("apps/mobile/android/app/src/keep.java", "source");
+    yield* f.file("apps/mobile/modules/t3-terminal/android/build/output");
+    yield* f.file("apps/mobile/modules/t3-terminal/android/.gradle/cache");
+    yield* f.file("apps/mobile/modules/t3-terminal/android/.cxx/output");
+    yield* f.file("apps/mobile/modules/t3-terminal/android/src/build/source.java", "source");
     yield* f.file(".gradle/keep", "not mobile");
     const result = yield* f.evict();
-    assert.strictEqual(result.directories, 2);
+    assert.strictEqual(result.directories, 5);
+    assert.deepStrictEqual(result.artifactBreakdown, [
+      { folderType: "android-build", logicalBytes: 24, folders: 3 },
+      { folderType: "gradle-cache", logicalBytes: 16, folders: 2 },
+    ]);
     assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/android/app/src/keep.java")));
     assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, ".gradle/keep")));
+    assert.isTrue(
+      yield* f.fs.exists(
+        f.path.join(f.cwd, "apps/mobile/modules/t3-terminal/android/src/build/source.java"),
+      ),
+    );
   }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect(
+  "removes build outputs before node_modules and reports logical bytes per folder type",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      yield* f.file("node_modules/package/data", "nodes");
+      yield* f.file("apps/mobile/android/app/build/output", "android");
+      yield* f.file("apps/mobile/modules/t3-terminal/android/.gradle/cache", "abc");
+      yield* f.file("apps/web/dist/output", "js");
+      yield* f.file(".turbo/cache", "x");
+      let reads = 0;
+      const first = yield* Effect.gen(function* () {
+        return yield* (yield* Artifacts.ForkWorktreeArtifacts).evict({
+          cwd: f.cwd,
+          blocked: Effect.sync(() => (++reads > 2 ? "a turn was queued" : null)),
+        });
+      }).pipe(Effect.provide(f.layer));
+      assert.deepStrictEqual(first.artifactBreakdown, [
+        { folderType: "android-build", logicalBytes: 7, folders: 1 },
+      ]);
+      assert.isFalse(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/android/app/build")));
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/package/data")));
+      const remaining = yield* f.evict();
+      assert.deepStrictEqual(remaining.artifactBreakdown, [
+        { folderType: "gradle-cache", logicalBytes: 3, folders: 1 },
+        { folderType: "build-output", logicalBytes: 2, folders: 1 },
+        { folderType: "cache", logicalBytes: 1, folders: 1 },
+        { folderType: "node_modules", logicalBytes: 5, folders: 1 },
+      ]);
+    }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect(
+  "recognizes ignored Electron and release build outputs without widening the allowlist",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      yield* f.file("apps/desktop/dist-electron/entry.js", "js");
+      yield* f.file("release/installer.zip", "zip");
+      yield* f.file("release-mock/installer.zip", "mock");
+      yield* f.file("unknown/installer.zip", "keep");
+      const result = yield* f.evict();
+      assert.deepStrictEqual(result.artifactBreakdown, [
+        { folderType: "build-output", logicalBytes: 9, folders: 3 },
+      ]);
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "unknown/installer.zip")));
+    }).pipe(Effect.provide(layerGit)),
 );
 
 const now = Date.parse("2026-10-19T00:00:00Z");
@@ -234,6 +299,7 @@ it.effect(
       let shared = false;
       let sessionLive = false;
       let setupConfigured = true;
+      let hasThread = true;
       let settings = { ...DEFAULT_SERVER_SETTINGS, worktreeArtifactEviction: false };
       const project = {
         id: base.projectId,
@@ -246,6 +312,7 @@ it.effect(
         if (query.includes("effect_outbox")) return Effect.succeed(pending ? [{}] : []);
         if (query.includes("projection_provider_sessions"))
           return Effect.succeed(sessionLive ? [{ id: "session", cwd: f.cwd }] : []);
+        if (!hasThread) return Effect.succeed([]);
         return Effect.succeed([
           { threadId: base.id, worktreePath: f.cwd },
           ...(shared ? [{ threadId: "second", worktreePath: `${f.cwd}/.` }] : []),
@@ -283,6 +350,12 @@ it.effect(
         });
       assert.lengthOf(yield* run(), 0);
       settings = { ...settings, worktreeArtifactEviction: true };
+      hasThread = false;
+      yield* f.file("apps/mobile/android/app/build/output");
+      assert.lengthOf(yield* run(), 0);
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/file")));
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/android/app/build/output")));
+      hasThread = true;
       terminal = true;
       assert.include((yield* run())[0]!.reason, "open terminal");
       terminal = false;
@@ -329,6 +402,10 @@ it.effect(
       ]);
       assert.lengthOf(entries, 1);
       assert.include(entries[0]!.reason, "Artifacts removed");
+      assert.deepStrictEqual(entries[0]!.artifactBreakdown, [
+        { folderType: "android-build", logicalBytes: 8, folders: 1 },
+        { folderType: "node_modules", logicalBytes: 8, folders: 1 },
+      ]);
       assert.isTrue(yield* f.fs.exists(f.cwd));
     }).pipe(Effect.provide(layerGit)),
 );

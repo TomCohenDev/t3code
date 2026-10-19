@@ -28,13 +28,13 @@ Restore a missing worktree at its saved path from its existing local branch befo
 
 ### Artifact-only worktree cleanup
 
-Remove regenerable dependencies and build outputs without removing the worktree or its branch. The storage cleanup report gives the result and removed file bytes when known. The next turn runs project setup before the agent starts, even if eviction has since been switched off.
+Remove regenerable build outputs before dependencies, without removing the worktree or its branch. The storage cleanup report splits logical file bytes and folder counts into Android builds, Gradle caches, other builds, other caches and `node_modules`. These are not physical bytes reclaimed: pnpm files can share APFS blocks with its store. The next turn runs project setup before the agent starts, even if eviction has since been switched off.
 
 - **Setting:** `worktreeArtifactEviction` (server setting, off by default) and `worktreeArtifactEvictionDays` (14 days by default, 1–3650). Settings > Fork > Threads > Evict worktree artifacts.
 - **Works on:** server. All clients, scheduled turns and agent tools use the same recovery path.
 - **Eligibility:** a single idle thread owns the checkout and is settled or inactive for the configured days. Running, queued and pending work, open terminals, a process with its working directory inside the checkout, and uncertain process visibility keep the artifacts. A project setup script must be configured.
-- **Files:** only allowlisted directories that Git ignores and that contain no tracked files: `node_modules`, `.turbo`, `.vite`, known app/package build outputs, mobile Expo/Gradle build caches, and native Rust targets. Secrets, `.env` files, `_shared`, `.git`, T3 data, unknown ignored directories and symbolic-link targets stay. A protected file within an artifact directory keeps that directory too.
-- **Limits:** process checks support macOS and Linux. Other systems keep artifacts until process-directory inspection is available. File bytes are logical sizes, not a promise of physical disk space reclaimed. This setting does not change or disable upstream whole-worktree cleanup rules; turn those off separately if you want every checkout kept.
+- **Files:** only allowlisted directories that Git ignores and that contain no tracked files. Android `build`, `.gradle` and `.cxx` folders in the mobile app and its native modules come first, followed by other known app/package, Electron, release and Rust build outputs, caches, then `node_modules`. Secrets, `.env` files, `_shared`, `.git`, T3 data, unknown ignored directories and symbolic-link targets stay. A protected file within an artifact directory keeps that directory too. Shared pnpm storage is not managed by this feature.
+- **Limits:** orphan Git worktrees without a stored T3 thread are excluded. Process checks support macOS and Linux. Other systems keep artifacts until process-directory inspection is available. This setting does not change or disable upstream whole-worktree cleanup rules; turn those off separately if you want every checkout kept.
 
 ## Remote access
 

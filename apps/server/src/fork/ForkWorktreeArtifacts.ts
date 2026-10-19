@@ -2,7 +2,10 @@ import type {
   OrchestrationV2ThreadShell,
   ServerSettings,
   StorageCleanupReportEntry,
+  ForkArtifactFolderType,
+  ForkArtifactBreakdown,
 } from "@t3tools/contracts";
+import { FORK_ARTIFACT_FOLDER_TYPES } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -47,16 +50,32 @@ const protectedName = (name: string) => {
     ].includes(lower)
   );
 };
-const artifactDirectory = (relative: string) => {
-  const name = relative.split("/").at(-1)!;
-  if (["node_modules", ".turbo", ".vite"].includes(name)) return true;
-  // Output locations in the repository's .gitignore and build scripts, not arbitrary ignored folders.
-  return (
-    /^(?:apps|packages|infra)\/[^/]+\/(?:dist|dist-exe|build|\.vite-plus)$/.test(relative) ||
-    /^(?:build|dist-electron|\.turbo|\.vite-plus)$/.test(relative) ||
-    /^apps\/mobile\/(?:\.expo|\.gradle|android\/(?:\.gradle|build|app\/build))$/.test(relative) ||
+const artifactFolderType = (relative: string) => {
+  const android =
+    /^apps\/mobile\/(?:android(?:\/app)?|modules\/[^/]+\/android)\/(build|\.gradle|\.cxx)$/.exec(
+      relative,
+    );
+  if (android)
+    return android[1] === ".gradle" ? ("gradle-cache" as const) : ("android-build" as const);
+  if (relative === "apps/mobile/.gradle") return "gradle-cache" as const;
+  // Output locations in .gitignore and build scripts, not arbitrary ignored folders.
+  if (
+    /^(?:apps|packages|infra)\/[^/]+\/(?:dist|dist-exe|build)$/.test(relative) ||
+    /^(?:build|dist-electron|release|release-mock)$/.test(relative) ||
+    relative === "apps/desktop/dist-electron" ||
+    relative === "apps/mobile/web-build" ||
     /^native\/[^/]+\/target$/.test(relative)
-  );
+  )
+    return "build-output" as const;
+  const name = relative.split("/").at(-1)!;
+  if (name === "node_modules") return "node_modules" as const;
+  if (
+    [".turbo", ".vite"].includes(name) ||
+    ["apps/mobile/.expo", "apps/marketing/.astro", "apps/web/.tanstack"].includes(relative) ||
+    /^(?:(?:apps|packages|infra)\/[^/]+\/)?\.vite-plus$/.test(relative)
+  )
+    return "cache" as const;
+  return null;
 };
 
 export class ForkWorktreeArtifacts extends Context.Service<
@@ -70,6 +89,7 @@ export class ForkWorktreeArtifacts extends Context.Service<
       readonly bytes: number;
       readonly directories: number;
       readonly failed: boolean;
+      readonly artifactBreakdown: ForkArtifactBreakdown;
     }>;
   }
 >()("t3/fork/ForkWorktreeArtifacts") {}
@@ -100,11 +120,16 @@ const make = Effect.gen(function* () {
     Effect.suspend(() => {
       let bytes = 0;
       let directories = 0;
+      const breakdown = new Map<
+        ForkArtifactFolderType,
+        { folderType: ForkArtifactFolderType; logicalBytes: number; folders: number }
+      >();
       const kept = (reason: string) => ({
         reason: directories > 0 ? `Artifacts removed; ${reason}` : reason,
         bytes,
         directories,
         failed: false,
+        artifactBreakdown: [...breakdown.values()],
       });
       return Effect.gen(function* () {
         const root = yield* fs.realPath(cwd);
@@ -129,7 +154,7 @@ const make = Effect.gen(function* () {
         const initiallyBlocked = (yield* blocked) ?? (yield* processBlock);
         if (initiallyBlocked !== null) return kept(initiallyBlocked);
         const pending = [root];
-        const candidates: string[] = [];
+        const candidates: { path: string; folderType: ForkArtifactFolderType }[] = [];
         let inspected = 0;
         while (pending.length > 0) {
           const directory = pending.pop()!;
@@ -142,13 +167,19 @@ const make = Effect.gen(function* () {
             if (!inside(root, target) || (yield* isLink(target))) continue;
             if ((yield* fs.stat(target)).type !== "Directory") continue;
             const relative = path.relative(root, target).split(path.sep).join("/");
-            if (artifactDirectory(relative)) candidates.push(target);
+            const folderType = artifactFolderType(relative);
+            if (folderType !== null) candidates.push({ path: target, folderType });
             else pending.push(target);
           }
         }
         const marker = yield* markerFor(cwd);
         let refused = 0;
-        for (const target of candidates) {
+        candidates.sort(
+          (left, right) =>
+            FORK_ARTIFACT_FOLDER_TYPES.indexOf(left.folderType) -
+            FORK_ARTIFACT_FOLDER_TYPES.indexOf(right.folderType),
+        );
+        for (const { path: target, folderType } of candidates) {
           const data = yield* fs
             .realPath(config.stateDir)
             .pipe(Effect.orElseSucceed(() => path.resolve(config.stateDir)));
@@ -214,6 +245,12 @@ const make = Effect.gen(function* () {
               Effect.sync(() => {
                 directories++;
                 bytes += size;
+                const previous = breakdown.get(folderType);
+                breakdown.set(folderType, {
+                  folderType,
+                  logicalBytes: (previous?.logicalBytes ?? 0) + size,
+                  folders: (previous?.folders ?? 0) + 1,
+                });
               }),
             ),
             Effect.uninterruptible,
@@ -436,6 +473,7 @@ export const makeSweep = (guards: {
                 outcome: result.failed ? "failed" : result.directories > 0 ? "removed" : "kept",
                 reason: result.directories > 0 ? result.reason : `Artifacts kept: ${result.reason}`,
                 bytes: result.directories > 0 ? result.bytes : null,
+                artifactBreakdown: result.artifactBreakdown,
               });
             }).pipe(
               Effect.catch(() =>
