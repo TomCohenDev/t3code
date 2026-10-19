@@ -24,7 +24,7 @@ Restore a missing worktree at its saved path from its existing local branch befo
 
 - **Setting:** `restoreWorktreesOnResume` (server setting, off by default). Settings > Fork > Threads > Restore worktrees on resume.
 - **Works on:** server, for web, desktop, mobile, agent tools and scheduled turns.
-- **Limits:** a missing branch or a conflicting path stops recovery. No branch is created, moved or reset. Dependencies require a configured project setup script. Upstream's existing missing-worktree handling remains unchanged when this setting is off.
+- **Limits:** a missing branch or a conflicting path stops recovery. Only this checkout's Git registration is repaired; no broad prune runs. Its saved index and refs, including staged changes, stay. No branch is created, moved or reset. Dependencies require a configured project setup script. When this setting is off, a missing checkout keeps the missing-folder error rather than using upstream's broad-prune fallback. Pending dependency restoration after artifact eviction still runs.
 
 ### Artifact-only worktree cleanup
 

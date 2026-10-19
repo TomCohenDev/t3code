@@ -160,6 +160,60 @@ it.effect("runs setup for missing dependencies without changing dirty files or H
   }).pipe(Effect.provide(layerGit)),
 );
 
+it.effect(
+  "repairs only the missing checkout and preserves every registration, ref and staged file",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const unrelated = f.path.join(f.path.dirname(f.cwd), "unrelated");
+      yield* f.exec(["worktree", "add", "-b", "other", unrelated]);
+      yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+      const unrelatedGit = (yield* f.exec(
+        ["rev-parse", "--absolute-git-dir"],
+        unrelated,
+      )).stdout.trim();
+      const targetGit = (yield* f.exec(["rev-parse", "--absolute-git-dir"], f.cwd)).stdout.trim();
+      const unrelatedHead = yield* f.fs.readFileString(f.path.join(unrelatedGit, "HEAD"));
+      const unrelatedGitdir = yield* f.fs.readFileString(f.path.join(unrelatedGit, "gitdir"));
+      const unrelatedIndex = yield* f.fs.readFile(f.path.join(unrelatedGit, "index"));
+      yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), "staged code state");
+      yield* f.exec(["add", "package.json"], f.cwd);
+      yield* f.exec(["update-ref", "refs/worktree/restore-proof", "HEAD"], f.cwd);
+      const stagedIndex = yield* f.fs.readFile(f.path.join(targetGit, "index"));
+      const refs = (yield* f.exec(["show-ref"])).stdout;
+      yield* f.fs.remove(unrelated, { recursive: true });
+      yield* f.fs.remove(f.cwd, { recursive: true });
+      yield* f.prepare();
+      assert.strictEqual(
+        yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
+        "staged code state",
+      );
+      assert.deepStrictEqual(yield* f.fs.readFile(f.path.join(targetGit, "index")), stagedIndex);
+      assert.strictEqual(
+        yield* f.fs.readFileString(f.path.join(unrelatedGit, "HEAD")),
+        unrelatedHead,
+      );
+      assert.strictEqual(
+        yield* f.fs.readFileString(f.path.join(unrelatedGit, "gitdir")),
+        unrelatedGitdir,
+      );
+      assert.deepStrictEqual(
+        yield* f.fs.readFile(f.path.join(unrelatedGit, "index")),
+        unrelatedIndex,
+      );
+      assert.strictEqual((yield* f.exec(["show-ref"])).stdout, refs);
+      assert.strictEqual(
+        (yield* f.exec(["rev-parse", "refs/worktree/restore-proof"], f.cwd)).stdout,
+        (yield* f.exec(["rev-parse", "saved"])).stdout,
+      );
+      assert.include(
+        (yield* f.exec(["worktree", "list", "--porcelain"])).stdout,
+        "branch refs/heads/other",
+      );
+      assert.isFalse(yield* f.fs.exists(unrelated));
+    }).pipe(Effect.provide(layerGit)),
+);
+
 it.effect("does nothing while off", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
@@ -244,7 +298,7 @@ it.effect("fails before starting the agent when setup fails, preserving the chec
   Effect.gen(function* () {
     const f = yield* fixture;
     const error = yield* f.prepare(true, 1).pipe(Effect.flip);
-    assert.include(error.message, "setup did not succeed");
+    assert.include(error.message, "setup exited with 1");
     assert.isTrue(yield* f.fs.exists(f.cwd));
     yield* f.prepare();
     assert.strictEqual(f.setups(), 2);

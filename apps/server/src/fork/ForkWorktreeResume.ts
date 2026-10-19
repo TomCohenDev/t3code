@@ -158,9 +158,60 @@ const make = Effect.gen(function* () {
           return yield* fail("The saved path is not the expected worktree; it was left untouched.");
         }
       } else {
-        yield* exec(["worktree", "prune"]);
-        // Exact local ref checked above; no -b, -B, reset, force or branch movement.
-        yield* exec(["worktree", "add", "--no-guess-remote", "--", cwd, thread.branch]);
+        const canonicalMissing = (target: string) =>
+          fs.realPath(path.dirname(target)).pipe(
+            Effect.map((parent) => path.join(parent, path.basename(target))),
+            Effect.orElseSucceed(() => path.resolve(target)),
+          );
+        const registrations = path.join(yield* fs.realPath(common.stdout.trim()), "worktrees");
+        const names = yield* fs.readDirectory(registrations).pipe(
+          Effect.catchIf(
+            (error) => error.reason._tag === "NotFound",
+            () => Effect.succeed([]),
+          ),
+        );
+        const matching: string[] = [];
+        for (const name of names) {
+          const registration = path.join(registrations, name);
+          const gitdir = yield* fs.readFileString(path.join(registration, "gitdir"));
+          if (
+            (yield* canonicalMissing(path.dirname(gitdir.trim()))) ===
+            (yield* canonicalMissing(cwd))
+          )
+            matching.push(registration);
+        }
+        if (matching.length > 1)
+          return yield* fail("Multiple Git registrations name this path; none was changed.");
+        const registration = matching[0];
+        if (registration !== undefined) {
+          if (
+            (yield* fs.realPath(registration)) !== registration ||
+            (yield* fs.exists(path.join(registration, "locked"))) ||
+            (yield* fs.exists(path.join(registration, "index.lock")))
+          )
+            return yield* fail(
+              "The saved worktree registration is linked or locked; it was left untouched.",
+            );
+          if (
+            (yield* fs.readFileString(path.join(registration, "HEAD"))).trim() !==
+              `ref: refs/heads/${thread.branch}` ||
+            !(yield* fs.exists(path.join(registration, "index")))
+          )
+            return yield* fail(
+              "The saved worktree registration does not match its branch and index; it was left untouched.",
+            );
+          yield* fs.makeDirectory(path.dirname(cwd), { recursive: true });
+          yield* fs.makeDirectory(cwd);
+          yield* fs.writeFileString(path.join(cwd, ".git"), `gitdir: ${registration}\n`, {
+            flag: "wx",
+          });
+          yield* exec(["worktree", "repair", cwd]);
+          // Rehydrate the saved index, including staged changes, without resetting any ref or index.
+          yield* exec(["checkout-index", "--all"], cwd);
+        } else {
+          // Exact local ref checked above; no -b, -B, reset, force or broad prune.
+          yield* exec(["worktree", "add", "--no-guess-remote", "--", cwd, thread.branch]);
+        }
       }
       if (!needsSetup) return;
       yield* marker.mark;
@@ -227,7 +278,7 @@ const make = Effect.gen(function* () {
           const completed = yield* result.completion;
           if (completed.exitCode !== 0)
             return yield* fail(
-              "Project setup did not succeed. The checkout and branch were kept; retry setup before continuing.",
+              `Project setup exited with ${completed.exitCode ?? "no exit code"}. The checkout and branch were kept; retry setup before continuing.`,
             );
         }
         if (pendingSetup && result.status === "no-script")
@@ -242,8 +293,13 @@ const make = Effect.gen(function* () {
             : "Project setup finished.",
         );
       }).pipe(
-        Effect.tapError(() =>
-          activity("failed", "Project setup failed. The checkout and branch were kept."),
+        Effect.tapError((error) =>
+          activity(
+            "failed",
+            Schema.is(WorktreeResumeError)(error)
+              ? error.reason
+              : "Project setup failed. The checkout and branch were kept.",
+          ),
         ),
       );
     }).pipe(
