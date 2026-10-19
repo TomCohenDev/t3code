@@ -26,7 +26,8 @@ const make = Effect.gen(function* () {
         if (result._tag === "Success") cwds.push(result.success);
         else if (result.failure.reason._tag !== "NotFound") return null;
       }
-      return cwds;
+      // A functioning proc scan must at least see the server's own working directory.
+      return cwds.length === 0 ? null : cwds;
     }
     if (platform !== "darwin") return null;
     // NUL-delimited fields preserve spaces and newlines in working-directory names.

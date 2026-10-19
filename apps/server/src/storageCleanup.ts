@@ -261,6 +261,7 @@ const make = Effect.gen(function* () {
 
   const cleanWorktreeArtifacts = yield* ForkWorktreeArtifacts.makeSweep({
     hasTerminal,
+    terminals: () => [...liveTerminals.values()].flatMap((entries) => [...entries.values()]),
     idle: storageCleanupThreadIdle,
     activityAt: storageCleanupActivityAt,
   }).pipe(Effect.provide(ForkWorktreeArtifacts.layerDefault));

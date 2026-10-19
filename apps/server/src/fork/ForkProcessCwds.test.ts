@@ -70,7 +70,7 @@ it.effect("refuses incomplete or unsupported process visibility", () =>
   }),
 );
 
-it.effect("refuses Linux cwd reads denied by permissions", () =>
+it.effect.each(["denied", "empty"])("refuses incomplete Linux cwd visibility: %s", (mode) =>
   Effect.gen(function* () {
     const denied = PlatformError.systemError({
       _tag: "PermissionDenied",
@@ -89,7 +89,7 @@ it.effect("refuses Linux cwd reads denied by permissions", () =>
               Layer.succeed(
                 FileSystem.FileSystem,
                 FileSystem.makeNoop({
-                  readDirectory: () => Effect.succeed(["12"]),
+                  readDirectory: () => Effect.succeed(mode === "empty" ? [] : ["12"]),
                   readLink: () => Effect.fail(denied),
                 }),
               ),

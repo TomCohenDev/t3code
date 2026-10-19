@@ -4,6 +4,7 @@ import type {
   StorageCleanupReportEntry,
   ForkArtifactFolderType,
   ForkArtifactBreakdown,
+  TerminalSummary,
 } from "@t3tools/contracts";
 import { FORK_ARTIFACT_FOLDER_TYPES } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -25,6 +26,9 @@ import { makeSetupMarker } from "./forkWorktreeSetup.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as Config from "../config.ts";
 import * as ProviderSessions from "../orchestration-v2/ProviderSessionManager.ts";
+import { looksGenerated, makeArtifactCandidates } from "./forkArtifactPolicy.ts";
+import * as Schema from "effect/Schema";
+import * as Clock from "effect/Clock";
 
 const DAY_MS = 86_400_000;
 export const sameSettings = (left: ServerSettings, right: ServerSettings) =>
@@ -34,7 +38,10 @@ const protectedName = (name: string) => {
   const lower = name.toLowerCase();
   return (
     lower.startsWith(".env") ||
-    /\.(?:pem|key|p12|p8|jks|mobileprovision)$/.test(lower) ||
+    /\.(?:pem|key|p12|p8|pfx|jks|keystore|gpg|pgp|asc|mobileprovision|sqlite|sqlite3|db)$/.test(
+      lower,
+    ) ||
+    /(?:^|[._-])(?:secrets?|credentials)(?:[._-]|$)/.test(lower) ||
     [
       ".git",
       "_shared",
@@ -46,37 +53,22 @@ const protectedName = (name: string) => {
       ".ssh",
       ".npmrc",
       ".pypirc",
+      ".netrc",
+      "id_rsa",
+      "id_ed25519",
+      ".token",
+      "tokens.json",
+      "auth.json",
+      "key.properties",
+      "local.properties",
+      "gradle.properties",
       ".repos",
     ].includes(lower)
   );
 };
-const artifactFolderType = (relative: string) => {
-  const android =
-    /^apps\/mobile\/(?:android(?:\/app)?|modules\/[^/]+\/android)\/(build|\.gradle|\.cxx)$/.exec(
-      relative,
-    );
-  if (android)
-    return android[1] === ".gradle" ? ("gradle-cache" as const) : ("android-build" as const);
-  if (relative === "apps/mobile/.gradle") return "gradle-cache" as const;
-  // Output locations in .gitignore and build scripts, not arbitrary ignored folders.
-  if (
-    /^(?:apps|packages|infra)\/[^/]+\/(?:dist|dist-exe|build)$/.test(relative) ||
-    /^(?:build|dist-electron|release|release-mock)$/.test(relative) ||
-    relative === "apps/desktop/dist-electron" ||
-    relative === "apps/mobile/web-build" ||
-    /^native\/[^/]+\/target$/.test(relative)
-  )
-    return "build-output" as const;
-  const name = relative.split("/").at(-1)!;
-  if (name === "node_modules") return "node_modules" as const;
-  if (
-    [".turbo", ".vite"].includes(name) ||
-    ["apps/mobile/.expo", "apps/marketing/.astro", "apps/web/.tanstack"].includes(relative) ||
-    /^(?:(?:apps|packages|infra)\/[^/]+\/)?\.vite-plus$/.test(relative)
-  )
-    return "cache" as const;
-  return null;
-};
+const decodeDependency = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Struct({ name: Schema.String, version: Schema.String })),
+);
 
 export class ForkWorktreeArtifacts extends Context.Service<
   ForkWorktreeArtifacts,
@@ -86,7 +78,7 @@ export class ForkWorktreeArtifacts extends Context.Service<
       readonly blocked: Effect.Effect<string | null>;
     }) => Effect.Effect<{
       readonly reason: string;
-      readonly bytes: number;
+      readonly logicalBytes: number;
       readonly directories: number;
       readonly failed: boolean;
       readonly artifactBreakdown: ForkArtifactBreakdown;
@@ -101,6 +93,7 @@ const make = Effect.gen(function* () {
   const processes = yield* Processes.ForkProcessCwds;
   const markerFor = yield* makeSetupMarker;
   const config = yield* Config.ServerConfig;
+  const candidatesFor = yield* makeArtifactCandidates;
   const inside = (root: string, target: string) => {
     const relative = path.relative(root, target);
     return (
@@ -118,7 +111,7 @@ const make = Effect.gen(function* () {
     );
   const evict: ForkWorktreeArtifacts["Service"]["evict"] = ({ cwd, blocked }) =>
     Effect.suspend(() => {
-      let bytes = 0;
+      let logicalBytes = 0;
       let directories = 0;
       const breakdown = new Map<
         ForkArtifactFolderType,
@@ -126,7 +119,7 @@ const make = Effect.gen(function* () {
       >();
       const kept = (reason: string) => ({
         reason: directories > 0 ? `Artifacts removed; ${reason}` : reason,
-        bytes,
+        logicalBytes,
         directories,
         failed: false,
         artifactBreakdown: [...breakdown.values()],
@@ -146,50 +139,64 @@ const make = Effect.gen(function* () {
           const cwds = yield* processes.read;
           if (cwds === null) return "Process working directories could not be inspected";
           for (const cwd of cwds) {
-            const real = yield* fs.realPath(cwd).pipe(Effect.orElseSucceed(() => cwd));
-            if (inside(root, real)) return "A process has its working directory in this worktree";
+            const resolved = yield* fs.realPath(cwd).pipe(Effect.option);
+            if (Option.isNone(resolved)) return "A process working directory could not be read";
+            const real = resolved.value;
+            // The immediate parent is the container holding this checkout and its siblings.
+            // Stop ancestor protection there: a process above it can still use absolute paths.
+            // Revisit this bound if a real tool does that; never guess roles from command names.
+            if (inside(root, real) || real === path.dirname(root))
+              return "A process has its working directory in this worktree or its container";
           }
           return null;
         });
         const initiallyBlocked = (yield* blocked) ?? (yield* processBlock);
         if (initiallyBlocked !== null) return kept(initiallyBlocked);
-        const pending = [root];
-        const candidates: { path: string; folderType: ForkArtifactFolderType }[] = [];
+        const candidates = yield* candidatesFor(cwd);
         let inspected = 0;
-        while (pending.length > 0) {
-          const directory = pending.pop()!;
-          if ((yield* fs.realPath(directory)) !== directory)
-            return kept("Directory changed during inspection");
-          for (const name of yield* fs.readDirectory(directory)) {
-            if (++inspected > 2_000_000) return kept("Artifact inspection limit reached");
-            if (protectedName(name)) continue;
-            const target = path.join(directory, name);
-            if (!inside(root, target) || (yield* isLink(target))) continue;
-            if ((yield* fs.stat(target)).type !== "Directory") continue;
-            const relative = path.relative(root, target).split(path.sep).join("/");
-            const folderType = artifactFolderType(relative);
-            if (folderType !== null) candidates.push({ path: target, folderType });
-            else pending.push(target);
-          }
-        }
         const marker = yield* markerFor(cwd);
-        let refused = 0;
+        const markerWasPending = yield* marker.pending;
+        const refusals = new Set<string>();
         candidates.sort(
           (left, right) =>
             FORK_ARTIFACT_FOLDER_TYPES.indexOf(left.folderType) -
             FORK_ARTIFACT_FOLDER_TYPES.indexOf(right.folderType),
         );
-        for (const { path: target, folderType } of candidates) {
-          const data = yield* fs
-            .realPath(config.stateDir)
-            .pipe(Effect.orElseSucceed(() => path.resolve(config.stateDir)));
-          if (inside(target, data) || inside(data, target)) {
-            refused++;
+        for (const { relative, folderType } of candidates) {
+          const target = path.join(root, relative);
+          const linked = yield* fs.readLink(target).pipe(Effect.option);
+          if (Option.isSome(linked)) {
+            refusals.add(`${relative}: symbolic link`);
             continue;
           }
-          const relative = path.relative(root, target).split(path.sep).join("/");
+          if (!(yield* fs.exists(target))) continue;
+          const data = yield* fs.realPath(config.stateDir).pipe(
+            Effect.catchIf(
+              (error) => error.reason._tag === "NotFound",
+              () => Effect.succeed(path.resolve(config.stateDir)),
+            ),
+          );
+          if (inside(target, data) || inside(data, target)) {
+            refusals.add(`${relative}: user data`);
+            continue;
+          }
           const check = () =>
             Effect.gen(function* () {
+              if (
+                folderType === "node_modules" &&
+                !(yield* candidatesFor(cwd)).some(
+                  (candidate) =>
+                    candidate.folderType === folderType && candidate.relative === relative,
+                )
+              )
+                return false;
+              const currentData = yield* fs.realPath(config.stateDir).pipe(
+                Effect.catchIf(
+                  (error) => error.reason._tag === "NotFound",
+                  () => Effect.succeed(path.resolve(config.stateDir)),
+                ),
+              );
+              if (inside(target, currentData) || inside(currentData, target)) return false;
               if ((yield* fs.realPath(target)) !== target || (yield* isLink(target))) return false;
               const ignored = yield* git.execute({
                 cwd: root,
@@ -207,48 +214,150 @@ const make = Effect.gen(function* () {
               return tracked.stdout === "" && !tracked.stdoutTruncated;
             });
           if (!(yield* check())) {
-            refused++;
+            refusals.add(`${relative}: tracked, not ignored, or changed path`);
             continue;
           }
-          let size = 0;
-          let protectedContents = false;
-          const contents = [target];
-          while (contents.length > 0 && !protectedContents) {
-            const entry = contents.pop()!;
-            if (++inspected > 2_000_000) return kept("Artifact inspection limit reached");
-            if (protectedName(path.basename(entry))) {
-              protectedContents = true;
-              break;
-            }
-            if (yield* isLink(entry)) continue;
-            if ((yield* fs.realPath(entry)) !== entry) {
-              protectedContents = true;
-              break;
-            }
-            const stat = yield* fs.stat(entry);
-            if (stat.type === "Directory")
-              for (const name of yield* fs.readDirectory(entry))
-                contents.push(path.join(entry, name));
-            else if (stat.type === "File") size += Number(stat.size);
-          }
-          if (protectedContents) {
-            refused++;
+          const inspect = () =>
+            Effect.gen(function* () {
+              let size = 0;
+              let rejection: string | null = null;
+              const contents = [target];
+              const payloads = new Map<string, boolean>();
+              const dependencyPayload = (file: string) =>
+                Effect.gen(function* () {
+                  const start = path.dirname(file);
+                  if (payloads.has(start)) return payloads.get(start)!;
+                  for (
+                    let parent = start;
+                    parent !== target && inside(target, parent);
+                    parent = path.dirname(parent)
+                  ) {
+                    const manifest = path.join(parent, "package.json");
+                    if (Option.isSome(yield* fs.readLink(manifest).pipe(Effect.option))) continue;
+                    if (yield* fs.exists(manifest)) {
+                      const valid = yield* fs
+                        .readFileString(manifest)
+                        .pipe(Effect.flatMap(decodeDependency), Effect.option);
+                      if (Option.isSome(valid)) {
+                        // An arbitrary source project under node_modules is not an installed payload.
+                        const segments = path.relative(target, parent).split(path.sep);
+                        const store = segments[0] === ".pnpm" ? segments[1] : undefined;
+                        const name = valid.value.name.replaceAll("/", "+");
+                        const key = `${name}@${valid.value.version}`;
+                        if (
+                          !(
+                            store === key ||
+                            store?.startsWith(`${key}_`) ||
+                            store?.startsWith(`${key}(`) ||
+                            store?.startsWith(`${name}@file+`)
+                          )
+                        )
+                          continue;
+                        payloads.set(start, true);
+                        return true;
+                      }
+                    }
+                  }
+                  payloads.set(start, false);
+                  return false;
+                });
+              while (contents.length > 0 && rejection === null) {
+                const entry = contents.pop()!;
+                if (++inspected > 2_000_000) return { size, rejection: "inspection limit reached" };
+                if (protectedName(path.basename(entry))) {
+                  rejection = "protected file or directory";
+                  break;
+                }
+                const link = yield* fs.readLink(entry).pipe(Effect.option);
+                if (Option.isSome(link)) {
+                  const resolved = yield* fs.realPath(entry).pipe(Effect.option);
+                  if (Option.isNone(resolved) || !inside(root, resolved.value))
+                    rejection = "symbolic link leaves the worktree or is unreadable";
+                  else if (path.relative(root, resolved.value).split(path.sep).some(protectedName))
+                    rejection = "symbolic link targets protected worktree data";
+                  else if (
+                    !looksGenerated(
+                      folderType,
+                      path.relative(target, entry).split(path.sep).join("/"),
+                      folderType === "node_modules",
+                    )
+                  )
+                    rejection = "unrecognized non-generated link";
+                  continue;
+                }
+                if ((yield* fs.realPath(entry)) !== entry) {
+                  rejection = "directory changed during inspection";
+                  break;
+                }
+                const stat = yield* fs.stat(entry);
+                if (stat.type === "Directory")
+                  for (const name of yield* fs.readDirectory(entry))
+                    contents.push(path.join(entry, name));
+                else if (stat.type === "File") {
+                  const child = path.relative(target, entry).split(path.sep).join("/");
+                  let payload = folderType === "node_modules" && (yield* dependencyPayload(entry));
+                  if (
+                    !payload &&
+                    folderType === "node_modules" &&
+                    child.startsWith(".bin/") &&
+                    Number(stat.size) < 65_536
+                  ) {
+                    const shim = yield* fs.readFileString(entry);
+                    payload =
+                      (/^#!/.test(shim) && /(?:basedir=|\$basedir)/i.test(shim)) ||
+                      (/^@(?:ECHO|SETLOCAL)/i.test(shim) && shim.includes("%~dp0"));
+                  }
+                  if (!looksGenerated(folderType, child, payload)) {
+                    rejection = "unrecognized non-generated file";
+                    break;
+                  }
+                  size += Number(stat.size);
+                } else rejection = "special filesystem entry";
+              }
+              return { size, rejection };
+            });
+          const first = yield* inspect();
+          if (first.rejection !== null) {
+            refusals.add(`${relative}: ${first.rejection}`);
             continue;
           }
           const reason = (yield* blocked) ?? (yield* processBlock);
           if (reason !== null) return kept(reason);
-          if (!(yield* check())) return kept("Git state changed during inspection");
-          yield* marker.mark;
+          if (!(yield* check())) return kept("Artifact eligibility changed during inspection");
+          const final = yield* inspect();
+          if (final.rejection !== null) {
+            refusals.add(`${relative}: ${final.rejection}`);
+            continue;
+          }
+          if (folderType === "node_modules") yield* marker.mark;
+          const clearUnusedMarker = () =>
+            folderType === "node_modules" && !markerWasPending && !breakdown.has("node_modules")
+              ? marker.clear
+              : Effect.void;
+          const finalBlock = (yield* blocked) ?? (yield* processBlock);
+          if (finalBlock !== null) {
+            yield* clearUnusedMarker();
+            return kept(finalBlock);
+          }
+          if (!(yield* check())) {
+            yield* clearUnusedMarker();
+            return kept("Artifact eligibility changed immediately before deletion");
+          }
+          const lastStateBlock = yield* blocked;
+          if (lastStateBlock !== null) {
+            yield* clearUnusedMarker();
+            return kept(lastStateBlock);
+          }
           // Native recursive removal unlinks descendant symlinks; it never traverses their targets.
           yield* fs.remove(target, { recursive: true }).pipe(
             Effect.tap(() =>
               Effect.sync(() => {
                 directories++;
-                bytes += size;
+                logicalBytes += final.size;
                 const previous = breakdown.get(folderType);
                 breakdown.set(folderType, {
                   folderType,
-                  logicalBytes: (previous?.logicalBytes ?? 0) + size,
+                  logicalBytes: (previous?.logicalBytes ?? 0) + final.size,
                   folders: (previous?.folders ?? 0) + 1,
                 });
               }),
@@ -258,11 +367,11 @@ const make = Effect.gen(function* () {
         }
         return kept(
           directories > 0
-            ? refused > 0
-              ? `${refused} protected or non-ignored directories kept`
+            ? refusals.size > 0
+              ? `checkout kept; ${[...refusals].join("; ")}`
               : "checkout kept"
-            : refused > 0
-              ? "Artifact directories are tracked, not ignored, or contain protected files"
+            : refusals.size > 0
+              ? [...refusals].join("; ")
               : "No allowlisted artifacts",
         );
       }).pipe(
@@ -285,6 +394,7 @@ export const layerDefault = layer.pipe(
 
 export const makeSweep = (guards: {
   readonly hasTerminal: (cwd: string) => boolean;
+  readonly terminals?: () => ReadonlyArray<TerminalSummary>;
   readonly idle: (thread: OrchestrationV2ThreadShell, now: number) => boolean;
   readonly activityAt: (thread: OrchestrationV2ThreadShell) => number;
 }) =>
@@ -299,7 +409,12 @@ export const makeSweep = (guards: {
     const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
     const git = yield* Git.GitVcsDriver;
     const canonical = (cwd: string) =>
-      fs.realPath(cwd).pipe(Effect.orElseSucceed(() => path.resolve(cwd)));
+      fs.realPath(cwd).pipe(
+        Effect.catchIf(
+          (error) => error.reason._tag === "NotFound",
+          () => Effect.succeed(path.resolve(cwd)),
+        ),
+      );
     return (settings: ServerSettings, now: number, entries: StorageCleanupReportEntry[]) =>
       Effect.gen(function* () {
         if (!settings.worktreeArtifactEviction) return;
@@ -360,7 +475,58 @@ export const makeSweep = (guards: {
             keep("thread is unavailable");
             continue;
           }
+          const workspaceBlock = Effect.gen(function* () {
+            if (!(yield* fs.exists(cwd))) return "workspace folder is missing";
+            const allProjects = yield* projects.listShells();
+            for (const project of allProjects) {
+              const real = yield* canonical(project.workspaceRoot);
+              const relative = path.relative(canonicalCwd, real);
+              if (
+                relative === "" ||
+                (!path.isAbsolute(relative) &&
+                  relative !== ".." &&
+                  !relative.startsWith(`..${path.sep}`))
+              )
+                return "contains a project checkout";
+            }
+            const project = yield* projects.get(thread.projectId);
+            if (
+              Option.isNone(project) ||
+              !setupProjectScript(
+                resolveProjectScripts(yield* settingsService.getSettings, {
+                  ...project.value,
+                  id: project.value.projectId,
+                }),
+              )
+            )
+              return "no project setup script is configured";
+            const [expected, actual, branch] = yield* Effect.all([
+              git.execute({
+                cwd: project.value.workspaceRoot,
+                args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+                operation: "inspect artifact repository",
+              }),
+              git.execute({
+                cwd,
+                args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+                operation: "inspect artifact worktree",
+              }),
+              git.execute({
+                cwd,
+                args: ["symbolic-ref", "HEAD"],
+                operation: "inspect artifact branch",
+              }),
+            ]);
+            if (
+              (yield* canonical(expected.stdout.trim())) !==
+                (yield* canonical(actual.stdout.trim())) ||
+              branch.stdout.trim() !== `refs/heads/${thread.branch}`
+            )
+              return "repository or branch changed";
+            return null;
+          });
           const blocked = Effect.gen(function* () {
+            const checkNow = Math.max(now, yield* Clock.currentTimeMillis);
             const currentSettings = yield* settingsService.getSettings;
             if (!currentSettings.worktreeArtifactEviction) return "setting was switched off";
             const current = yield* projections.getThreadShell(thread.id);
@@ -370,22 +536,38 @@ export const makeSweep = (guards: {
               current.branch !== thread.branch
             )
               return "thread workspace changed";
-            if (!guards.idle(current, now))
+            if (!guards.idle(current, checkNow))
               return "thread is running or has queued or pending work";
             if (guards.hasTerminal(cwd) || guards.hasTerminal(canonicalCwd)) return "open terminal";
+            for (const terminal of guards.terminals?.() ?? []) {
+              if (terminal.status !== "running" && terminal.status !== "starting") continue;
+              const resolved = yield* fs.realPath(terminal.cwd).pipe(Effect.option);
+              if (Option.isNone(resolved)) return "terminal working directory could not be read";
+              const relative = path.relative(canonicalCwd, resolved.value);
+              if (
+                resolved.value === path.dirname(canonicalCwd) ||
+                relative === "" ||
+                (!path.isAbsolute(relative) &&
+                  relative !== ".." &&
+                  !relative.startsWith(`..${path.sep}`))
+              )
+                return "open terminal in worktree or container";
+            }
             if (
               current.settledAt === null &&
               guards.activityAt(current) >
-                now - currentSettings.worktreeArtifactEvictionDays * DAY_MS
+                checkNow - currentSettings.worktreeArtifactEvictionDays * DAY_MS
             )
               return `inactive for less than ${currentSettings.worktreeArtifactEvictionDays} days`;
             if (
               current.settledAt !== null &&
-              now -
+              checkNow -
                 Math.max(DateTime.toEpochMillis(current.settledAt), guards.activityAt(current)) <
                 60_000
             )
               return "settled moments ago";
+            const workspaceReason = yield* workspaceBlock;
+            if (workspaceReason !== null) return workspaceReason;
             const ownership = yield* sql<{
               worktreePath: string;
             }>`SELECT json_extract(payload_json, '$.worktreePath') AS "worktreePath" FROM orchestration_v2_projection_threads WHERE json_extract(payload_json, '$.worktreePath') IS NOT NULL`;
@@ -401,13 +583,17 @@ export const makeSweep = (guards: {
               cwd: string;
             }>`SELECT provider_session_id AS "id", json_extract(payload_json, '$.cwd') AS "cwd" FROM orchestration_v2_projection_provider_sessions WHERE status != 'stopped'`;
             for (const session of live) {
-              const relative = path.relative(canonicalCwd, yield* canonical(session.cwd));
+              if (!(yield* sessions.isLive(session.id as Parameters<typeof sessions.isLive>[0])))
+                continue;
+              const resolved = yield* fs.realPath(session.cwd).pipe(Effect.option);
+              if (Option.isNone(resolved)) return "provider working directory could not be read";
+              const relative = path.relative(canonicalCwd, resolved.value);
               if (
-                (relative === "" ||
-                  (!path.isAbsolute(relative) &&
-                    relative !== ".." &&
-                    !relative.startsWith(`..${path.sep}`))) &&
-                (yield* sessions.isLive(session.id as Parameters<typeof sessions.isLive>[0]))
+                resolved.value === path.dirname(canonicalCwd) ||
+                relative === "" ||
+                (!path.isAbsolute(relative) &&
+                  relative !== ".." &&
+                  !relative.startsWith(`..${path.sep}`))
               )
                 return "provider session is still open";
             }
@@ -418,61 +604,13 @@ export const makeSweep = (guards: {
             Effect.gen(function* () {
               const reason = yield* blocked;
               if (reason !== null) return keep(reason);
-              if (!(yield* fs.exists(cwd))) return keep("workspace folder is missing");
-              const allProjects = yield* projects.listShells();
-              for (const project of allProjects) {
-                const real = yield* fs
-                  .realPath(project.workspaceRoot)
-                  .pipe(Effect.orElseSucceed(() => path.resolve(project.workspaceRoot)));
-                const relative = path.relative(yield* fs.realPath(cwd), real);
-                if (
-                  relative === "" ||
-                  (!path.isAbsolute(relative) &&
-                    relative !== ".." &&
-                    !relative.startsWith(`..${path.sep}`))
-                )
-                  return keep("contains a project checkout");
-              }
-              const project = yield* projects.get(thread.projectId);
-              if (
-                Option.isNone(project) ||
-                !setupProjectScript(
-                  resolveProjectScripts(settings, {
-                    ...project.value,
-                    id: project.value.projectId,
-                  }),
-                )
-              )
-                return keep("no project setup script is configured");
-              const [expected, actual, branch] = yield* Effect.all([
-                git.execute({
-                  cwd: project.value.workspaceRoot,
-                  args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-                  operation: "inspect artifact repository",
-                }),
-                git.execute({
-                  cwd,
-                  args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-                  operation: "inspect artifact worktree",
-                }),
-                git.execute({
-                  cwd,
-                  args: ["symbolic-ref", "HEAD"],
-                  operation: "inspect artifact branch",
-                }),
-              ]);
-              if (
-                (yield* canonical(expected.stdout.trim())) !==
-                  (yield* canonical(actual.stdout.trim())) ||
-                branch.stdout.trim() !== `refs/heads/${thread.branch}`
-              )
-                return keep("repository or branch changed");
               const result = yield* artifacts.evict({ cwd, blocked });
               report({
                 ...entry,
                 outcome: result.failed ? "failed" : result.directories > 0 ? "removed" : "kept",
                 reason: result.directories > 0 ? result.reason : `Artifacts kept: ${result.reason}`,
-                bytes: result.directories > 0 ? result.bytes : null,
+                // Logical size is not physical reclamation, especially for pnpm APFS clones.
+                bytes: null,
                 artifactBreakdown: result.artifactBreakdown,
               });
             }).pipe(

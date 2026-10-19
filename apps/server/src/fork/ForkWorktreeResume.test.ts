@@ -30,6 +30,7 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as Resume from "./ForkWorktreeResume.ts";
 import { makeSetupMarker } from "./forkWorktreeSetup.ts";
 import * as Tracker from "../project/WorktreeSetupTracker.ts";
+import { makeWorkspaceDependencies } from "./forkWorkspaceDependencies.ts";
 
 const layerGit = Git.layer.pipe(
   Layer.provide(VcsProcess.layer),
@@ -41,6 +42,7 @@ const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* Git.GitVcsDriver;
+  const dependencies = yield* makeWorkspaceDependencies;
   const root = yield* fs.makeTempDirectoryScoped();
   const repository = path.join(root, "repo");
   const cwd = path.join(root, "checkout");
@@ -112,9 +114,10 @@ const fixture = Effect.gen(function* () {
                   async: false,
                   completion: Effect.gen(function* () {
                     if (exitCode === 0)
-                      yield* fs
-                        .makeDirectory(path.join(cwd, "node_modules"), { recursive: true })
-                        .pipe(Effect.orDie);
+                      for (const relative of yield* dependencies(cwd).pipe(Effect.orDie))
+                        yield* fs
+                          .makeDirectory(path.join(cwd, relative), { recursive: true })
+                          .pipe(Effect.orDie);
                     return { exitCode, durationMs: 1 };
                   }),
                 };
@@ -152,10 +155,13 @@ it.effect("runs setup for missing dependencies without changing dirty files or H
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.exec(["worktree", "add", f.cwd, "saved"]);
-    yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), "dirty");
+    yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), '{"dirty":true}');
     yield* f.prepare();
     yield* f.prepare();
-    assert.strictEqual(yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")), "dirty");
+    assert.strictEqual(
+      yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
+      '{"dirty":true}',
+    );
     assert.strictEqual(f.setups(), 1);
   }).pipe(Effect.provide(layerGit)),
 );
@@ -176,7 +182,10 @@ it.effect(
       const unrelatedHead = yield* f.fs.readFileString(f.path.join(unrelatedGit, "HEAD"));
       const unrelatedGitdir = yield* f.fs.readFileString(f.path.join(unrelatedGit, "gitdir"));
       const unrelatedIndex = yield* f.fs.readFile(f.path.join(unrelatedGit, "index"));
-      yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), "staged code state");
+      yield* f.fs.writeFileString(
+        f.path.join(f.cwd, "package.json"),
+        '{"description":"staged code state"}',
+      );
       yield* f.exec(["add", "package.json"], f.cwd);
       yield* f.exec(["update-ref", "refs/worktree/restore-proof", "HEAD"], f.cwd);
       const stagedIndex = yield* f.fs.readFile(f.path.join(targetGit, "index"));
@@ -186,7 +195,7 @@ it.effect(
       yield* f.prepare();
       assert.strictEqual(
         yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
-        "staged code state",
+        '{"description":"staged code state"}',
       );
       assert.deepStrictEqual(yield* f.fs.readFile(f.path.join(targetGit, "index")), stagedIndex);
       assert.strictEqual(
@@ -220,6 +229,34 @@ it.effect("does nothing while off", () =>
     yield* f.prepare(false);
     assert.isFalse(yield* f.fs.exists(f.cwd));
     assert.strictEqual(f.setups(), 0);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("missing node_modules in a declared workspace package runs setup before returning", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    yield* f.fs.makeDirectory(f.path.join(f.cwd, "node_modules"));
+    yield* f.fs.makeDirectory(f.path.join(f.cwd, "apps/mobile"), { recursive: true });
+    yield* f.fs.writeFileString(f.path.join(f.cwd, "apps/mobile/package.json"), "{}");
+    yield* f.fs.writeFileString(
+      f.path.join(f.cwd, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n",
+    );
+    yield* f.prepare();
+    assert.strictEqual(f.setups(), 1);
+    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/node_modules")));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("missing build output does not run setup or add a build step on resume", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    yield* f.fs.makeDirectory(f.path.join(f.cwd, "node_modules"));
+    yield* f.prepare();
+    assert.strictEqual(f.setups(), 0);
+    assert.isFalse(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/android/app/build")));
   }).pipe(Effect.provide(layerGit)),
 );
 

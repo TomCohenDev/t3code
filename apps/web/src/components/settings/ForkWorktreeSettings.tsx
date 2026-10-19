@@ -34,7 +34,7 @@ export function WorktreeArtifactSettingsRows() {
         {...searchableSetting("worktree-artifact-eviction")}
         serverScoped
         settingKeys={["worktreeArtifactEviction"]}
-        description="Remove only ignored, untracked dependency and build directories from settled or inactive worktrees. Keeps the checkout and branch. Skips shared or busy worktrees. Requires project setup, which runs before the next turn. This does not disable the upstream whole-worktree cleanup rules."
+        description="Remove only reviewed generated directories from settled or inactive worktrees. Keeps the checkout, branch and protected contents. Skips shared or busy worktrees. Missing dependencies run project setup before the next turn; removed builds return on the next build, not on resume. This does not disable upstream whole-worktree cleanup rules."
         control={
           <ScopedSwitch
             settingKeys={["worktreeArtifactEviction"]}

@@ -1,4 +1,8 @@
-import type { ForkArtifactFolderType, StorageCleanupReportEntry } from "@t3tools/contracts";
+import type {
+  ForkArtifactFolderType,
+  StorageCleanupReportEntry,
+  StorageCleanupReport,
+} from "@t3tools/contracts";
 import { formatBytes } from "../../lib/formatBytes";
 
 const labels: Record<ForkArtifactFolderType, string> = {
@@ -8,6 +12,14 @@ const labels: Record<ForkArtifactFolderType, string> = {
   cache: "Other caches",
   node_modules: "node_modules",
 };
+
+export function forkArtifactReclamationSummary(report: StorageCleanupReport) {
+  if (report.entries.some((entry) => entry.artifactBreakdown !== undefined))
+    return report.bytesFreed > 0
+      ? `Other cleanup reported ${formatBytes(report.bytesFreed)}; physical artifact reclamation was not measured.`
+      : "Artifact sizes are logical; physical reclamation was not measured.";
+  return `${formatBytes(report.bytesFreed)} recovered.`;
+}
 
 export function ForkWorktreeArtifactBreakdown({
   breakdown,

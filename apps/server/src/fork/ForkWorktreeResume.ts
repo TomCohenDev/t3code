@@ -22,6 +22,7 @@ import * as Settings from "../serverSettings.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
 import { makeSetupMarker } from "./forkWorktreeSetup.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
+import { makeWorkspaceDependencies } from "./forkWorkspaceDependencies.ts";
 
 export class WorktreeResumeError extends Schema.TaggedError<WorktreeResumeError>()(
   "WorktreeResumeError",
@@ -60,6 +61,7 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const markerFor = yield* makeSetupMarker;
   const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+  const workspaceDependencies = yield* makeWorkspaceDependencies;
 
   const prepare: ForkWorktreeResume["Service"]["prepare"] = (input) =>
     Effect.gen(function* () {
@@ -68,7 +70,13 @@ const make = Effect.gen(function* () {
       if (cwd === null) return;
       const marker = yield* markerFor(cwd);
       const pendingSetup = yield* marker.pending;
-      if (!(yield* settings.getSettings).restoreWorktreesOnResume && !pendingSetup) return;
+      const currentSettings = yield* settings.getSettings;
+      if (
+        !currentSettings.restoreWorktreesOnResume &&
+        !currentSettings.worktreeArtifactEviction &&
+        !pendingSetup
+      )
+        return;
       const fail = (reason: string) => new WorktreeResumeError({ cwd, reason });
       // A new launch can release its first turn while its async setup is still running.
       // Wait for that setup rather than typing a second install into its terminal.
@@ -113,13 +121,26 @@ const make = Effect.gen(function* () {
       if (Option.isSome(link))
         return yield* fail("The saved path is a symbolic link; it was left untouched.");
       const exists = yield* fs.exists(cwd);
+      if (!exists && !currentSettings.restoreWorktreesOnResume && !pendingSetup)
+        return yield* fail(
+          "Missing worktree restoration is off; the saved branch was left untouched.",
+        );
       if (exists && (yield* fs.stat(cwd)).type !== "Directory")
         return yield* fail("The saved path exists but is not a directory; it was left untouched.");
-      const needsSetup =
-        pendingSetup ||
-        !exists ||
-        ((yield* fs.exists(path.join(cwd, "package.json"))) &&
-          !(yield* fs.exists(path.join(cwd, "node_modules"))));
+      let missingDependencies = false;
+      if (exists)
+        for (const relative of yield* workspaceDependencies(cwd)) {
+          const dependencyPath = path.join(cwd, relative);
+          if (!(yield* fs.exists(dependencyPath))) {
+            missingDependencies = true;
+            break;
+          }
+          if ((yield* fs.stat(dependencyPath)).type !== "Directory")
+            return yield* fail(
+              "A dependency path exists but is not a directory; it was left untouched.",
+            );
+        }
+      const needsSetup = pendingSetup || !exists || missingDependencies;
       const branch = yield* exec(["show-ref", "--verify", `refs/heads/${thread.branch}`]).pipe(
         Effect.result,
       );

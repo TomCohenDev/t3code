@@ -20,7 +20,7 @@ Local builds can keep their disposable Vite caches and Android app outputs outsi
 
 ### Restore worktrees on resume
 
-Restore a missing worktree at its saved path from its existing local branch before starting the next turn. Project setup runs before the agent starts. Setup also runs when a Node checkout has no `node_modules`. The thread shows the restore as an activity.
+Restore a missing worktree at its saved path from its existing local branch before starting the next turn. Project setup runs before the agent starts. Missing `node_modules` in the root or any package declared by `pnpm-workspace.yaml` also runs normal setup. The thread shows the restore as an activity. Missing build outputs do not add a setup or build step on resume; the next build recreates them.
 
 - **Setting:** `restoreWorktreesOnResume` (server setting, off by default). Settings > Fork > Threads > Restore worktrees on resume.
 - **Works on:** server, for web, desktop, mobile, agent tools and scheduled turns.
@@ -28,13 +28,15 @@ Restore a missing worktree at its saved path from its existing local branch befo
 
 ### Artifact-only worktree cleanup
 
-Remove regenerable build outputs before dependencies, without removing the worktree or its branch. The storage cleanup report splits logical file bytes and folder counts into Android builds, Gradle caches, other builds, other caches and `node_modules`. These are not physical bytes reclaimed: pnpm files can share APFS blocks with its store. The next turn runs project setup before the agent starts, even if eviction has since been switched off.
+Remove regenerable build outputs before dependencies, without removing the worktree or its branch. The storage cleanup report splits logical file bytes and folder counts into Android builds, Gradle caches, other builds, other caches and `node_modules`. These are not recorded as physical space freed: pnpm files can share APFS blocks with its store. Evicted dependencies run normal project setup before the next turn, even if eviction has since been switched off. Build outputs do not trigger setup or an extra build step on resume; the agent's next build recreates them.
+
+The measured Mac examples were 6.91 GiB logical `node_modules` removed for 0.13 GiB reclaimed, and 1.35 GiB `apps/mobile/android/app/build` removed for 1.18 GiB reclaimed. These are reference measurements, not a conversion rule or a prediction of the next cleanup's physical reclamation.
 
 - **Setting:** `worktreeArtifactEviction` (server setting, off by default) and `worktreeArtifactEvictionDays` (14 days by default, 1–3650). Settings > Fork > Threads > Evict worktree artifacts.
 - **Works on:** server. All clients, scheduled turns and agent tools use the same recovery path.
-- **Eligibility:** a single idle thread owns the checkout and is settled or inactive for the configured days. Running, queued and pending work, open terminals, a process with its working directory inside the checkout, and uncertain process visibility keep the artifacts. A project setup script must be configured.
-- **Files:** only allowlisted directories that Git ignores and that contain no tracked files. Android `build`, `.gradle` and `.cxx` folders in the mobile app and its native modules come first, followed by other known app/package, Electron, release and Rust build outputs, caches, then `node_modules`. Secrets, `.env` files, `_shared`, `.git`, T3 data, unknown ignored directories and symbolic-link targets stay. A protected file within an artifact directory keeps that directory too. Shared pnpm storage is not managed by this feature.
-- **Limits:** orphan Git worktrees without a stored T3 thread are excluded. Process checks support macOS and Linux. Other systems keep artifacts until process-directory inspection is available. This setting does not change or disable upstream whole-worktree cleanup rules; turn those off separately if you want every checkout kept.
+- **Eligibility:** a single idle thread owns the checkout and is settled or inactive for the configured days. Shared threads and subagents, running, queued or pending work, open terminals and uncertain process visibility keep artifacts. Any process cwd in the checkout, a descendant or its container (the immediate parent holding sibling worktrees) blocks cleanup. The same bounded parent rule covers terminal and provider cwd checks. A project setup script must be configured. All guards, Git checks and content inspection run again before deletion.
+- **Files:** exact reviewed relative paths only, including `apps/mobile/android/app/build`; there is no arbitrary `build` or `dist` basename rule. Dependency paths are expanded from the workspace declarations into exact `node_modules` paths. Git must ignore each folder and track no file within it. Every folder is inspected for generated output. A `.env*` file, secret, source or other unknown content, `_shared` link, or link outside the checkout keeps the whole folder, including its generated siblings. Shared pnpm storage is not managed by this feature.
+- **Limits:** orphan Git worktrees without a stored T3 thread are excluded. A process above the container, such as one with cwd `$HOME` or `/`, is not blocked by cwd alone and can still act on the worktree through an absolute path; revisit if a real tool does that. Process checks support macOS and Linux. Other systems keep artifacts until inspection is available. This setting does not change or disable upstream whole-worktree cleanup rules; turn those off separately if you want every checkout kept.
 
 ## Remote access
 
