@@ -305,13 +305,76 @@ it.effect("waits for the launcher's existing async setup instead of starting ano
   }).pipe(Effect.provide(layerGit)),
 );
 
-it.effect("never recreates a missing branch", () =>
+it.effect.each([false, true])(
+  "revives a deleted branch from fetched origin default (registered: %s)",
+  (registered) =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const remote = f.path.join(f.path.dirname(f.cwd), "origin");
+      yield* f.exec(["clone", "--no-hardlinks", f.repository, remote]);
+      yield* f.exec(["config", "user.name", "Test"], remote);
+      yield* f.exec(["config", "user.email", "test@example.com"], remote);
+      const defaultBranch = registered ? "trunk" : "main";
+      if (registered) yield* f.exec(["branch", "-m", defaultBranch], remote);
+      yield* f.fs.writeFileString(f.path.join(remote, "package.json"), '{"from":"origin"}');
+      yield* f.exec(["add", "package.json"], remote);
+      yield* f.exec(["commit", "-m", "remote-only change"], remote);
+      yield* f.exec(["remote", "add", "origin", remote]);
+      const mainBefore = (yield* f.exec(["rev-parse", "main"])).stdout;
+      if (registered) {
+        yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+        yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), '{"old":"staged"}');
+        yield* f.exec(["add", "package.json"], f.cwd);
+        yield* f.fs.remove(f.cwd, { recursive: true });
+      }
+      yield* f.exec(["update-ref", "-d", "refs/heads/saved"]);
+      yield* f.prepare();
+      assert.strictEqual(
+        (yield* f.exec(["rev-parse", "HEAD"], f.cwd)).stdout,
+        (yield* f.exec(["rev-parse", `refs/heads/${defaultBranch}`], remote)).stdout,
+      );
+      assert.strictEqual(
+        (yield* f.exec(["symbolic-ref", "--short", "HEAD"], f.cwd)).stdout.trim(),
+        "saved",
+      );
+      assert.strictEqual(
+        yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
+        '{"from":"origin"}',
+      );
+      assert.strictEqual((yield* f.exec(["diff", "--cached"], f.cwd)).stdout, "");
+      assert.strictEqual((yield* f.exec(["rev-parse", "main"])).stdout, mainBefore);
+      assert.strictEqual(f.setups(), 1);
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules")));
+      assert.include(
+        JSON.stringify(f.activities),
+        `The branch was gone, so this worktree was recreated from ${defaultBranch}. Earlier uncommitted work is not in it.`,
+      );
+    }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("a missing origin blocks deleted-branch recovery without creating a branch", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.exec(["branch", "-D", "saved"]);
     const error = yield* f.prepare().pipe(Effect.flip);
-    assert.include(error.message, "local branch does not exist");
+    assert.include(error.message, "could not be prepared");
+    const branch = yield* f.exec(["show-ref", "--verify", "refs/heads/saved"]).pipe(Effect.flip);
+    assert.isDefined(branch);
     assert.isFalse(yield* f.fs.exists(f.cwd));
+    assert.strictEqual(f.setups(), 0);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("a deleted branch does not allow replacing an occupied saved path", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["branch", "-D", "saved"]);
+    yield* f.fs.makeDirectory(f.cwd);
+    yield* f.fs.writeFileString(f.path.join(f.cwd, "private"), "keep");
+    const error = yield* f.prepare().pipe(Effect.flip);
+    assert.include(error.message, "local branch does not exist");
+    assert.strictEqual(yield* f.fs.readFileString(f.path.join(f.cwd, "private")), "keep");
+    yield* f.exec(["show-ref", "--verify", "refs/heads/saved"]).pipe(Effect.flip);
     assert.strictEqual(f.setups(), 0);
   }).pipe(Effect.provide(layerGit)),
 );

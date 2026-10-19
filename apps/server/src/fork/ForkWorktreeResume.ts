@@ -141,14 +141,38 @@ const make = Effect.gen(function* () {
             );
         }
       const needsSetup = pendingSetup || !exists || missingDependencies;
-      const branch = yield* exec(["show-ref", "--verify", `refs/heads/${thread.branch}`]).pipe(
-        Effect.result,
-      );
-      if (branch._tag === "Failure")
-        return yield* new WorktreeResumeError({
-          cwd,
-          reason: "The saved local branch does not exist or cannot be read; no branch was created.",
-          cause: branch.failure,
+      const branch = yield* git.execute({
+        cwd: repository,
+        args: ["show-ref", "--verify", "--quiet", `refs/heads/${thread.branch}`],
+        allowNonZeroExit: true,
+        operation: "check saved worktree branch",
+      });
+      if (branch.exitCode !== 0 && (exists || branch.exitCode !== 1))
+        return yield* fail("The saved local branch does not exist or cannot be read.");
+      let recreationNotice = "";
+      const recreateBranch = () =>
+        Effect.gen(function* () {
+          if (branch.exitCode === 0) return;
+          yield* exec(["check-ref-format", "--branch", thread.branch!]);
+          const remote = yield* exec(["ls-remote", "--symref", "origin", "HEAD"]);
+          const defaultBranch = remote.stdout.match(/^ref: refs\/heads\/([^\r\n]+)\tHEAD$/m)?.[1];
+          if (!defaultBranch)
+            return yield* fail(
+              "The origin default branch could not be determined; no branch was created.",
+            );
+          yield* exec([
+            "fetch",
+            "origin",
+            `refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+          ]);
+          // No force: a branch created concurrently must be left untouched.
+          yield* exec([
+            "branch",
+            "--no-track",
+            thread.branch!,
+            `refs/remotes/origin/${defaultBranch}`,
+          ]);
+          recreationNotice = `The branch was gone, so this worktree was recreated from ${defaultBranch}. Earlier uncommitted work is not in it.`;
         });
       if (exists) {
         const [actualCommon, actualBranch, top] = yield* Effect.all([
@@ -221,16 +245,20 @@ const make = Effect.gen(function* () {
             return yield* fail(
               "The saved worktree registration does not match its branch and index; it was left untouched.",
             );
+          yield* recreateBranch();
           yield* fs.makeDirectory(path.dirname(cwd), { recursive: true });
           yield* fs.makeDirectory(cwd);
           yield* fs.writeFileString(path.join(cwd, ".git"), `gitdir: ${registration}\n`, {
             flag: "wx",
           });
           yield* exec(["worktree", "repair", cwd]);
-          // Rehydrate the saved index, including staged changes, without resetting any ref or index.
+          // A deleted branch is explicitly revived from origin, not from its stale saved index.
+          if (recreationNotice) yield* exec(["read-tree", "HEAD"], cwd);
+          // Existing branches retain their saved index, including staged changes.
           yield* exec(["checkout-index", "--all"], cwd);
         } else {
-          // Exact local ref checked above; no -b, -B, reset, force or broad prune.
+          yield* recreateBranch();
+          // No reset, force or broad prune, including when reviving a deleted branch.
           yield* exec(["worktree", "add", "--no-guess-remote", "--", cwd, thread.branch]);
         }
       }
@@ -260,7 +288,7 @@ const make = Effect.gen(function* () {
             status,
             title: exists ? "Restoring worktree dependencies" : "Restored missing worktree",
             input: "Project setup",
-            output,
+            output: recreationNotice ? `${recreationNotice}\n${output}` : output,
             ...(status === "running" ? {} : { exitCode: status === "completed" ? 0 : 1 }),
             startedAt,
             completedAt: status === "running" ? null : now,
@@ -330,7 +358,7 @@ const make = Effect.gen(function* () {
           : new WorktreeResumeError({
               cwd: input.thread.worktreePath ?? "",
               reason:
-                "The worktree could not be prepared. Its branch and any existing files were left untouched.",
+                "The worktree could not be prepared. Existing branches were not reset and existing checkout files were not replaced.",
               cause,
             }),
       ),

@@ -20,11 +20,11 @@ Local builds can keep their disposable Vite caches and Android app outputs outsi
 
 ### Restore worktrees on resume
 
-Restore a missing worktree at its saved path from its existing local branch before starting the next turn. Project setup runs before the agent starts. Missing `node_modules` in the root or any package declared by `pnpm-workspace.yaml` also runs normal setup. The thread shows the restore as an activity. Missing build outputs do not add a setup or build step on resume; the next build recreates them.
+Restore a missing worktree at its saved path before starting the next turn. If its branch still exists, recovery preserves it. If the branch was deleted, recovery fetches origin's default branch and creates the saved branch name from that revision. The thread warns that earlier uncommitted work is not in the recreated checkout. Project setup runs before the agent starts. Missing `node_modules` in the root or any package declared by `pnpm-workspace.yaml` also runs normal setup. The thread shows the restore as an activity. Missing build outputs do not add a setup or build step on resume; the next build recreates them.
 
 - **Setting:** `restoreWorktreesOnResume` (server setting, off by default). Settings > Fork > Threads > Restore worktrees on resume.
 - **Works on:** server, for web, desktop, mobile, agent tools and scheduled turns.
-- **Limits:** a missing branch or a conflicting path stops recovery. Only this checkout's Git registration is repaired; no broad prune runs. Its saved index and refs, including staged changes, stay. No branch is created, moved or reset. Dependencies require a configured project setup script. When this setting is off, a missing checkout keeps the missing-folder error rather than using upstream's broad-prune fallback. Pending dependency restoration after artifact eviction still runs.
+- **Limits:** a conflicting path stops recovery. Only this checkout's Git registration is repaired; no broad prune runs. When its branch exists, its saved index and refs, including staged changes, stay. Existing branches are never reset. Deleted-branch recovery requires a reachable origin with a discoverable default branch; its old index is not restored. Dependencies require a configured project setup script. When this setting is off, a missing checkout keeps the missing-folder error rather than using upstream's broad-prune fallback. Pending dependency restoration after artifact eviction still runs.
 
 ### Artifact-only worktree cleanup
 
