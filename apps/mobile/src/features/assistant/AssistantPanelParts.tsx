@@ -1,137 +1,250 @@
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { useState } from "react";
+import { Image, PanResponder, Pressable, View, type GestureResponderEvent } from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
-import { SymbolView } from "../../components/ui/AppSymbol";
-import { AppText as Text } from "../../components/ui/AppText";
-import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
+import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
+import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
-import type { AssistantCapture } from "../../native/assistant";
+import type { AnnotationStroke } from "../../native/assistant";
+import type { ContextPillKind } from "./contextPills";
 
 /** Fork: the parts of the Android assistant panel that are not the composer row. */
 
-export type CaptureKind = "screenshot" | "screenText";
-
-function lineCount(text: string): number {
-  return text.split("\n").filter((line) => line.trim().length > 0).length;
+export interface ContextPillView {
+  readonly kind: ContextPillKind;
+  readonly label: string;
+  readonly attached: boolean;
+  /** The screenshot pill shows the image itself. */
+  readonly thumbnailUri: string | null;
 }
 
-/** One chip per captured item. A struck-through chip is left out of the message. */
-export function CaptureChips(props: {
-  readonly capture: AssistantCapture;
-  readonly attachScreenshot: boolean;
-  readonly attachScreenText: boolean;
-  readonly onOpen: (kind: CaptureKind) => void;
+/** A tap attaches or leaves out a pill; a hold opens it. A pill that is left out is grayed out. */
+export function ContextPills(props: {
+  readonly pills: ReadonlyArray<ContextPillView>;
+  readonly onToggle: (kind: ContextPillKind) => void;
+  readonly onOpen: (kind: ContextPillKind) => void;
 }) {
-  const { capture } = props;
-  if (!capture.screenshotUri && !capture.screenText) return null;
+  if (props.pills.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-2">
-      {capture.screenshotUri ? (
-        <Chip
-          accessibilityLabel={`Screenshot, ${props.attachScreenshot ? "attached" : "not attached"}. Show`}
-          attached={props.attachScreenshot}
-          onPress={() => props.onOpen("screenshot")}
+      {props.pills.map((pill) => (
+        <Pressable
+          key={pill.kind}
+          accessibilityRole="switch"
+          accessibilityLabel={pill.label}
+          accessibilityHint="Hold to read and edit"
+          accessibilityState={{ checked: pill.attached }}
+          className={cn(
+            "flex-row items-center gap-1.5 rounded-full border border-input-border px-2.5 py-1",
+            pill.attached ? "bg-input" : "opacity-45",
+          )}
+          delayLongPress={350}
+          onPress={() => props.onToggle(pill.kind)}
+          onLongPress={() => props.onOpen(pill.kind)}
         >
-          <Image source={{ uri: capture.screenshotUri }} className="h-6 w-4 rounded-sm" />
-          <ChipLabel attached={props.attachScreenshot} label="Screenshot" />
-        </Chip>
-      ) : null}
-      {capture.screenText ? (
-        <Chip
-          accessibilityLabel={`Screen text, ${props.attachScreenText ? "attached" : "not attached"}. Show`}
-          attached={props.attachScreenText}
-          onPress={() => props.onOpen("screenText")}
-        >
-          <SymbolView name="doc.text" size={14} tintColorClassName="accent-foreground-muted" />
-          <ChipLabel
-            attached={props.attachScreenText}
-            label={`Screen text · ${lineCount(capture.screenText)} lines`}
-          />
-        </Chip>
-      ) : null}
+          {pill.thumbnailUri ? (
+            <Image source={{ uri: pill.thumbnailUri }} className="h-6 w-4 rounded-sm" />
+          ) : (
+            <SymbolView
+              name={CONTEXT_PILL_ICONS[pill.kind]}
+              size={14}
+              tintColorClassName="accent-foreground-muted"
+            />
+          )}
+          <Text className="max-w-48 text-xs" numberOfLines={1}>
+            {pill.label}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
 
-function Chip(props: {
-  readonly accessibilityLabel: string;
-  readonly attached: boolean;
+const CONTEXT_PILL_ICONS = {
+  screenshot: "photo",
+  screenText: "doc.text",
+  selection: "text.alignleft",
+  link: "link",
+  clipboard: "doc.on.doc",
+} as const satisfies Record<ContextPillKind, AppSymbolName>;
+
+function EditorHeader(props: {
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly children?: React.ReactNode;
+}) {
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="flex-1">
+        <Text className="text-sm font-medium">{props.title}</Text>
+        {props.subtitle ? (
+          <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+            {props.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {props.children}
+    </View>
+  );
+}
+
+function TextButton(props: {
+  readonly label: string;
+  readonly disabled?: boolean;
   readonly onPress: () => void;
-  readonly children: React.ReactNode;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={props.accessibilityLabel}
-      className={cn(
-        "flex-row items-center gap-1.5 rounded-full border px-2.5 py-1",
-        props.attached ? "border-input-border bg-input" : "border-input-border opacity-60",
-      )}
+      disabled={props.disabled}
+      hitSlop={6}
+      className={cn("rounded-lg px-2 py-1.5", props.disabled ? "opacity-40" : "")}
       onPress={props.onPress}
     >
-      {props.children}
+      <Text className="text-sm font-medium text-primary-text">{props.label}</Text>
     </Pressable>
   );
 }
 
-function ChipLabel(props: { readonly attached: boolean; readonly label: string }) {
+/** Reads and edits a text pill. Notes typed into the text go to the agent with it. */
+export function TextContextEditor(props: {
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly value: string;
+  readonly edited: boolean;
+  readonly onChange: (value: string) => void;
+  readonly onReset: () => void;
+  readonly onDone: () => void;
+}) {
   return (
-    <Text className={cn("text-xs", props.attached ? "" : "line-through")} numberOfLines={1}>
-      {props.label}
-    </Text>
+    <View className="gap-2">
+      <EditorHeader title={props.title} subtitle={props.subtitle}>
+        <TextButton label="Reset" disabled={!props.edited} onPress={props.onReset} />
+        <TextButton label="Done" onPress={props.onDone} />
+      </EditorHeader>
+      <AppTextInput
+        multiline
+        className="max-h-80 min-h-32 text-sm"
+        textAlignVertical="top"
+        value={props.value}
+        onChangeText={props.onChange}
+      />
+    </View>
   );
 }
 
-/** What the panel picked up, with the switch that attaches it. */
-export function CapturePreview(props: {
-  readonly kind: CaptureKind;
-  readonly capture: AssistantCapture;
-  readonly attached: boolean;
-  readonly onAttachedChange: (attached: boolean) => void;
+const STROKE_COLOR = "#FF3B30";
+/** A fraction of the image width, so the line keeps its weight on any screen size. */
+const STROKE_WIDTH = 0.006;
+const EDITOR_MAX_HEIGHT = 380;
+
+function strokePath(points: ReadonlyArray<number>): string {
+  let path = "";
+  for (let index = 0; index + 1 < points.length; index += 2) {
+    path += `${index === 0 ? "M" : " L"}${points[index] ?? 0} ${points[index + 1] ?? 0}`;
+  }
+  return path;
+}
+
+/** Draws on the screenshot. Done paints the strokes onto a copy of the image. */
+export function ScreenshotEditor(props: {
+  readonly uri: string;
+  readonly imageWidth: number;
+  readonly imageHeight: number;
+  readonly annotated: boolean;
+  readonly onSave: (strokes: ReadonlyArray<AnnotationStroke>) => void;
+  readonly onReset: () => void;
   readonly onDone: () => void;
 }) {
-  const { capture } = props;
-  const label = props.kind === "screenshot" ? "Screenshot" : "Screen text";
-  const source = [capture.sourcePackage, capture.webUri].filter((part) => part).join(" · ");
+  // Points are in view pixels while drawing; Done turns them into fractions of the image.
+  const [strokes, setStrokes] = useState<ReadonlyArray<ReadonlyArray<number>>>([]);
+  const [current, setCurrent] = useState<ReadonlyArray<number> | null>(null);
+  const [availableWidth, setAvailableWidth] = useState(0);
+  // A phone screenshot is about 9:20 until the real size arrives.
+  const aspect =
+    props.imageWidth > 0 && props.imageHeight > 0 ? props.imageWidth / props.imageHeight : 9 / 20;
+  const width = Math.min(availableWidth, EDITOR_MAX_HEIGHT * aspect);
+  const height = width / aspect;
+  const [responder] = useState(() => {
+    const point = (event: GestureResponderEvent) =>
+      [event.nativeEvent.locationX, event.nativeEvent.locationY] as const;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event) => setCurrent([...point(event)]),
+      onPanResponderMove: (event) =>
+        setCurrent((points) => (points ? [...points, ...point(event)] : [...point(event)])),
+      onPanResponderRelease: () =>
+        setCurrent((points) => {
+          if (points && points.length >= 4) setStrokes((done) => [...done, points]);
+          return null;
+        }),
+    });
+  });
+  const save = () => {
+    if (strokes.length === 0 || width === 0) return props.onDone();
+    props.onSave(
+      strokes.map((points) => ({
+        points: points.map((value, index) =>
+          Math.min(Math.max(value / (index % 2 === 0 ? width : height), 0), 1),
+        ),
+        width: STROKE_WIDTH,
+        color: STROKE_COLOR,
+      })),
+    );
+  };
+  const drawn = current ? [...strokes, current] : strokes;
+
   return (
     <View className="gap-2">
-      <View className="flex-row items-center gap-3">
-        <View className="flex-1">
-          <Text className="text-sm font-medium">{label}</Text>
-          {source ? (
-            <Text className="text-xs text-foreground-muted" numberOfLines={1}>
-              {source}
-            </Text>
-          ) : null}
-        </View>
-        <Text className="text-sm">Attach</Text>
-        <ThemedSwitch
-          accessibilityLabel={`Attach the ${label.toLowerCase()}`}
-          value={props.attached}
-          onValueChange={props.onAttachedChange}
-        />
-      </View>
-      {props.kind === "screenshot" && capture.screenshotUri ? (
-        <Image
-          source={{ uri: capture.screenshotUri }}
-          className="h-80 w-full rounded-xl"
-          resizeMode="contain"
-        />
-      ) : (
-        <ScrollView className="max-h-80 rounded-xl bg-input px-3 py-2">
-          <Text selectable className="text-sm">
-            {capture.screenText}
-          </Text>
-        </ScrollView>
-      )}
-      <Pressable
-        accessibilityRole="button"
-        className="items-center rounded-xl py-2"
-        onPress={props.onDone}
+      <EditorHeader
+        title="Screenshot"
+        subtitle={props.annotated ? "Marked up. Draw to add more." : "Draw to mark it up."}
       >
-        <Text className="text-sm font-medium text-primary-text">Done</Text>
-      </Pressable>
+        <TextButton
+          label="Undo"
+          disabled={strokes.length === 0}
+          onPress={() => setStrokes((done) => done.slice(0, -1))}
+        />
+        <TextButton
+          label="Reset"
+          disabled={!props.annotated && strokes.length === 0}
+          onPress={() => {
+            setStrokes([]);
+            props.onReset();
+          }}
+        />
+        <TextButton label="Done" onPress={save} />
+      </EditorHeader>
+      <View
+        className="items-center"
+        onLayout={(event) => setAvailableWidth(event.nativeEvent.layout.width)}
+      >
+        {width > 0 ? (
+          <View style={{ width, height }} {...responder.panHandlers}>
+            <Image
+              source={{ uri: props.uri }}
+              className="absolute inset-0 rounded-lg"
+              resizeMode="stretch"
+            />
+            <Svg width={width} height={height} className="absolute inset-0">
+              {drawn.map((points) => (
+                <Path
+                  key={points.slice(0, 2).join(",") + `:${points.length}`}
+                  d={strokePath(points)}
+                  stroke={STROKE_COLOR}
+                  strokeWidth={STROKE_WIDTH * width}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              ))}
+            </Svg>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }

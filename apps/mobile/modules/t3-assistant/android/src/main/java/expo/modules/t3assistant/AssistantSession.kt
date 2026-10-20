@@ -42,6 +42,7 @@ class AssistantSession(context: Context) : VoiceInteractionSession(context) {
       sourcePackage = structure?.activityComponent?.packageName,
       webUri = state.assistContent?.webUri?.toString(),
       screenText = structure?.let(::screenText),
+      selectedText = structure?.let(::selectedText),
     )
   }
 
@@ -52,7 +53,7 @@ class AssistantSession(context: Context) : VoiceInteractionSession(context) {
     thread(name = "t3-assistant-screenshot") {
       try {
         file.outputStream().use { screenshot.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_QUALITY, it) }
-        AssistantCapture.setScreenshot(Uri.fromFile(file).toString())
+        AssistantCapture.setScreenshot(Uri.fromFile(file).toString(), screenshot.width, screenshot.height)
       } catch (error: Exception) {
         Log.w(TAG, "Could not save the assistant screenshot", error)
       }
@@ -70,6 +71,24 @@ class AssistantSession(context: Context) : VoiceInteractionSession(context) {
     }
     for (index in 0 until structure.windowNodeCount) visit(structure.getWindowNodeAt(index).rootViewNode)
     return lines.joinToString("\n").take(MAX_SCREEN_TEXT_CHARS)
+  }
+
+  /** The first non-empty text selection on screen, such as a highlighted sentence in a browser. */
+  private fun selectedText(structure: AssistStructure): String? {
+    fun visit(node: AssistStructure.ViewNode): String? {
+      val text = node.text?.toString()
+      val start = node.textSelectionStart
+      val end = node.textSelectionEnd
+      if (!isPassword(node) && text != null && start in 0 until end && end <= text.length) {
+        return text.substring(start, end).trim().takeIf(String::isNotEmpty)
+      }
+      for (index in 0 until node.childCount) visit(node.getChildAt(index))?.let { return it }
+      return null
+    }
+    for (index in 0 until structure.windowNodeCount) {
+      visit(structure.getWindowNodeAt(index).rootViewNode)?.let { return it }
+    }
+    return null
   }
 
   private fun isPassword(node: AssistStructure.ViewNode): Boolean {

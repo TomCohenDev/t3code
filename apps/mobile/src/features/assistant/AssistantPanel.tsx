@@ -9,6 +9,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
+import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { BackHandler, Pressable, View } from "react-native";
@@ -28,7 +29,11 @@ import {
   createPastedTextComposerAttachment,
   type DraftComposerAttachment,
 } from "../../lib/composerImages";
-import { assistantNative, type AssistantCapture } from "../../native/assistant";
+import {
+  assistantNative,
+  type AnnotationStroke,
+  type AssistantCapture,
+} from "../../native/assistant";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { useNavigationThreadShells, useProjects, useServerConfigs } from "../../state/entities";
 import { mobilePreferencesAtom } from "../../state/preferences";
@@ -61,13 +66,31 @@ import { resolveAssistantProject } from "./assistantProject";
 import { lastOpenedThread } from "./assistantTargets";
 import { AssistantTargetPicker, type AssistantTarget } from "./AssistantTargetPicker";
 import {
-  CaptureChips,
-  CapturePreview,
+  ContextPills,
   MachineButton,
   MachineList,
-  type CaptureKind,
+  ScreenshotEditor,
+  TextContextEditor,
+  type ContextPillView,
   type PanelMachine,
 } from "./AssistantPanelParts";
+import {
+  CONTEXT_PILL_ORDER,
+  contextPillLabel,
+  inlineContextText,
+  isTextContextPill,
+  joinMessageText,
+  screenTextDocument,
+  type ContextPillKind,
+  type TextContextPillKind,
+} from "./contextPills";
+
+const CONTEXT_PILL_TITLES: Record<TextContextPillKind, string> = {
+  screenText: "Screen text",
+  selection: "Selected text",
+  link: "Link",
+  clipboard: "Clipboard",
+};
 
 /**
  * Fork: the Android assistant panel. `AssistantActivity` renders this root over the app that
@@ -130,13 +153,27 @@ function AssistantPanelForCapture() {
   return <AssistantPanel key={capture?.id ?? "none"} capture={capture} />;
 }
 
-function screenTextDocument(capture: AssistantCapture): string | null {
-  if (!capture.screenText) return null;
-  const header = [
-    capture.sourcePackage ? `App: ${capture.sourcePackage}` : null,
-    capture.webUri ? `URL: ${capture.webUri}` : null,
-  ].filter((line) => line !== null);
-  return [...header, ...(header.length > 0 ? [""] : []), capture.screenText].join("\n");
+const DRAFT_RESTORE_MS = 60_000;
+
+interface UnsentDraft {
+  readonly text: string;
+  readonly target: AssistantTarget | null;
+  readonly savedAt: number;
+}
+
+/**
+ * Fork: the text of a panel that closed without sending. A press within a minute gets it back.
+ * Limit: it lives in memory, so it is lost when Android stops the app process. Revisit if the
+ * draft must survive that.
+ */
+let unsentDraft: UnsentDraft | null = null;
+
+function recentUnsentDraft(): UnsentDraft | null {
+  return unsentDraft && Date.now() - unsentDraft.savedAt < DRAFT_RESTORE_MS ? unsentDraft : null;
+}
+
+function keepUnsentDraft(draft: Omit<UnsentDraft, "savedAt"> | null): void {
+  unsentDraft = draft && draft.text.trim().length > 0 ? { ...draft, savedAt: Date.now() } : null;
 }
 
 /** Turns the panel input into the message text and the draft attachments. */
@@ -186,21 +223,33 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const queuedMessages = useThreadOutboxMessages();
   const readingId = useAtomValue(readingAloudIdAtom);
   const threads = useNavigationThreadShells();
-  const [text, setText] = useState("");
-  const [pickedTarget, setPickedTarget] = useState<AssistantTarget | null>(null);
+  const [restored] = useState(recentUnsentDraft);
+  const [text, setText] = useState(restored?.text ?? "");
+  const [pickedTarget, setPickedTarget] = useState<AssistantTarget | null>(
+    restored?.target ?? null,
+  );
   const [pickedEnvironmentId, setPickedEnvironmentId] = useState<EnvironmentId | null>(null);
   // The panel body shows one thing at a time, so it never grows past the composer.
-  const [view, setView] = useState<"compose" | "target" | "machine" | CaptureKind>("compose");
+  const [view, setView] = useState<"compose" | "target" | "machine" | ContextPillKind>("compose");
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
-  // Null follows the setting; a tap on the switch overrides it for this press.
-  const [attachScreenshotChoice, setAttachScreenshot] = useState<boolean | null>(null);
-  const [attachScreenTextChoice, setAttachScreenText] = useState<boolean | null>(null);
+  // A pill without an entry follows its default; a tap overrides it for this press.
+  const [attachedChoice, setAttachedChoice] = useState<Partial<Record<ContextPillKind, boolean>>>(
+    {},
+  );
+  const [editedText, setEditedText] = useState<Partial<Record<TextContextPillKind, string>>>({});
+  const [annotatedScreenshotUri, setAnnotatedScreenshotUri] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<{
+    readonly available: boolean;
+    readonly text: string | null;
+  }>({ available: false, text: null });
   const [phase, setPhase] = useState<Phase>({ type: "editing" });
   const sentRef = useRef(false);
+  // Kept as it changes, so the Home button or a new press keeps it too, not only Close.
+  useEffect(() => {
+    if (!sentRef.current) keepUnsentDraft({ text, target: pickedTarget });
+  }, [text, pickedTarget]);
   const startedWithVoiceRef = useRef(false);
   const preferencesLoaded = AsyncResult.isSuccess(preferences);
-  const attachScreenshot = attachScreenshotChoice ?? voice.assistantAttachScreenshot;
-  const attachScreenText = attachScreenTextChoice ?? voice.assistantAttachScreenText;
 
   // A picked machine limits the defaults and the picker to its threads and projects.
   const machineProjects =
@@ -281,13 +330,19 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const waitingThread = afterDelivery === "wait" ? sendingThread : null;
   const close = () => {
     if (!sentRef.current && draftKey) clearComposerDraft(draftKey);
+    // The minute to get the text back starts at close.
+    if (!sentRef.current) keepUnsentDraft({ text, target: pickedTarget });
     // Closing while the reply is pending drops the request, so it is not read later.
     if (waitingThread) cancelNextReply(waitingThread);
     assistantNative?.close();
   };
-  const onBackPress = useEffectEvent(() => {
+  // Inside a picker or an editor, Back, the close button and a tap outside return to the message.
+  const back = () => {
     if (view !== "compose") setView("compose");
     else close();
+  };
+  const onBackPress = useEffectEvent(() => {
+    back();
     return true;
   });
   useEffect(() => {
@@ -314,8 +369,88 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     }
   }, [afterDelivery, sendingThread]);
 
-  const screenshotUri = attachScreenshot ? (capture?.screenshotUri ?? null) : null;
-  const screenText = attachScreenText && capture ? screenTextDocument(capture) : null;
+  // Hidden until it is known to hold text: reading the clipboard shows a system notice.
+  useEffect(() => {
+    let cancelled = false;
+    void Clipboard.hasStringAsync().then(
+      (available) => {
+        if (!cancelled) setClipboard((current) => ({ ...current, available }));
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const readClipboard = async () => {
+    const read = await settlePromise(() => Clipboard.getStringAsync());
+    const value = AsyncResult.isSuccess(read) ? read.value : "";
+    setClipboard({ available: value.length > 0, text: value });
+  };
+  const originalContext: Record<ContextPillKind, string | null> = {
+    screenshot: capture?.screenshotUri ?? null,
+    screenText: capture?.screenText ?? null,
+    selection: capture?.selectedText ?? null,
+    link: capture?.webUri ?? null,
+    clipboard: clipboard.available ? (clipboard.text ?? "") : null,
+  };
+  const defaultAttached: Record<ContextPillKind, boolean> = {
+    screenshot: voice.assistantAttachScreenshot,
+    screenText: voice.assistantAttachScreenText,
+    // The user picked these on purpose, so they go along unless left out.
+    selection: true,
+    link: true,
+    clipboard: false,
+  };
+  const isAttached = (kind: ContextPillKind) => attachedChoice[kind] ?? defaultAttached[kind];
+  const contextValue = (kind: TextContextPillKind) =>
+    editedText[kind] ?? originalContext[kind] ?? "";
+  const attachedText = (kind: TextContextPillKind) =>
+    isAttached(kind) && originalContext[kind] !== null ? contextValue(kind) : null;
+  const togglePill = async (kind: ContextPillKind) => {
+    const next = !isAttached(kind);
+    if (kind === "clipboard" && next && clipboard.text === null) await readClipboard();
+    setAttachedChoice((current) => ({ ...current, [kind]: next }));
+  };
+  const openPill = async (kind: ContextPillKind) => {
+    if (kind === "clipboard" && clipboard.text === null) await readClipboard();
+    setView(kind);
+  };
+  const pills: ReadonlyArray<ContextPillView> = CONTEXT_PILL_ORDER.filter(
+    (kind) => originalContext[kind] !== null,
+  ).map((kind) => ({
+    kind,
+    label:
+      kind === "screenshot" || kind === "clipboard"
+        ? contextPillLabel(kind, "")
+        : contextPillLabel(kind, contextValue(kind)),
+    attached: isAttached(kind),
+    thumbnailUri:
+      kind === "screenshot" ? (annotatedScreenshotUri ?? originalContext.screenshot) : null,
+  }));
+  const screenshotUri = isAttached("screenshot")
+    ? (annotatedScreenshotUri ?? originalContext.screenshot)
+    : null;
+  const attachedScreenText = attachedText("screenText");
+  const screenText = attachedScreenText?.trim()
+    ? screenTextDocument(capture?.sourcePackage ?? null, attachedScreenText)
+    : null;
+  const inlineContext = inlineContextText({
+    selection: attachedText("selection"),
+    link: attachedText("link"),
+    clipboard: attachedText("clipboard"),
+  });
+  const annotate = async (strokes: ReadonlyArray<AnnotationStroke>) => {
+    const base = annotatedScreenshotUri ?? originalContext.screenshot;
+    const native = assistantNative;
+    if (!base || !native) return;
+    const result = await settlePromise(() => native.annotateImage(base, strokes));
+    if (AsyncResult.isFailure(result))
+      return fail(result, "The screenshot could not be marked up.");
+    setAnnotatedScreenshotUri(result.value);
+    setAttachedChoice((current) => ({ ...current, screenshot: true }));
+    setView("compose");
+  };
   const targetEnvironmentId = targetThread?.environmentId ?? selectedProject?.environmentId;
   const environmentLabel = (environmentId: string) =>
     connectedEnvironments.find((candidate) => candidate.environmentId === environmentId)
@@ -335,7 +470,9 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const targetMachine = machines.find((machine) => machine.environmentId === targetEnvironmentId);
   const ready = !busy && (targetThread !== null || (selectedProject !== null && draftKey !== null));
   const hasContent = (messageText: string) =>
-    messageText.trim().length > 0 || screenshotUri !== null || screenText !== null;
+    joinMessageText(messageText, inlineContext).length > 0 ||
+    screenshotUri !== null ||
+    screenText !== null;
 
   const fail = (result: Parameters<typeof squashAtomCommandFailure>[0], fallback: string) => {
     const error = squashAtomCommandFailure(result);
@@ -348,7 +485,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     const capabilities = serverConfigs.get(targetEnvironmentId)?.environment.capabilities;
     const prepared = await settlePromise(() =>
       prepareAssistantMessage({
-        text: messageText,
+        text: joinMessageText(messageText, inlineContext),
         screenshotUri,
         screenText,
         maxUploadBytes:
@@ -395,6 +532,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
       return fail(queued, "The message could not be queued.");
     }
     sentRef.current = true;
+    keepUnsentDraft(null);
     if (draftKey && targetThread) {
       // The new thread draft held nothing for a message to an existing thread.
       clearComposerDraft(draftKey);
@@ -459,9 +597,9 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   return (
     <View className="flex-1 justify-end">
       <Pressable
-        accessibilityLabel="Close"
+        accessibilityLabel={view === "compose" ? "Close" : "Back to the message"}
         className="absolute inset-0 bg-black/40"
-        onPress={close}
+        onPress={back}
       />
       <KeyboardAvoidingView behavior="padding">
         <View
@@ -508,7 +646,11 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
                 onPress={stopReadingAloud}
               />
             ) : null}
-            <IconButton accessibilityLabel="Close" icon="xmark" onPress={close} />
+            <IconButton
+              accessibilityLabel={view === "compose" ? "Close" : "Back to the message"}
+              icon="xmark"
+              onPress={back}
+            />
           </View>
 
           {view === "machine" ? (
@@ -533,24 +675,39 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
                 setView("compose");
               }}
             />
-          ) : (view === "screenshot" || view === "screenText") && capture ? (
-            <CapturePreview
-              kind={view}
-              capture={capture}
-              attached={view === "screenshot" ? attachScreenshot : attachScreenText}
-              onAttachedChange={view === "screenshot" ? setAttachScreenshot : setAttachScreenText}
+          ) : view === "screenshot" && originalContext.screenshot ? (
+            <ScreenshotEditor
+              uri={annotatedScreenshotUri ?? originalContext.screenshot}
+              imageWidth={capture?.screenshotWidth ?? 0}
+              imageHeight={capture?.screenshotHeight ?? 0}
+              annotated={annotatedScreenshotUri !== null}
+              onSave={(strokes) => void annotate(strokes)}
+              onReset={() => setAnnotatedScreenshotUri(null)}
+              onDone={() => setView("compose")}
+            />
+          ) : view !== "compose" && view !== "screenshot" && isTextContextPill(view) ? (
+            <TextContextEditor
+              title={CONTEXT_PILL_TITLES[view]}
+              subtitle={view === "screenText" ? (capture?.sourcePackage ?? null) : null}
+              value={contextValue(view)}
+              edited={editedText[view] !== undefined}
+              onChange={(value) => setEditedText((current) => ({ ...current, [view]: value }))}
+              onReset={() =>
+                setEditedText((current) => {
+                  const next = { ...current };
+                  delete next[view];
+                  return next;
+                })
+              }
               onDone={() => setView("compose")}
             />
           ) : (
             <>
-              {capture ? (
-                <CaptureChips
-                  capture={capture}
-                  attachScreenshot={attachScreenshot}
-                  attachScreenText={attachScreenText}
-                  onOpen={setView}
-                />
-              ) : null}
+              <ContextPills
+                pills={pills}
+                onToggle={(kind) => void togglePill(kind)}
+                onOpen={(kind) => void openPill(kind)}
+              />
               {phase.type === "failed" ? (
                 <Text className="text-sm text-danger-foreground">{phase.message}</Text>
               ) : null}

@@ -210,9 +210,14 @@ send button. To add the message to an existing thread or to pick another
 project, tap the title of the panel and search or pick from the list. With more
 than one machine, tap the machine icon to pick the machine first.
 
-The screenshot and the screen text attach to the message. Tap their chips to see
-what was picked up, and turn off either one for a single message. Password fields
-are never included.
+Context pills above the text show what goes along: the screenshot, the screen text,
+text you selected on screen, the page link, and the clipboard. Tap a pill to attach
+it or leave it out. Hold a pill to read and edit its text, or to draw on the
+screenshot. The clipboard is left out until you tap it, and password fields are
+never included.
+
+If you close the panel without sending, your text comes back when you open it
+again within a minute.
 
 **Settings → Voice** sets what the panel does: send to a new thread or to the
 thread you opened last, open with the keyboard or with the speech dialog, start

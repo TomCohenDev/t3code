@@ -16,7 +16,11 @@ object AssistantCapture {
     val sourcePackage: String?,
     val webUri: String?,
     val screenText: String?,
+    /** Text that was selected in the app on screen, if any. */
+    val selectedText: String?,
     val screenshotUri: String?,
+    val screenshotWidth: Int,
+    val screenshotHeight: Int,
   )
 
   private val main = Handler(Looper.getMainLooper())
@@ -32,20 +36,28 @@ object AssistantCapture {
   fun begin(context: Context, owner: AssistantSession) {
     session = WeakReference(owner)
     screenshotDirectory(context).listFiles()?.forEach { it.delete() }
-    publish(Snapshot(System.currentTimeMillis(), null, null, null, null))
+    publish(Snapshot(System.currentTimeMillis(), null, null, null, null, null, 0, 0))
   }
 
-  fun addScreen(sourcePackage: String?, webUri: String?, screenText: String?) = update {
+  fun addScreen(
+    sourcePackage: String?,
+    webUri: String?,
+    screenText: String?,
+    selectedText: String?,
+  ) = update {
     it.copy(
       sourcePackage = it.sourcePackage ?: sourcePackage,
       webUri = it.webUri ?: webUri,
+      selectedText = it.selectedText ?: selectedText,
       screenText = listOfNotNull(it.screenText, screenText?.takeIf(String::isNotBlank))
         .joinToString("\n\n")
         .ifEmpty { null },
     )
   }
 
-  fun setScreenshot(uri: String) = update { it.copy(screenshotUri = uri) }
+  fun setScreenshot(uri: String, width: Int, height: Int) = update {
+    it.copy(screenshotUri = uri, screenshotWidth = width, screenshotHeight = height)
+  }
 
   /** The panel closed, so the session has nothing left to show. */
   fun panelClosed() {
