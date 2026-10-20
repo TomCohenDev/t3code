@@ -61,6 +61,7 @@ import * as DesktopLegacyLocalStorage from "../app/DesktopLegacyLocalStorage.ts"
 import * as DesktopLifecycle from "../app/DesktopLifecycle.ts";
 import * as DesktopLinuxUrlHandler from "../app/DesktopLinuxUrlHandler.ts";
 import * as DesktopPreReadyPlatform from "../app/DesktopPreReadyPlatform.ts";
+import * as DesktopAppToggle from "./DesktopAppToggle.ts";
 import * as DesktopShutdown from "../app/DesktopShutdown.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
@@ -593,6 +594,7 @@ describe("DesktopWindow", () => {
           load: () => Effect.void,
         }),
         Layer.mock(DesktopSnapShot.DesktopSnapShot)({ initialize: Effect.void }),
+        Layer.mock(DesktopAppToggle.DesktopAppToggle)({ initialize: Effect.void }),
         Layer.mock(DesktopAppActivation.DesktopAppActivation)({ start: Effect.void }),
         Layer.mock(DesktopWslBackend.DesktopWslBackend)({ reconcile: Effect.void }),
         Layer.mock(DesktopBackendPool.DesktopBackendPool)({
@@ -607,6 +609,12 @@ describe("DesktopWindow", () => {
               endpointUrl: null,
               tailscaleServeEnabled: false,
               tailscaleServePort: 443,
+              tunnelPairingEnabled: false,
+              tunnelPairingUrl: null,
+              trustedBrowserOrigins: null,
+              cloudflareAccessTeamDomain: null,
+              cloudflareAccessAud: null,
+              cloudflareAccessSubjects: null,
             }),
           backendConfig: Effect.succeed({
             port: 3773,
@@ -614,6 +622,9 @@ describe("DesktopWindow", () => {
             httpBaseUrl: new URL("http://127.0.0.1:3773"),
             tailscaleServeEnabled: false,
             tailscaleServePort: 443,
+            tunnelPairingUrl: Option.none(),
+            trustedBrowserOrigins: Option.none(),
+            cloudflareAccess: Option.none(),
           }),
         }),
         Layer.mock(DesktopUpdates.DesktopUpdates)({

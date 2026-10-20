@@ -259,6 +259,8 @@ it("keeps workspace controls after expanding and collapsing 70 linked pull reque
         onStartFromOriginChange={vi.fn()}
         onComposerFocusRequest={vi.fn()}
         onRunProjectScript={vi.fn()}
+        globalScripts={[]}
+        onRunGlobalScript={vi.fn()}
         onAddProjectScript={vi.fn()}
         onUpdateProjectScript={vi.fn()}
         onDeleteProjectScript={vi.fn()}
