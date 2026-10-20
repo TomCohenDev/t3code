@@ -124,6 +124,10 @@ import {
   WS_RPC_SERVER_OPTIONS,
   withLateEditorConfig,
 } from "./ws.ts";
+import * as ForkChangelog from "./fork/ForkChangelog.ts";
+import * as MachineMap from "./fork/machineMap/MachineMap.ts";
+import * as PreviewServerGroups from "./fork/PreviewServerGroups.ts";
+import * as WebPush from "./fork/webPush/WebPush.ts";
 
 it("accepts only the current orchestration protocol before websocket RPC setup", () => {
   assert.isTrue(
@@ -512,6 +516,10 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
+  Layer.mock(ForkChangelog.ForkChangelog)({}),
+  Layer.mock(MachineMap.MachineMap)({}),
+  Layer.mock(PreviewServerGroups.PreviewServerGroups)({}),
+  Layer.mock(WebPush.WebPush)({}),
 );
 
 const layerConfigSources = Layer.mergeAll(

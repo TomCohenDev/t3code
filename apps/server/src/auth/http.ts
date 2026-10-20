@@ -266,9 +266,12 @@ export const layerAuthenticatedAuth = Layer.effect(
  */
 const createCloudflareAccessBrowserSession = Effect.fn(
   "environment.auth.createCloudflareAccessBrowserSession",
-)(function* (request: HttpServerRequest.HttpServerRequest, unauthenticated: AuthSessionState) {
-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-  const sessions = yield* SessionStore.SessionStore;
+)(function* (
+  serverAuth: EnvironmentAuth.EnvironmentAuth["Service"],
+  sessions: SessionStore.SessionStore["Service"],
+  request: HttpServerRequest.HttpServerRequest,
+  unauthenticated: AuthSessionState,
+) {
   const issued = yield* serverAuth
     .issueCloudflareAccessPairingCredential(request)
     .pipe(
@@ -325,7 +328,12 @@ export const layer = HttpApiBuilder.group(
             const result =
               sessionState.authenticated || sessionState.machinePaused === true
                 ? sessionState
-                : yield* createCloudflareAccessBrowserSession(request, sessionState);
+                : yield* createCloudflareAccessBrowserSession(
+                    serverAuth,
+                    sessions,
+                    request,
+                    sessionState,
+                  );
             const credential = EnvironmentAuth.selectRequestCredential(
               request,
               sessions.cookieName,
