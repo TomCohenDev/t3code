@@ -88,6 +88,7 @@ it.effect("includes the scheduler zone in empty lists and subscription updates",
         isScratchProject: () => Effect.succeed(false),
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      ServerSettings.layerTest(),
       Layer.mock(SecretRequests.SecretRequests)({}),
     );
     yield* Effect.gen(function* () {
@@ -189,6 +190,10 @@ it.effect("keeps a custom provider instance and the project default through a sa
       NodeCrypto.layer,
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest(),
       Layer.mock(SecretRequests.SecretRequests)({}),
@@ -262,6 +267,10 @@ it.effect("resolves a project default task at run time: the project, then the ap
           launched.push(input.modelSelection);
           return Effect.die(new Error("launch recorded"));
         },
+      }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest({

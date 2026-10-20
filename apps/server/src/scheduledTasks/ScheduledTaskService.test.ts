@@ -367,6 +367,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
           }),
+          ServerSettings.layerTest(),
           NodeCrypto.layer,
           Scheduler.layer,
         ),

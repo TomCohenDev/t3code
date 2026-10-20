@@ -3447,6 +3447,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           Effect.provide(
             Layer.mergeAll(
               NodeServices.layer,
+              ServerSettings.layerTest(),
               Layer.mock(ProjectionStore.ProjectionStoreV2)({
                 getThreadsWithPullRequests: () =>
                   projections
