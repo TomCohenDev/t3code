@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, expect, it } from "@effect/vitest";
+import { CLI_RELEASE_CHECKSUMS_FILE, CLI_RELEASE_REPOSITORY } from "@t3tools/shared/cliRelease";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -37,7 +38,11 @@ it.effect.each([
     const httpClient = HttpClient.make((request) => {
       authorizations.push(request.headers.authorization);
       return Effect.succeed(
-        HttpClientResponse.fromWeb(request, Response.json([{ tag_name: "v1.2.3" }])),
+        HttpClientResponse.fromWeb(
+          request,
+          // Fork: only a release with SHA256SUMS is installable.
+          Response.json([{ tag_name: "v1.2.3", assets: [{ name: CLI_RELEASE_CHECKSUMS_FILE }] }]),
+        ),
       );
     });
     const version = yield* resolveNewestVersion("stable").pipe(
@@ -55,13 +60,18 @@ it.effect("authenticates each release page until the requested channel is found"
     const httpClient = HttpClient.make((request) => {
       const url = new URL(request.url);
       assert.equal(url.origin, "https://api.github.com");
-      assert.equal(url.pathname, "/repos/pingdotgg/t3code/releases");
+      assert.equal(url.pathname, `/repos/${CLI_RELEASE_REPOSITORY}/releases`);
       assert.equal(request.headers.accept, "application/vnd.github+json");
       assert.equal(request.headers.authorization, "Bearer gh-token");
       const page = url.searchParams.get("page") ?? "";
       pages.push(page);
       const tag_name = page === "1" ? "v1.2.4-preview.20260101.1" : "v1.2.3";
-      return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json([{ tag_name }])));
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          Response.json([{ tag_name, assets: [{ name: CLI_RELEASE_CHECKSUMS_FILE }] }]),
+        ),
+      );
     });
     const version = yield* resolveNewestVersion("stable").pipe(
       Effect.provideService(HostProcess.Environment, { GH_TOKEN: "gh-token" }),
