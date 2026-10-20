@@ -35,9 +35,32 @@ function workspacePaths(worktree, kind) {
 }
 
 // Builds and prune share this short critical section: no build can start between a lock check and removal.
+const GATE_WAIT_MS = 5_000;
+// Gate operations normally take milliseconds; 30 seconds allows slow disks before recovering a crashed holder.
+const GATE_STALE_MS = 30_000;
+const gateWait = new Int32Array(new SharedArrayBuffer(4));
+
 function withGate(root, operation) {
   const gate = path.join(root, ".gate");
-  fs.mkdirSync(gate);
+  const deadline = Date.now() + GATE_WAIT_MS;
+  for (;;) {
+    try {
+      fs.mkdirSync(gate);
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    try {
+      if (Date.now() - fs.statSync(gate).mtimeMs > GATE_STALE_MS) fs.rmdirSync(gate);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    if (Date.now() >= deadline)
+      throw new Error(
+        `Timed out waiting for build cache gate ${gate}. Stop builds using this cache, then remove ${gate} and retry.`,
+      );
+    Atomics.wait(gateWait, 0, 0, 10);
+  }
   try {
     return operation();
   } finally {
