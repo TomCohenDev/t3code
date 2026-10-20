@@ -132,6 +132,7 @@ import IconUserX from "@tabler/icons-react-native/IconUserX";
 import IconUserQuestion from "@tabler/icons-react-native/IconUserQuestion";
 import IconUserPlus from "@tabler/icons-react-native/IconUserPlus";
 import IconUsers from "@tabler/icons-react-native/IconUsers";
+import IconVolume from "@tabler/icons-react-native/IconVolume";
 import IconWifi from "@tabler/icons-react-native/IconWifi";
 import IconWifiOff from "@tabler/icons-react-native/IconWifiOff";
 import IconWorld from "@tabler/icons-react-native/IconWorld";
@@ -261,6 +262,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "square.on.square": IconCopy,
   "square.grid.2x2": IconApps,
   "square.split.2x1": IconLayoutColumns,
+  "speaker.wave.2": IconVolume,
+  "speaker.wave.2.fill": IconVolume,
   star: IconStar,
   "star.fill": IconStarFilled,
   "sun.max": IconSun,

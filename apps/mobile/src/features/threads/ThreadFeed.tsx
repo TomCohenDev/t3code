@@ -157,6 +157,8 @@ import {
 import { CopyTextButton } from "./CopyTextButton";
 import { getReviewSectionIdForCheckpoint } from "../review/reviewModel";
 import { setReviewSelectedSectionId } from "../review/reviewState";
+// Fork: read aloud, next to copy and fork.
+import { ReadAloudButton } from "../read-aloud/ReadAloudButton";
 import { Menu } from "../../components/ui/Menu";
 import { copyPromptLink } from "../prompt-links/prompt-link-actions";
 import { parseReviewCommentMessageSegments } from "../review/reviewCommentSelection";
@@ -1476,6 +1478,13 @@ function renderFeedEntry(
               tintColor={iconSubtleColor}
               buttonSize={28}
               iconSize={13}
+            />
+            <ReadAloudButton
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+              messageId={message.id}
+              text={renderedText}
+              tintColor={iconSubtleColor}
             />
             {message.projectedItem ? (
               <AssistantForkButton

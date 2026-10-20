@@ -24,6 +24,7 @@ import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../l
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
+import { sanitizeVoicePreferences, type VoicePreferences } from "./forkVoicePreferences";
 
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
@@ -124,6 +125,8 @@ export interface Preferences {
   readonly appTokenDisabledEnvironmentIds?: ReadonlyArray<string>;
   /** Fork: the app token client of this phone (MM-913) and its machine list (MM-914). */
   readonly appTokenClient?: AppTokenClient;
+  /** Fork: the Android assistant panel and read aloud. */
+  readonly voice?: VoicePreferences;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -202,6 +205,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     sidebarGroupTabId?: string;
     appTokenDisabledEnvironmentIds?: ReadonlyArray<string>;
     appTokenClient?: AppTokenClient;
+    voice?: VoicePreferences;
   } = {};
 
   if (typeof parsed.pullRequestHideTestFiles === "boolean") {
@@ -359,6 +363,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (isAppTokenClient(parsed.appTokenClient)) {
     preferences.appTokenClient = parsed.appTokenClient;
   }
+  const voice = sanitizeVoicePreferences(parsed.voice);
+  if (voice) preferences.voice = voice;
   return preferences;
 }
 
