@@ -22,7 +22,9 @@ import { useEnvironmentServerConfig } from "../../state/entities";
 
 /** The highlight holds this long, then goes at once. No fade: a fade repaints every frame. */
 const HIGHLIGHT_MS = 2400;
-const NOTE_MS = 4000;
+const NOTE_MS = 6000;
+/** Stop aiming the scroll after about two seconds. */
+const MAX_SETTLE_FRAMES = 120;
 /** The history pages that one link may load before it gives up. */
 const MAX_HISTORY_PAGES = 20;
 
@@ -91,6 +93,7 @@ export function useForkMessageLinkTarget(input: {
     expanded: boolean;
   } | null>(null);
   const presentedFeedRef = useRef(input.presentedFeed);
+  const settleRef = useRef<{ cancelled: boolean } | null>(null);
   useLayoutEffect(() => {
     presentedFeedRef.current = input.presentedFeed;
   }, [input.presentedFeed]);
@@ -98,16 +101,25 @@ export function useForkMessageLinkTarget(input: {
   const active = request !== undefined && handledId !== request.messageId;
 
   const finish = () => {
-    if (request === undefined) return;
-    setHandledId(request.messageId);
-    request.onHandled();
+    if (request !== undefined) setHandledId(request.messageId);
   };
-
+  // Clearing the route param can remount the feed, so it waits until the highlight or note ends.
   useEffect(() => {
-    if (!highlightedRowId) return;
-    const timer = setTimeout(() => setHighlightedRowId(null), HIGHLIGHT_MS);
+    if (request && handledId === request.messageId && !highlightedRowId && !notFound) {
+      request.onHandled();
+    }
+  });
+
+  // The highlight holds from the end of the scroll, so a long scroll does not use it up.
+  const [highlightSettled, setHighlightSettled] = useState(false);
+  useEffect(() => {
+    if (!highlightedRowId || !highlightSettled) return;
+    const timer = setTimeout(() => {
+      setHighlightedRowId(null);
+      setHighlightSettled(false);
+    }, HIGHLIGHT_MS);
     return () => clearTimeout(timer);
-  }, [highlightedRowId]);
+  }, [highlightedRowId, highlightSettled]);
   useEffect(() => {
     if (!notFound) return;
     const timer = setTimeout(() => setNotFound(false), NOTE_MS);
@@ -159,17 +171,19 @@ export function useForkMessageLinkTarget(input: {
       return;
     }
     finish();
-    const listRef = input.listRef;
-    const viewOffset = input.viewOffset;
-    requestAnimationFrame(() => {
-      // Rows can change before the frame, so find the message again.
-      const index = presentedFeedRef.current.findIndex((candidate) =>
-        isMessageEntry(candidate, messageId),
-      );
-      const shown = presentedFeedRef.current[index];
-      if (!shown) return;
-      void listRef.current?.scrollToIndex({ index, viewPosition: 0, viewOffset, animated: false });
-      setHighlightedRowId(shown.id);
+    setHighlightedRowId(
+      input.presentedFeed.find((candidate) => isMessageEntry(candidate, messageId))?.id ?? null,
+    );
+    setHighlightSettled(false);
+    const settle = { cancelled: false };
+    settleRef.current = settle;
+    settleScroll({
+      listRef: input.listRef,
+      viewOffset: input.viewOffset,
+      settle,
+      findIndex: () =>
+        presentedFeedRef.current.findIndex((candidate) => isMessageEntry(candidate, messageId)),
+      onSettled: () => setHighlightSettled(true),
     });
   });
 
@@ -178,9 +192,56 @@ export function useForkMessageLinkTarget(input: {
     notFound,
     dismissNote: () => setNotFound(false),
     cancel: () => {
+      if (settleRef.current) settleRef.current.cancelled = true;
       if (active) finish();
     },
   };
+}
+
+/**
+ * Index scrolling starts from estimated row sizes. Aims again while the rows above the target get
+ * measured, until its position holds still. Outside the hook: React Compiler cannot lower the
+ * counters of this loop.
+ */
+function settleScroll(input: {
+  readonly listRef: RefObject<LegendListRef | null>;
+  readonly viewOffset: number;
+  readonly settle: { readonly cancelled: boolean };
+  /** Rows can change between frames, so the target is found again each frame. */
+  readonly findIndex: () => number;
+  readonly onSettled: () => void;
+}) {
+  let lastPosition: number | null = null;
+  let stableFrames = 0;
+  let frames = 0;
+  const aim = () => {
+    frames += 1;
+    const index = input.findIndex();
+    const list = input.listRef.current;
+    if (input.settle.cancelled || frames > MAX_SETTLE_FRAMES || index < 0 || !list) {
+      input.onSettled();
+      return;
+    }
+    const position = list.getState().positionAtIndex(index);
+    if (position === lastPosition) {
+      stableFrames += 1;
+      if (stableFrames >= 3) {
+        input.onSettled();
+        return;
+      }
+    } else {
+      stableFrames = 0;
+      lastPosition = position;
+      void list.scrollToIndex({
+        index,
+        viewPosition: 0,
+        viewOffset: input.viewOffset,
+        animated: false,
+      });
+    }
+    requestAnimationFrame(aim);
+  };
+  requestAnimationFrame(aim);
 }
 
 /** Fork: the small "Message not found" note at the top of the feed. */
@@ -191,7 +252,11 @@ export function ForkMessageLinkNote(props: {
 }) {
   if (!props.visible) return null;
   return (
-    <View pointerEvents="box-none" className="absolute inset-x-3" style={{ top: props.top + 8 }}>
+    <View
+      pointerEvents="box-none"
+      className="absolute inset-x-3 z-[100]"
+      style={{ top: props.top + 8 }}
+    >
       <Toast message="Message not found" tone="danger" onDismiss={props.onDismiss} />
     </View>
   );
