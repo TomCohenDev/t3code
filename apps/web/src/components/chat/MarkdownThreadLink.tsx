@@ -1,20 +1,23 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import {
   formatThreadLink,
   percentDecodedThreadLinkId,
   resolveThreadLinkRef,
 } from "@t3tools/shared/threadLinks";
 import { Link } from "@tanstack/react-router";
-import { MessageSquareTextIcon } from "lucide-react";
+import { HashIcon, MessageSquareTextIcon } from "lucide-react";
 
 import { useProject, useThreadRefs, useThreadShell } from "../../state/entities";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { forkMessageLinkNavigation } from "./ForkMessageLinkTarget";
 
 export function MarkdownThreadLink(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly label: string;
+  /** Fork: the link opens the thread at this message. */
+  readonly messageId?: MessageId | null;
 }) {
   const decodedId = percentDecodedThreadLinkId(props.threadId);
   const written = useThreadShell(scopeThreadRef(props.environmentId, props.threadId));
@@ -39,8 +42,9 @@ export function MarkdownThreadLink(props: {
     <Link
       to="/$environmentId/$threadId"
       params={{ environmentId, threadId }}
+      {...forkMessageLinkNavigation(props.messageId)}
       title={thread === null ? "Thread no longer available" : project?.title}
-      data-markdown-copy={formatThreadLink(threadId, title)}
+      data-markdown-copy={formatThreadLink(threadId, title, props.messageId ?? undefined)}
     >
       <span
         className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
@@ -53,6 +57,9 @@ export function MarkdownThreadLink(props: {
         )}
       </span>
       {title}
+      {props.messageId ? (
+        <HashIcon aria-hidden className="ms-[0.15em] inline size-[0.85em]" />
+      ) : null}
     </Link>
   );
 }

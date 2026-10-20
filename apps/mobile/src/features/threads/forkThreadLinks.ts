@@ -5,6 +5,7 @@ import type { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contra
 import { formatComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseKnownThreadAddress } from "@t3tools/shared/threadAddress";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
+import { threadLinkMessageId } from "@t3tools/shared/threadMessageLinks";
 import {
   linkThreadMarkers,
   threadMarkerTargets,
@@ -21,6 +22,7 @@ import type { MarkdownLinkCustomization } from "../../native/SelectableMarkdownT
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
+import { useForkMessageLinksEnabled } from "./forkMessageLinks";
 
 // The pill of an attached thread with no record, so both looks stay one.
 const threadPill = enrichedContextLinkPresentation(
@@ -32,10 +34,13 @@ const threadPill = enrichedContextLinkPresentation(
  * A `t3-thread://` link and a web address of a thread in an environment that this app knows
  * (`parseThreadAddress`) get the attached-thread pill. Such a web address opens the thread here,
  * not in the phone browser. With the setting off, both return nothing and links stay as they are.
+ * With `messageLinks` on, a link that names a message opens the thread at it (`messageParams`), and
+ * its pill shows a message icon.
  */
 export function useForkThreadLinks(environmentId: EnvironmentId) {
   const navigation = useNavigation();
   const chips = useEnvironmentServerConfig(environmentId)?.settings.threadLinkChips === true;
+  const messageLinks = useForkMessageLinksEnabled(environmentId);
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const knownThreadAddress = useCallback(
     (href: string) => {
@@ -51,21 +56,39 @@ export function useForkThreadLinks(environmentId: EnvironmentId) {
       navigation.navigate("Thread", {
         environmentId: String(address.environmentId),
         threadId: String(address.threadId),
+        ...(messageLinks && address.messageId ? { message: String(address.messageId) } : {}),
       });
       return true;
     },
-    [knownThreadAddress, navigation],
+    [knownThreadAddress, messageLinks, navigation],
+  );
+  /** The Thread route param that opens a `t3-thread://` link at its message. */
+  const messageParams = useCallback(
+    (href: string): { readonly message?: string } => {
+      const messageId = messageLinks ? threadLinkMessageId(href) : null;
+      return messageId === null ? {} : { message: messageId };
+    },
+    [messageLinks],
   );
   const linkCustomization = useCallback(
     (href: string): MarkdownLinkCustomization | undefined =>
       threadPill && chips && (parseThreadLinkHref(href) !== null || knownThreadAddress(href))
-        ? { color: threadPill.color, icon: markdownFileIconSource(threadPill.icon) }
+        ? {
+            color: threadPill.color,
+            // The message bubble icon, as for "text.bubble" context chips, marks a message link.
+            icon: markdownFileIconSource(
+              messageLinks &&
+                (threadLinkMessageId(href) !== null || knownThreadAddress(href)?.messageId)
+                ? "markdown"
+                : threadPill.icon,
+            ),
+          }
         : undefined,
-    [chips, knownThreadAddress],
+    [chips, knownThreadAddress, messageLinks],
   );
   return useMemo(
-    () => ({ openKnownThread, linkCustomization }),
-    [linkCustomization, openKnownThread],
+    () => ({ openKnownThread, messageParams, linkCustomization }),
+    [linkCustomization, messageParams, openKnownThread],
   );
 }
 

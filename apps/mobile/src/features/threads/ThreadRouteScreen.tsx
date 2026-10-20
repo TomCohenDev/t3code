@@ -89,6 +89,7 @@ import {
 } from "./thread-inspector-content-stack";
 import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
+import { useForkMessageLinkParam } from "./forkMessageLinks";
 import { ThreadHeader } from "./ThreadHeader";
 import {
   useAndroidWorkspaceBack,
@@ -153,6 +154,8 @@ type ThreadRouteScreenRouteProps = StaticScreenProps<{
   readonly environmentId: string;
   readonly threadId: string;
   readonly prompt?: string | string[];
+  /** Fork: the message that a message link opens the thread at. See forkMessageLinks. */
+  readonly message?: string | string[];
 }>;
 
 interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
@@ -308,12 +311,14 @@ function ThreadRouteContent(
       hasMoreHistory: history.hasMoreHistory,
       loading: history.loading,
       error: history.error,
-      onLoadEarlier: () => {
-        void loadEarlierHistory({
+      onLoadEarlier: (throughEntryId?: string) =>
+        loadEarlierHistory({
           environmentId: selectedThread.environmentId,
-          input: { threadId: selectedThread.id },
-        });
-      },
+          input: {
+            threadId: selectedThread.id,
+            ...(throughEntryId === undefined ? {} : { throughEntryId }),
+          },
+        }),
     };
   })();
   const navigation = useNavigation();
@@ -353,6 +358,7 @@ function ThreadRouteContent(
   const environmentIdRaw = firstRouteParam(params.environmentId);
   const environmentId = environmentIdRaw ? EnvironmentId.make(environmentIdRaw) : null;
   const threadId = firstRouteParam(params.threadId);
+  const forkMessageLink = useForkMessageLinkParam(params.message, environmentId);
   const routeThreadIdentity =
     environmentIdRaw !== null && threadId !== null ? `${environmentIdRaw}:${threadId}` : null;
   const [inspectorSelection, setInspectorSelection] = useState<ThreadInspectorSelection | null>(
@@ -940,6 +946,7 @@ function ThreadRouteContent(
           connectionStateLabel={routeConnectionState}
           threadSyncStatus={selectedThreadDetailState.status}
           historyControls={historyControls}
+          forkMessageLink={forkMessageLink}
           activeThreadBusy={composer.activeThreadBusy}
           canStopThread={awaitingBootstrapTurn || composer.interruptibleRunId !== null}
           queuedRunEdit={composer.queuedRunEdit}
