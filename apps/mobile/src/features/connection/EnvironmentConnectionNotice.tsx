@@ -1,3 +1,4 @@
+import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { ConnectionTraceId } from "./ConnectionTraceId";
 import { connectionNoticeAction } from "./connectionNoticeAction";
@@ -7,7 +8,7 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 
@@ -92,15 +93,13 @@ export function EnvironmentConnectionNotice(props: {
         </Text>
 
         {action !== null ? (
-          <Pressable
-            accessibilityRole="button"
-            className="mt-1 rounded-full bg-subtle px-4 py-2.5 active:opacity-70"
-            onPress={action === "pair-again" ? pairAgain : props.onRetry}
-          >
-            <Text className="text-sm font-t3-bold text-foreground">
-              {action === "pair-again" ? "Pair again" : "Retry now"}
-            </Text>
-          </Pressable>
+          <View className="mt-1">
+            <Button
+              label={action === "pair-again" ? "Pair again" : "Retry now"}
+              tone="secondary"
+              onPress={action === "pair-again" ? pairAgain : props.onRetry}
+            />
+          </View>
         ) : null}
       </View>
     </View>
