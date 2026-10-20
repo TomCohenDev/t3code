@@ -221,6 +221,11 @@ import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { usePreparedConnection } from "../../state/session";
 import { useLiveThreadLinkLabels } from "../../state/entities";
 import { useForkThreadLinks, useForkThreadMarkers } from "./forkThreadLinks";
+import {
+  ForkMessageLinkNote,
+  useForkMessageLinkTarget,
+  type ForkMessageLinkRequest,
+} from "./forkMessageLinks";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
 import * as Option from "effect/Option";
@@ -285,7 +290,8 @@ export interface ThreadFeedHistoryControls {
   readonly hasMoreHistory: boolean;
   readonly loading: boolean;
   readonly error: string | null;
-  readonly onLoadEarlier: () => void;
+  /** Loads the next page, or through `throughEntryId` when a message link needs that message. */
+  readonly onLoadEarlier: (throughEntryId?: string) => Promise<unknown> | void;
 }
 
 export interface ThreadFeedProps {
@@ -320,6 +326,9 @@ export interface ThreadFeedProps {
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
+  /** Fork: a message link's target. See forkMessageLinks. */
+  readonly forkMessageLink?: ForkMessageLinkRequest | undefined;
+  readonly forkThreadSynced?: boolean;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly onUseArtifactTemplate?: (template: CodexArtifactTemplate) => void;
 }
@@ -1830,6 +1839,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       navigation.navigate("Thread", {
         environmentId: String(target.environmentId),
         threadId: String(target.threadId),
+        ...forkThreadLinks.messageParams(href),
       });
       return;
     }
@@ -2100,6 +2110,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
   };
   const handleScrollBeginDrag = () => {
+    forkMessageLink.cancel();
     clearUserScrollSettle();
     userScrollSessionRef.current = true;
     // Pause before the first scroll event. Otherwise a stream update can run
@@ -2182,6 +2193,22 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     props.feed,
     props.queuedMessages,
   );
+  const forkMessageLink = useForkMessageLinkTarget({
+    request: props.forkMessageLink,
+    synced: props.forkThreadSynced ?? true,
+    feed: props.feed,
+    presentedFeed,
+    historyControls: props.historyControls,
+    listRef,
+    viewOffset: anchorTopInset + CHAT_LIST_ANCHOR_OFFSET,
+    expandedTurnIds,
+    expandRun: (runId) =>
+      setInteractionState((current) => ({
+        ...current,
+        expandedTurnIds: new Set(current.expandedTurnIds).add(runId),
+      })),
+    stopEndFollow: () => setEndFollow(false),
+  });
   const setupAnchorIndex = presentedFeed.findIndex(
     (entry) => entry.type === "message" && entry.message.role === "user",
   );
@@ -2428,6 +2455,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     <Animated.View
       key={info.item.id}
       entering={disclosureToggleSettling ? THREAD_FEED_DISCLOSURE_ENTER_TRANSITION : undefined}
+      className={
+        forkMessageLink.highlightedRowId === info.item.id ? "rounded-xl bg-primary/10" : undefined
+      }
     >
       <MessageImageGalleryScope
         entry={info.item}
@@ -2573,7 +2603,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               endFollowEnabled && !disclosureToggleSettling ? false : maintainVisibleContentPosition
             }
             data={presentedFeed}
-            extraData={listAppearanceData}
+            extraData={{ ...listAppearanceData, forkHighlight: forkMessageLink.highlightedRowId }}
             renderItem={renderItem}
             viewabilityConfig={THREAD_MEDIA_VIEWABILITY_CONFIG}
             keyExtractor={(entry) => entry.id}
@@ -2657,6 +2687,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             />
           </View>
         ) : null}
+        <ForkMessageLinkNote
+          visible={forkMessageLink.notFound}
+          top={topContentInset}
+          onDismiss={forkMessageLink.dismissNote}
+        />
         <VideoPreviewModal source={expandedVideo} onRequestClose={() => setExpandedVideo(null)} />
         <FilePreviewModal source={expandedFile} onRequestClose={() => setExpandedFile(null)} />
       </View>
@@ -2679,7 +2714,7 @@ function ThreadFeedLoadEarlierControl(props: ThreadFeedHistoryControls) {
             tone="secondary"
             accessibilityLabel="Load earlier activity"
             disabled={props.loading}
-            onPress={props.onLoadEarlier}
+            onPress={() => void props.onLoadEarlier()}
             icon="chevron.up"
             loading={props.loading}
           />

@@ -42,6 +42,7 @@ import { SnoozeQuickOptionsSettingsRow } from "./SnoozeQuickOptionsSettingsRow";
 import { WorktreesDirectoryRow } from "./StorageSettings";
 import { ThreadCardLayoutSettingsRows } from "./ThreadCardLayoutSettings";
 import {
+  MessageLinksSettingsRow,
   ThreadLinkChipsSettingsRow,
   ThreadLinksOpenDesktopAppSettingsRow,
 } from "./ThreadLinkChipsSettings";
@@ -95,6 +96,7 @@ const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>> = {
   "thread-card-layout": ThreadCardLayoutSettingsRows,
   "thread-link-chips": ThreadLinkChipsSettingsRow,
   "thread-links-open-desktop-app": ThreadLinksOpenDesktopAppSettingsRow,
+  "message-links": MessageLinksSettingsRow,
   "preview-local-server-groups": PreviewLocalServerGroupsSettingsRow,
   "machine-map": MachineMapSettingsRows,
   "keybinding-sync": KeybindingSyncSettingsRow,

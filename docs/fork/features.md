@@ -355,7 +355,17 @@ Every thread link in chat shows as the chip of an attached thread, and opens the
 - **Works on:** web, desktop, mobile. Mobile reads the setting of the server of the thread, and has no switch of its own.
 - The chip reads `t3-thread://v1/<threadId>`, `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
 - An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
-- **Limits:** `?message=<messageId>` is kept, but the app does not scroll to the message. Revisit when upstream pingdotgg/t3code#19203 adds message links.
+- A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile. See [Message links](#message-links).
+
+### Message links
+
+A thread link that names a message opens the thread at that message. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
+
+- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". Off: the link opens the thread only.
+- **Works on:** web, desktop, mobile.
+- **Forms:** `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`.
+- A message that the thread does not have shows "Message not found", and the thread stays open.
+- **Limits:** on mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
 
 ### Thread addresses open the desktop app
 
@@ -532,7 +542,7 @@ The mobile app uses the themes that its servers publish.
 
 ### Fork settings on mobile
 
-Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips and what New thread opens. A change writes the setting to each selected environment.
+Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
 
 - **Works on:** mobile.
 - **Limits:** a change on the phone is the own value of each server, not the shared value of the machine map. Set the shared value in the portal or from a machine with the map role `edit`.

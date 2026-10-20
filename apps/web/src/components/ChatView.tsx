@@ -423,6 +423,7 @@ import {
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
+import { useForkMessageLinkRequest } from "./chat/ForkMessageLinkTarget";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
@@ -1265,6 +1266,7 @@ export default function ChatView(props: ChatViewProps) {
     select: (location) => location.state.assistantCitationActivation ?? location.state.__TSR_key,
   });
   const citationLocation = { href: citationHref, key: citationKey };
+  const forkMessageLink = useForkMessageLinkRequest(routeThreadDetailRef);
   const citationRequest = (() => {
     const citation = assistantCitationFromLocation(citationLocation.href);
     return citation && citation.environmentId === environmentId && citation.threadId === threadId
@@ -8233,6 +8235,7 @@ export default function ChatView(props: ChatViewProps) {
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <MessagesTimeline
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
+                forkMessageLink={paintOnlyDisplayedTimeline ? null : forkMessageLink}
                 citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline
                   ? {

@@ -9,12 +9,13 @@ import {
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 
-/** Fork: the thread link settings, `threadLinkChips` and `threadLinksOpenDesktopApp`. */
+/** Fork: the thread link settings, `threadLinkChips`, `threadLinksOpenDesktopApp` and `messageLinks`. */
 export function ThreadLinkChipsSettingsSection() {
   return (
     <SettingsSection id="thread-links" title="Thread links">
       <ThreadLinkChipsSettingsRow />
       <ThreadLinksOpenDesktopAppSettingsRow />
+      <MessageLinksSettingsRow />
     </SettingsSection>
   );
 }
@@ -41,9 +42,20 @@ export function ThreadLinksOpenDesktopAppSettingsRow() {
   );
 }
 
+export function MessageLinksSettingsRow() {
+  return (
+    <ThreadLinkSwitchRow
+      settingKey="messageLinks"
+      searchId="message-links"
+      label="Message links"
+      description="A thread link that names a message, such as one an agent writes, opens the thread at that message and highlights it. Off: the link opens the thread only. Applies on desktop, web and the mobile app."
+    />
+  );
+}
+
 function ThreadLinkSwitchRow(props: {
-  readonly settingKey: "threadLinkChips" | "threadLinksOpenDesktopApp";
-  readonly searchId: "thread-link-chips" | "thread-links-open-desktop-app";
+  readonly settingKey: "threadLinkChips" | "threadLinksOpenDesktopApp" | "messageLinks";
+  readonly searchId: "thread-link-chips" | "thread-links-open-desktop-app" | "message-links";
   readonly label: string;
   readonly description: string;
 }) {

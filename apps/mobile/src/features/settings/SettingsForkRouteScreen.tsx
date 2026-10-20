@@ -136,6 +136,14 @@ export function SettingsForkRouteScreen() {
                   disabled={disabled}
                   onValueChange={(value) => write({ threadLinkChips: value })}
                 />
+                <SettingsSwitchRow
+                  icon="text.bubble"
+                  label="Message links"
+                  subtitle="A thread link that names a message opens the thread at that message and highlights it."
+                  value={uniformMobileSetting(targets, "messageLinks")}
+                  disabled={disabled}
+                  onValueChange={(value) => write({ messageLinks: value })}
+                />
               </SettingsSection>
               <SidebarGroupSettingsSection />
               <AppTokenSettingsSection />

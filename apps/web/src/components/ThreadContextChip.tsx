@@ -1,7 +1,8 @@
-import type { ThreadContextRecord } from "@t3tools/contracts";
+import type { MessageId, ThreadContextRecord } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { MessagesSquareIcon } from "lucide-react";
+import { HashIcon, MessagesSquareIcon } from "lucide-react";
 
+import { forkMessageLinkNavigation } from "./chat/ForkMessageLinkTarget";
 import { useThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -10,6 +11,8 @@ export function ThreadContextChip(props: {
   record: Pick<ThreadContextRecord, "environmentId" | "threadId" | "title">;
   copyMarkdown?: string;
   unreadable?: boolean;
+  /** Fork: the link opens the thread at this message. */
+  messageId?: MessageId | null;
 }) {
   const { environmentId, threadId } = props.record;
   const shell = useThreadShell({ environmentId, threadId });
@@ -21,13 +24,20 @@ export function ThreadContextChip(props: {
           <ContextChip
             kind="thread"
             {...(props.unreadable ? { state: "invalid" as const } : {})}
-            render={<Link to="/$environmentId/$threadId" params={{ environmentId, threadId }} />}
-            aria-label={`Thread, ${title}`}
+            render={
+              <Link
+                to="/$environmentId/$threadId"
+                params={{ environmentId, threadId }}
+                {...forkMessageLinkNavigation(props.messageId)}
+              />
+            }
+            aria-label={`${props.messageId ? "Message in thread" : "Thread"}, ${title}`}
             data-markdown-copy={props.copyMarkdown}
             className="no-underline"
           >
             <MessagesSquareIcon />
             <ContextChipLabel>{title}</ContextChipLabel>
+            {props.messageId ? <HashIcon aria-hidden /> : null}
           </ContextChip>
         }
       />
@@ -35,7 +45,9 @@ export function ThreadContextChip(props: {
         {props.unreadable
           ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
           : shell
-            ? "Open thread"
+            ? props.messageId
+              ? "Open message"
+              : "Open thread"
             : "Thread no longer available"}
       </TooltipPopup>
     </Tooltip>

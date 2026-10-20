@@ -3012,7 +3012,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
     if (linkedThreadId) {
       const label = hastPlainTextDeep(node) || linkedThreadId;
       return environmentId ? (
-        <ForkThreadLink environmentId={environmentId} threadId={linkedThreadId} label={label} />
+        <ForkThreadLink
+          environmentId={environmentId}
+          threadId={linkedThreadId}
+          label={label}
+          href={href ?? ""}
+        />
       ) : (
         <span>{label}</span>
       );

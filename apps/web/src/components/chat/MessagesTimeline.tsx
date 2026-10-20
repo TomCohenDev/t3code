@@ -196,6 +196,7 @@ import { PierreEntryIcon } from "./PierreEntryIcon";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import { TimelineCursor } from "../focusLevels/TimelineCursor";
+import { type ForkMessageLinkRequest, useForkMessageLinkTarget } from "./ForkMessageLinkTarget";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import {
   AssistantCitationSource,
@@ -445,6 +446,8 @@ export interface MessagesTimelineHistoryControls {
 
 interface MessagesTimelineProps {
   citationRequest?: AssistantCitationRequest | null;
+  /** Fork: a message link's target. See ForkMessageLinkTarget. */
+  forkMessageLink?: ForkMessageLinkRequest | null;
   citationHistoryLoading?: boolean;
   onCiteAssistantText?: (
     citation: AssistantCitation,
@@ -555,6 +558,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 
 const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
+  forkMessageLink = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
   isWorking,
@@ -903,7 +907,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     if (!restoringThreadPosition || rows.length === 0) return;
     const list = listRef.current;
     if (!list) return;
-    if (citationRequest !== null) {
+    if (citationRequest !== null || forkMessageLink !== null) {
       // oxlint-disable-next-line react/set-state-in-effect -- The citation scroll owns positioning once the list has mounted.
       setPositionedThreadKey(listIdentityKey);
       return;
@@ -1008,6 +1012,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   }, [
     citationRequest,
+    forkMessageLink,
     cancelPositionRestoreRef,
     listIdentityKey,
     listRef,
@@ -1049,6 +1054,23 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onManualNavigation,
   });
   const [findListReady, setFindListReady] = useState(false);
+  const forkMessageLinkTarget = useForkMessageLinkTarget({
+    request: forkMessageLink,
+    threadKey: routeThreadKey,
+    rows,
+    listRef,
+    listReady: findListReady,
+    viewport: timelineViewportElement,
+    historyLoading: citationHistoryLoading,
+    historyControls,
+    foldInput: { timelineEntries, latestRun, runningRunId, isWorking, runlessWorkActive },
+    expandRun: expandCitedRun,
+    expandAttempt: (attemptId) =>
+      setExpandedAttemptIds((current) =>
+        current.has(attemptId) ? current : new Set(current).add(attemptId),
+      ),
+    onManualNavigation,
+  });
   const handleListLoad = () => {
     onCitationListLoad();
     setFindListReady(true);
@@ -1061,6 +1083,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const alwaysRenderIndices = restoringAlwaysRender?.indices ?? [];
   const alwaysRenderKeys = [
     ...(citationAlwaysRender?.keys ?? []),
+    ...(forkMessageLinkTarget.alwaysRender?.keys ?? []),
     ...(fullscreenAppRowId === null ? [] : [fullscreenAppRowId]),
   ];
   const alwaysRender =
@@ -1548,16 +1571,22 @@ const ConversationTimeline = memo(function ConversationTimeline({
               renderItem={renderItem}
               estimatedItemSize={90}
               initialScrollAtEnd={
-                !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
+                !findActive &&
+                citationRequest === null &&
+                forkMessageLink === null &&
+                rememberedPosition?.atEnd !== false
               }
               // Legend needs a data refresh to mount new pins without a scroll event.
-              dataVersion={readyCitationRequest?.key ?? listIdentityKey}
+              dataVersion={
+                readyCitationRequest?.key ?? forkMessageLinkTarget.pinnedRowId ?? listIdentityKey
+              }
               {...(alwaysRender ? { alwaysRender } : {})}
               onLoad={handleListLoad}
               {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
               contentInsetEndAdjustment={anchoredEndSpace ? contentInsetEndAdjustment : 0}
               maintainScrollAtEnd={
                 citationPositioning ||
+                forkMessageLinkTarget.positioning ||
                 (restoringThreadPosition && rememberedPosition?.atEnd === false) ||
                 anchoredEndSpace ||
                 !liveFollowEnabled ||
@@ -1571,6 +1600,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               maintainVisibleContentPosition={
                 findActive ||
                 citationPositioning ||
+                forkMessageLinkTarget.positioning ||
                 (restoringThreadPosition && rememberedPosition?.atEnd === false)
                   ? false
                   : maintainVisibleContentPosition
