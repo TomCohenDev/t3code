@@ -10,6 +10,7 @@ import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+import { AppUpdateCheckRow } from "../updates/AppUpdateCheckRow";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -227,6 +228,7 @@ function SettingsIndexSections() {
       <SettingsSection title="App">
         <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
         <SettingsRow icon="info.circle" label="About T3 Code" target="SettingsAbout" />
+        <AppUpdateCheckRow />
       </SettingsSection>
     </>
   );
