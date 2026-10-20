@@ -207,8 +207,9 @@ describe("right panel new-tab shortcut", () => {
     expect(document.querySelector('[role="menu"]:not([data-closed])')).toBeNull();
     // The menu hands focus back to its trigger once its close finishes, a few frames later.
     // Timers are fake here, so advance them instead of polling in real time.
+    // Fork: the trigger also carries a ShortcutTooltip, so slow runners need more frames.
     const trigger = container.querySelector('[aria-label="Add panel surface"]');
-    for (let frame = 0; frame < 10 && document.activeElement !== trigger; frame++) {
+    for (let frame = 0; frame < 60 && document.activeElement !== trigger; frame++) {
       await act(() => vi.advanceTimersToNextFrame());
     }
     expect(document.activeElement).toBe(trigger);
