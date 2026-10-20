@@ -1348,13 +1348,15 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             </SortableTabList>
             {props.open !== false ? (
               <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
-                <MenuTrigger
-                  ref={addSurfaceTriggerRef}
+                {/* The tooltip wraps the menu trigger, as upstream nests tooltips on menu
+                    triggers, so the menu returns focus to its trigger after Escape. */}
+                <ShortcutTooltip
+                  command="rightPanel.new"
+                  context={{ rightPanelOpen: true }}
+                  label="Add panel surface"
                   render={
-                    <ShortcutTooltip
-                      command="rightPanel.new"
-                      context={{ rightPanelOpen: true }}
-                      label="Add panel surface"
+                    <MenuTrigger
+                      ref={addSurfaceTriggerRef}
                       render={
                         <Button
                           aria-label="Add panel surface"
@@ -1367,7 +1369,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                   }
                 >
                   <Plus className="size-3.5" />
-                </MenuTrigger>
+                </ShortcutTooltip>
                 <MenuPopup
                   align="start"
                   side="bottom"
