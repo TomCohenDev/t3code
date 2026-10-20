@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { RunId, ScopedThreadRef } from "@t3tools/contracts";
+import type { MessageId, RunId, ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
@@ -12,8 +12,13 @@ import { replyToSpeak } from "./replyToSpeak";
 
 interface ReadNextReply {
   readonly threadRef: ScopedThreadRef;
-  /** Replies of runs that complete before this time are not read. */
-  readonly sinceMs: number;
+  /** The sent message whose run reply is read. */
+  readonly userMessageId: MessageId;
+  /**
+   * False until the server created the thread. A thread subscription treats a missing thread
+   * as deleted and stops for good, so the watch starts only after the thread exists.
+   */
+  readonly armed: boolean;
 }
 
 /** Fork: threads whose next reply is read once, such as a thread the assistant panel started. */
@@ -25,11 +30,22 @@ const readNextReplyAtom = Atom.make<ReadonlyArray<ReadNextReply>>([]).pipe(
 const sameThread = (left: ScopedThreadRef, right: ScopedThreadRef) =>
   left.environmentId === right.environmentId && left.threadId === right.threadId;
 
-export function readNextReply(request: ReadNextReply): void {
+export function readNextReply(request: Omit<ReadNextReply, "armed">): void {
   appAtomRegistry.update(readNextReplyAtom, (current) => [
     ...current.filter((entry) => !sameThread(entry.threadRef, request.threadRef)),
-    request,
+    { ...request, armed: false },
   ]);
+}
+
+/** Starts the watch of a requested thread once the server created it. */
+export function armNextReply(threadRef: ScopedThreadRef): void {
+  appAtomRegistry.update(readNextReplyAtom, (current) =>
+    current.some((entry) => sameThread(entry.threadRef, threadRef) && !entry.armed)
+      ? current.map((entry) =>
+          sameThread(entry.threadRef, threadRef) ? { ...entry, armed: true } : entry,
+        )
+      : current,
+  );
 }
 
 /** Drops a pending request, or the one that was just read. */
@@ -67,26 +83,29 @@ function ReadAloudThreads() {
         <ThreadReplyReader
           key={`always:${threadRef.environmentId}:${threadRef.threadId}`}
           threadRef={threadRef}
-          sinceMs={null}
+          userMessageId={null}
         />
       ))}
       {nextReplies
-        .filter((entry) => !readAloudThreads.some((ref) => sameThread(ref, entry.threadRef)))
+        .filter(
+          (entry) =>
+            entry.armed && !readAloudThreads.some((ref) => sameThread(ref, entry.threadRef)),
+        )
         .map((entry) => (
           <ThreadReplyReader
             key={`next:${entry.threadRef.environmentId}:${entry.threadRef.threadId}`}
             threadRef={entry.threadRef}
-            sinceMs={entry.sinceMs}
+            userMessageId={entry.userMessageId}
           />
         ))}
     </>
   );
 }
 
-/** `sinceMs` null: every reply from now on. A number: the first reply after it, then stop. */
+/** `userMessageId` null: every reply from now on. Otherwise: the reply to that message, then stop. */
 function ThreadReplyReader(props: {
   readonly threadRef: ScopedThreadRef;
-  readonly sinceMs: number | null;
+  readonly userMessageId: MessageId | null;
 }) {
   const thread = useAtomValue(environmentThreadDetails.threadAtom(props.threadRef));
   const { readAloudRate } = useVoicePreferences();
@@ -96,14 +115,17 @@ function ThreadReplyReader(props: {
     if (!current) return;
     const result = replyToSpeak({
       projection: current.projection,
-      sinceMs: props.sinceMs ?? mountedAt,
+      after:
+        props.userMessageId === null
+          ? { sinceMs: mountedAt }
+          : { userMessageId: props.userMessageId },
       handledRunIds: handledRunIds.current,
     });
     for (const runId of result.settledRunIds) handledRunIds.current.add(runId);
     if (result.reply) {
       readAloud({ id: result.reply.messageId, markdown: result.reply.text, rate: readAloudRate });
     }
-    if (props.sinceMs !== null && result.settledRunIds.length > 0) {
+    if (props.userMessageId !== null && result.settledRunIds.length > 0) {
       cancelNextReply(props.threadRef);
     }
   });

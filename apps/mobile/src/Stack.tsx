@@ -97,6 +97,7 @@ import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsForkRouteScreen } from "./features/settings/SettingsForkRouteScreen";
 import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
+import { SettingsVoiceProjectRouteScreen } from "./features/settings/SettingsVoiceProjectRouteScreen";
 import { SettingsSidebarGroupRouteScreen } from "./features/settings/forkSidebarGroupEditor";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
@@ -316,6 +317,13 @@ const SettingsContentStack = createV5SheetStackNavigator({
       linking: "voice",
       options: {
         title: "Voice",
+      },
+    }),
+    SettingsVoiceProject: createNativeStackScreen({
+      screen: SettingsVoiceProjectRouteScreen,
+      linking: "voice/project",
+      options: {
+        title: "Project",
       },
     }),
     SettingsSidebarGroup: createNativeStackScreen({

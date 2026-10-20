@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { CommandId, MessageId, type ScopedThreadRef } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
@@ -11,6 +11,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { IconButton } from "../../components/ui/IconButton";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
@@ -21,14 +22,18 @@ import {
 } from "../../lib/composerImages";
 import { assistantNative, type AssistantCapture } from "../../native/assistant";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { useProjects, useServerConfigs } from "../../state/entities";
+import { useNavigationThreadShells, useProjects, useServerConfigs } from "../../state/entities";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import {
   clearComposerDraft,
   clearComposerDraftContent,
   waitForComposerDraftsLoaded,
 } from "../../state/use-composer-drafts";
-import { enqueueThreadOutboxMessage, flattenQueuedThreadMessages } from "../../state/thread-outbox";
+import {
+  enqueueThreadOutboxMessage,
+  flattenQueuedThreadMessages,
+  type QueuedThreadMessage,
+} from "../../state/thread-outbox";
 import { ThreadOutboxDrainWorker, useIsThreadOutboxHost } from "../../state/thread-outbox-worker";
 import { useThreadOutboxMessages } from "../../state/use-thread-outbox";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
@@ -38,12 +43,15 @@ import { AppearancePreferencesProvider } from "../settings/appearance/Appearance
 import { NewTaskFlowProvider, useNewTaskFlow } from "../threads/new-task-flow-provider";
 import { readingAloudIdAtom, stopReadingAloud } from "../read-aloud/readAloud";
 import {
+  armNextReply,
   cancelNextReply,
   ReadAloudWorker,
   readNextReply,
   useWaitsForNextReply,
 } from "../read-aloud/ReadAloudWorker";
 import { resolveAssistantProject } from "./assistantProject";
+import { lastOpenedThread } from "./assistantTargets";
+import { AssistantTargetPicker, type AssistantTarget } from "./AssistantTargetPicker";
 
 /**
  * Fork: the Android assistant panel. `AssistantActivity` renders this root over the app that
@@ -161,7 +169,10 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const { connectedEnvironments } = useRemoteConnectionStatus();
   const queuedMessages = useThreadOutboxMessages();
   const readingId = useAtomValue(readingAloudIdAtom);
+  const threads = useNavigationThreadShells();
   const [text, setText] = useState("");
+  const [pickedTarget, setPickedTarget] = useState<AssistantTarget | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Null follows the setting; a tap on the switch overrides it for this press.
   const [attachScreenshotChoice, setAttachScreenshot] = useState<boolean | null>(null);
   const [attachScreenTextChoice, setAttachScreenText] = useState<boolean | null>(null);
@@ -172,7 +183,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const attachScreenshot = attachScreenshotChoice ?? voice.assistantAttachScreenshot;
   const attachScreenText = attachScreenTextChoice ?? voice.assistantAttachScreenText;
 
-  const project = AsyncResult.isSuccess(preferences)
+  const defaultProject = AsyncResult.isSuccess(preferences)
     ? resolveAssistantProject({
         projects,
         chosen: voice.assistantProject,
@@ -181,6 +192,26 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
           serverConfigs.get(environmentId)?.scratchWorkspaceRoot,
       })
     : null;
+  // The picked target wins. A picked thread is looked up again on each render, so a rename shows
+  // and an archived or deleted thread falls back to a new thread.
+  const defaultThread = voice.assistantTarget === "lastThread" ? lastOpenedThread(threads) : null;
+  const targetThread =
+    pickedTarget === null
+      ? defaultThread
+      : pickedTarget.type === "thread"
+        ? (threads.find(
+            (thread) =>
+              thread.environmentId === pickedTarget.thread.environmentId &&
+              thread.id === pickedTarget.thread.id &&
+              thread.archivedAt === null,
+          ) ?? null)
+        : null;
+  const project = pickedTarget?.type === "project" ? pickedTarget.project : defaultProject;
+  const target: AssistantTarget | null = targetThread
+    ? { type: "thread", thread: targetThread }
+    : project
+      ? { type: "project", project }
+      : null;
   const selectedProject = flow.selectedProject;
   const selectProject = useEffectEvent(() => {
     if (
@@ -226,7 +257,8 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     assistantNative?.close();
   };
   const onBackPress = useEffectEvent(() => {
-    close();
+    if (pickerOpen) setPickerOpen(false);
+    else close();
     return true;
   });
   useEffect(() => {
@@ -245,6 +277,9 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     assistantNative?.close();
   });
   useEffect(() => {
+    if (delivered && sendingThread) armNextReply(sendingThread);
+  }, [delivered, sendingThread]);
+  useEffect(() => {
     if ((afterDelivery === "open" || afterDelivery === "close") && sendingThread) {
       finishDelivery(afterDelivery, sendingThread);
     }
@@ -252,14 +287,15 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
 
   const screenshotUri = attachScreenshot ? (capture?.screenshotUri ?? null) : null;
   const screenText = attachScreenText && capture ? screenTextDocument(capture) : null;
-  const environment = selectedProject
-    ? connectedEnvironments.find(
-        (candidate) => candidate.environmentId === selectedProject.environmentId,
-      )
-    : undefined;
-  const connected = environment?.connectionState === "connected";
+  const targetEnvironmentId = targetThread?.environmentId ?? selectedProject?.environmentId;
+  const environmentLabel = (environmentId: string) =>
+    connectedEnvironments.find((candidate) => candidate.environmentId === environmentId)
+      ?.environmentLabel ?? null;
+  const connected =
+    connectedEnvironments.find((candidate) => candidate.environmentId === targetEnvironmentId)
+      ?.connectionState === "connected";
   const busy = phase.type !== "editing" && phase.type !== "failed";
-  const ready = !busy && selectedProject !== null && draftKey !== null;
+  const ready = !busy && (targetThread !== null || (selectedProject !== null && draftKey !== null));
   const hasContent = (messageText: string) =>
     messageText.trim().length > 0 || screenshotUri !== null || screenText !== null;
 
@@ -269,9 +305,9 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   };
 
   const send = async (messageText: string) => {
-    if (!ready || !selectedProject || !draftKey || !hasContent(messageText)) return;
+    if (!ready || targetEnvironmentId === undefined || !hasContent(messageText)) return;
     setPhase({ type: "preparing" });
-    const capabilities = serverConfigs.get(selectedProject.environmentId)?.environment.capabilities;
+    const capabilities = serverConfigs.get(targetEnvironmentId)?.environment.capabilities;
     const prepared = await settlePromise(() =>
       prepareAssistantMessage({
         text: messageText,
@@ -284,29 +320,53 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
       }),
     );
     if (AsyncResult.isFailure(prepared)) return fail(prepared, "The screen could not be attached.");
-    flow.setPrompt(prepared.value.text);
-    flow.replaceAttachments(prepared.value.attachments);
-    const message = flow.buildPendingTaskMessage(makeTurnCommandMetadata(), {
-      currentCheckoutBranch: connected ? flow.currentCheckoutBranchName : null,
-    });
+    const metadata = makeTurnCommandMetadata();
+    let message: QueuedThreadMessage | null;
+    if (targetThread) {
+      // Queued, so the message becomes its own run after any running one: the panel can then
+      // read the reply of exactly this message.
+      message = {
+        environmentId: targetThread.environmentId,
+        threadId: targetThread.id,
+        messageId: MessageId.make(metadata.messageId),
+        commandId: CommandId.make(metadata.commandId),
+        text: prepared.value.text,
+        attachments: prepared.value.attachments,
+        dispatchMode: "queue",
+        createdAt: metadata.createdAt,
+      };
+    } else {
+      flow.setPrompt(prepared.value.text);
+      flow.replaceAttachments(prepared.value.attachments);
+      message = flow.buildPendingTaskMessage(metadata, {
+        currentCheckoutBranch: connected ? flow.currentCheckoutBranchName : null,
+      });
+    }
     if (!message) {
       setPhase({ type: "failed", message: "No model is available for this project yet." });
       return;
     }
+    const queuedMessage = message;
     const threadRef = { environmentId: message.environmentId, threadId: message.threadId };
-    // Registered before the turn can start, so a fast reply is not missed.
-    if (voice.assistantSpeakFirstReply) readNextReply({ threadRef, sinceMs: Date.now() });
-    const queued = await settlePromise(() => enqueueThreadOutboxMessage(message));
+    if (voice.assistantSpeakFirstReply) {
+      readNextReply({ threadRef, userMessageId: message.messageId });
+    }
+    const queued = await settlePromise(() => enqueueThreadOutboxMessage(queuedMessage));
     if (AsyncResult.isFailure(queued)) {
       cancelNextReply(threadRef);
-      return fail(queued, "The thread could not be queued.");
+      return fail(queued, "The message could not be queued.");
     }
     sentRef.current = true;
-    clearComposerDraftContent(draftKey, {
-      clearModelSelection: true,
-      clearWorkspaceSelection: true,
-      deferAttachmentCleanup: true,
-    });
+    if (draftKey && targetThread) {
+      // The new thread draft held nothing for a message to an existing thread.
+      clearComposerDraft(draftKey);
+    } else if (draftKey) {
+      clearComposerDraftContent(draftKey, {
+        clearModelSelection: true,
+        clearWorkspaceSelection: true,
+        deferAttachmentCleanup: true,
+      });
+    }
     setPhase({ type: "sending", messageId: message.messageId, threadRef });
   };
 
@@ -319,9 +379,15 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     if (!words) return;
     const next = text.trim() ? `${text.trimEnd()} ${words}` : words;
     setText(next);
-    // When the project is not ready yet on a cold start, the text waits for a tap.
-    if (voice.assistantSendAfterVoice && ready) await send(next);
+    // The dialog can take long, so this reads the state after it closed. When the target is not
+    // ready yet on a cold start, the text waits for a tap.
+    const latest = latestRef.current;
+    if (voice.assistantSendAfterVoice && latest.ready) await latest.send(next);
   };
+  const latestRef = useRef({ ready, send });
+  useEffect(() => {
+    latestRef.current = { ready, send };
+  });
 
   const startWithVoice = useEffectEvent(() => {
     if (voice.assistantInput === "voice") void speak();
@@ -332,6 +398,11 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     startWithVoice();
   }, [preferencesLoaded]);
 
+  const targetLabel = targetThread
+    ? targetThread.title.trim() || "Untitled thread"
+    : project
+      ? `New thread · ${project.title}`
+      : "Loading projects…";
   const status = (() => {
     if (afterDelivery === "wait") return "Waiting for the reply…";
     if (afterDelivery === "read") return "Reading the reply aloud";
@@ -339,7 +410,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
       case "sending":
         return connected ? "Sending…" : "Queued. It sends when the server connects.";
       default:
-        return connected ? "Connected" : "Not connected. The thread waits in the outbox.";
+        return connected ? "Connected" : "Not connected. The message waits in the outbox.";
     }
   })();
 
@@ -356,14 +427,28 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
           style={{ paddingBottom: insets.bottom + 12 }}
         >
           <View className="flex-row items-center justify-between gap-2">
-            <View className="flex-1">
-              <Text textRole="body" className="font-medium" numberOfLines={1}>
-                {selectedProject ? `New thread in ${selectedProject.title}` : "Loading projects…"}
-              </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${targetLabel}. Change where to send`}
+              accessibilityState={{ expanded: pickerOpen, disabled: busy }}
+              className="flex-1"
+              disabled={busy}
+              onPress={() => setPickerOpen((open) => !open)}
+            >
+              <View className="flex-row items-center gap-1">
+                <Text textRole="body" className="shrink font-medium" numberOfLines={1}>
+                  {targetLabel}
+                </Text>
+                <SymbolView
+                  name={pickerOpen ? "chevron.up" : "chevron.down"}
+                  size={14}
+                  tintColorClassName="accent-foreground-muted"
+                />
+              </View>
               <Text className="text-sm text-foreground-muted" numberOfLines={1}>
                 {status}
               </Text>
-            </View>
+            </Pressable>
             {afterDelivery === "read" ? (
               <IconButton
                 accessibilityLabel="Stop reading aloud"
@@ -374,65 +459,81 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
             <IconButton accessibilityLabel="Close" icon="xmark" onPress={close} />
           </View>
 
-          {capture?.screenshotUri ? (
-            <View className="flex-row items-center gap-3">
-              <Image
-                source={{ uri: capture.screenshotUri }}
-                className="h-24 w-14 rounded-lg"
-                resizeMode="cover"
-              />
-              <Text className="flex-1 text-sm">Attach screenshot</Text>
-              <ThemedSwitch
-                accessibilityLabel="Attach screenshot"
-                disabled={busy}
-                value={attachScreenshot}
-                onValueChange={setAttachScreenshot}
-              />
-            </View>
-          ) : null}
-          {capture?.screenText ? (
-            <View className="flex-row items-center gap-3">
-              <Text className="flex-1 text-sm" numberOfLines={1}>
-                Attach screen text{capture.sourcePackage ? ` from ${capture.sourcePackage}` : ""}
-              </Text>
-              <ThemedSwitch
-                accessibilityLabel="Attach screen text"
-                disabled={busy}
-                value={attachScreenText}
-                onValueChange={setAttachScreenText}
-              />
-            </View>
-          ) : null}
+          {pickerOpen ? (
+            <AssistantTargetPicker
+              target={target}
+              threads={threads}
+              projects={projects}
+              environmentLabel={environmentLabel}
+              onPick={(picked) => {
+                setPickedTarget(picked);
+                setPickerOpen(false);
+              }}
+            />
+          ) : (
+            <>
+              {capture?.screenshotUri ? (
+                <View className="flex-row items-center gap-3">
+                  <Image
+                    source={{ uri: capture.screenshotUri }}
+                    className="h-24 w-14 rounded-lg"
+                    resizeMode="cover"
+                  />
+                  <Text className="flex-1 text-sm">Attach screenshot</Text>
+                  <ThemedSwitch
+                    accessibilityLabel="Attach screenshot"
+                    disabled={busy}
+                    value={attachScreenshot}
+                    onValueChange={setAttachScreenshot}
+                  />
+                </View>
+              ) : null}
+              {capture?.screenText ? (
+                <View className="flex-row items-center gap-3">
+                  <Text className="flex-1 text-sm" numberOfLines={1}>
+                    Attach screen text
+                    {capture.sourcePackage ? ` from ${capture.sourcePackage}` : ""}
+                  </Text>
+                  <ThemedSwitch
+                    accessibilityLabel="Attach screen text"
+                    disabled={busy}
+                    value={attachScreenText}
+                    onValueChange={setAttachScreenText}
+                  />
+                </View>
+              ) : null}
 
-          <AppTextInput
-            autoFocus={voice.assistantInput === "text"}
-            editable={!busy}
-            multiline
-            className="max-h-48"
-            placeholder="What should the agent do?"
-            value={text}
-            onChangeText={setText}
-          />
-          {phase.type === "failed" ? (
-            <Text className="text-sm text-danger-foreground">{phase.message}</Text>
-          ) : null}
-          <View className="flex-row items-center justify-end gap-2">
-            <IconButton
-              accessibilityLabel="Speak"
-              icon="mic"
-              variant="tonal"
-              disabled={busy}
-              onPress={speak}
-            />
-            <Button
-              label="Start thread"
-              icon="arrow.up"
-              tone="primary"
-              disabled={!ready || !hasContent(text)}
-              loading={busy}
-              onPress={() => void send(text)}
-            />
-          </View>
+              <AppTextInput
+                autoFocus={voice.assistantInput === "text"}
+                editable={!busy}
+                multiline
+                className="max-h-48"
+                placeholder="What should the agent do?"
+                value={text}
+                onChangeText={setText}
+              />
+              {phase.type === "failed" ? (
+                <Text className="text-sm text-danger-foreground">{phase.message}</Text>
+              ) : null}
+              <View className="flex-row items-center justify-end gap-2">
+                <IconButton
+                  accessibilityLabel="Speak"
+                  icon="mic"
+                  variant="tonal"
+                  disabled={busy}
+                  onPress={speak}
+                />
+                <Button
+                  label={targetThread ? "Send" : "Start thread"}
+                  icon="arrow.up"
+                  tone="primary"
+                  disabled={!ready || !hasContent(text)}
+                  loading={busy}
+                  onPress={() => void send(text)}
+                />
+              </View>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </View>

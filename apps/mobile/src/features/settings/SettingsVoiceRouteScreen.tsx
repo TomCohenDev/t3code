@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { ProjectId } from "@t3tools/contracts";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,15 +11,29 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import {
   READ_ALOUD_RATES,
   type AssistantInputMode,
+  type AssistantTarget,
   type ReadAloudRate,
 } from "../../persistence/forkVoicePreferences";
-import { useProjects } from "../../state/entities";
-import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
+import { useProject } from "../../state/entities";
 import { useUpdateVoicePreferences, useVoicePreferences } from "../../state/voice-preferences";
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
+import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
+
+const TARGET_OPTIONS: ReadonlyArray<{
+  readonly target: AssistantTarget;
+  readonly label: string;
+  readonly description: string;
+}> = [
+  { target: "newThread", label: "A new thread", description: "In the project set below." },
+  {
+    target: "lastThread",
+    label: "The last thread you opened",
+    description: "Tap the title in the panel to pick another thread or project.",
+  },
+];
 
 const INPUT_OPTIONS: ReadonlyArray<{
   readonly mode: AssistantInputMode;
@@ -43,12 +58,14 @@ export function SettingsVoiceRouteScreen() {
   const insets = useSafeAreaInsets();
   const voice = useVoicePreferences();
   const updateVoice = useUpdateVoicePreferences();
-  const projects = useProjects();
-  const { connectedEnvironments } = useRemoteConnectionStatus();
-  const environmentLabel = (environmentId: string) =>
-    connectedEnvironments.find((environment) => environment.environmentId === environmentId)
-      ?.environmentLabel;
-  const showsEnvironment = new Set(projects.map((project) => project.environmentId)).size > 1;
+  const chosenProject = useProject(
+    voice.assistantProject
+      ? {
+          environmentId: voice.assistantProject.environmentId,
+          projectId: ProjectId.make(voice.assistantProject.projectId),
+        }
+      : null,
+  );
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -74,6 +91,18 @@ export function SettingsVoiceRouteScreen() {
                 description="Pick T3 Code, and turn on screen text and screenshots there."
                 onPress={() => assistantNative?.openAssistantSettings()}
               />
+            </SettingsSection>
+            <SettingsSection title="The panel sends to">
+              {TARGET_OPTIONS.map((option, index) => (
+                <SettingsChoiceRow
+                  key={option.target}
+                  label={option.label}
+                  description={option.description}
+                  selected={voice.assistantTarget === option.target}
+                  separated={index > 0}
+                  onPress={() => updateVoice({ assistantTarget: option.target })}
+                />
+              ))}
             </SettingsSection>
             <SettingsSection title="The panel opens with">
               {INPUT_OPTIONS.map((option, index) => (
@@ -117,35 +146,13 @@ export function SettingsVoiceRouteScreen() {
                 onValueChange={(value) => updateVoice({ assistantSpeakFirstReply: value })}
               />
             </SettingsSection>
-            <SettingsSection title="Project of new threads">
-              <SettingsChoiceRow
-                label="Last new thread project"
-                description="The project of the last thread that you started on this phone."
-                selected={voice.assistantProject === null}
-                onPress={() => updateVoice({ assistantProject: undefined })}
+            <SettingsSection title="New threads">
+              <SettingsRow
+                icon="folder"
+                label="Project"
+                value={chosenProject?.title ?? "Last new thread project"}
+                target="SettingsVoiceProject"
               />
-              {projects.map((project) => (
-                <SettingsChoiceRow
-                  key={`${project.environmentId}:${project.id}`}
-                  label={project.title}
-                  {...(showsEnvironment
-                    ? { description: environmentLabel(project.environmentId) ?? "Disconnected" }
-                    : {})}
-                  selected={
-                    voice.assistantProject?.environmentId === project.environmentId &&
-                    voice.assistantProject.projectId === project.id
-                  }
-                  separated
-                  onPress={() =>
-                    updateVoice({
-                      assistantProject: {
-                        environmentId: project.environmentId,
-                        projectId: project.id,
-                      },
-                    })
-                  }
-                />
-              ))}
             </SettingsSection>
           </>
         ) : null}

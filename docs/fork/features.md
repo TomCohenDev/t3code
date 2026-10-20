@@ -398,12 +398,12 @@ The plus button of the mobile composer, the new thread draft and question answer
 
 ### Android assistant panel
 
-T3 Code can be the Android digital assistant. The assistant button opens a panel over the current app. The panel attaches the screenshot and the screen text, takes typed or spoken text, and starts a new thread.
+T3 Code can be the Android digital assistant. The assistant button opens a panel over the current app. The panel attaches the screenshot and the screen text, takes typed or spoken text, and starts a new thread or adds the message to an existing thread. The title of the panel opens a picker with a search, the recent threads and the projects.
 
-- **Setting:** the Android setting Default apps > Digital assistant app. The options are phone-local preferences under `voice` (`apps/mobile/src/persistence/forkVoicePreferences.ts`), in Settings > Voice of the mobile app: keyboard or voice first (keyboard by default), start the thread after speaking (off), attach the screenshot (on), attach the screen text (on), open the thread (off), read the first reply aloud (off), and the project (the last new thread project by default).
+- **Setting:** the Android setting Default apps > Digital assistant app. The options are phone-local preferences under `voice` (`apps/mobile/src/persistence/forkVoicePreferences.ts`), in Settings > Voice of the mobile app: a new thread or the last opened thread (a new thread by default), keyboard or voice first (keyboard by default), start the thread after speaking (off), attach the screenshot (on), attach the screen text (on), open the thread (off), read the first reply aloud (off), and the project (the last new thread project by default).
 - **Works on:** mobile, Android 10 or later.
 - The panel and the app share one JS runtime. The outbox sender and the T3 Connect sign-in run once across both (`apps/mobile/src/lib/singletonHost.ts`).
-- The thread goes through the thread outbox, so it uses the project's model defaults and waits for the connection when offline.
+- The message goes through the thread outbox, so a new thread uses the project's model defaults, and the message waits for the connection when offline. A message to an existing thread is queued after a running turn, so "read the first reply aloud" reads the reply to that message.
 - **Limits:** no lock screen launch, because anyone that holds the phone could start agent work. Revisit with a request to unlock first. Password fields are left out of the screen text. Apps that block screenshots send none.
 
 ### Read aloud on mobile

@@ -8,6 +8,9 @@ import * as Schema from "effect/Schema";
 export const AssistantInputMode = Schema.Literals(["text", "voice"]);
 export type AssistantInputMode = typeof AssistantInputMode.Type;
 
+export const AssistantTarget = Schema.Literals(["newThread", "lastThread"]);
+export type AssistantTarget = typeof AssistantTarget.Type;
+
 export const READ_ALOUD_RATES = [0.75, 1, 1.25, 1.5, 2] as const;
 export type ReadAloudRate = (typeof READ_ALOUD_RATES)[number];
 
@@ -17,6 +20,8 @@ const ThreadRef = Schema.Struct({ environmentId: EnvironmentId, threadId: Thread
 export type ReadAloudThreadRef = typeof ThreadRef.Type;
 
 export interface VoicePreferences {
+  /** Whether the panel starts a new thread or continues the thread that was opened last. */
+  readonly assistantTarget?: AssistantTarget;
   /** Whether the panel opens with the keyboard or with the speech dialog. */
   readonly assistantInput?: AssistantInputMode;
   /** Starts the thread as soon as the speech dialog returns text. */
@@ -37,6 +42,7 @@ export interface VoicePreferences {
 }
 
 export const VOICE_PREFERENCE_DEFAULTS = {
+  assistantTarget: "newThread",
   assistantInput: "text",
   assistantSendAfterVoice: false,
   assistantAttachScreenshot: true,
@@ -68,6 +74,7 @@ export function resolveVoicePreferences(
 }
 
 const isAssistantInputMode = Schema.is(AssistantInputMode);
+const isAssistantTarget = Schema.is(AssistantTarget);
 const isProjectRef = Schema.is(ProjectRef);
 const isThreadRefs = Schema.is(Schema.Array(ThreadRef));
 const isReadAloudRate = (value: unknown): value is ReadAloudRate =>
@@ -78,6 +85,7 @@ export function sanitizeVoicePreferences(value: unknown): VoicePreferences | und
   if (typeof value !== "object" || value === null) return undefined;
   const parsed: Record<string, unknown> = { ...value };
   const result: { -readonly [Key in keyof VoicePreferences]: VoicePreferences[Key] } = {};
+  if (isAssistantTarget(parsed.assistantTarget)) result.assistantTarget = parsed.assistantTarget;
   if (isAssistantInputMode(parsed.assistantInput)) result.assistantInput = parsed.assistantInput;
   for (const key of [
     "assistantSendAfterVoice",

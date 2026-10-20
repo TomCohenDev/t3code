@@ -1,7 +1,10 @@
 import type { MessageId, OrchestrationV2Run, RunId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-type SpeakableRun = Pick<OrchestrationV2Run, "id" | "status" | "requestedAt" | "completedAt">;
+type SpeakableRun = Pick<
+  OrchestrationV2Run,
+  "id" | "status" | "userMessageId" | "requestedAt" | "completedAt"
+>;
 /** The fields of a turn item that decide whether it is a finished reply. */
 interface SpeakableItem {
   readonly type: string;
@@ -19,15 +22,16 @@ export interface ReplyToSpeak {
 }
 
 /**
- * Fork: which reply to read aloud for a thread. Only runs that completed at `sinceMs` or later
- * count, so opening a thread never reads its history. Failed and interrupted runs are skipped.
+ * Fork: which reply to read aloud for a thread. `after` picks the runs that count: runs that
+ * completed at `sinceMs` or later, so a thread never reads its history, or the run of one sent
+ * message. Failed and interrupted runs are skipped.
  */
 export function replyToSpeak(input: {
   readonly projection: {
     readonly runs: ReadonlyArray<SpeakableRun>;
     readonly visibleTurnItems: ReadonlyArray<{ readonly item: SpeakableItem }>;
   };
-  readonly sinceMs: number;
+  readonly after: { readonly sinceMs: number } | { readonly userMessageId: MessageId };
   readonly handledRunIds: ReadonlySet<RunId>;
 }): ReplyToSpeak {
   const settled = [...input.projection.runs]
@@ -35,7 +39,9 @@ export function replyToSpeak(input: {
       (run) =>
         run.status === "completed" &&
         run.completedAt !== null &&
-        DateTime.toEpochMillis(run.completedAt) >= input.sinceMs &&
+        ("userMessageId" in input.after
+          ? run.userMessageId === input.after.userMessageId
+          : DateTime.toEpochMillis(run.completedAt) >= input.after.sinceMs) &&
         !input.handledRunIds.has(run.id),
     )
     .sort(
