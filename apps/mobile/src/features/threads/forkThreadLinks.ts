@@ -16,16 +16,16 @@ import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { environmentCatalog } from "../../connection/catalog";
-import { enrichedContextLinkPresentation } from "../../lib/enrichedLinkPresentation";
-import { markdownFileIconSource } from "../../lib/markdownFileIcons";
+import { CONTEXT_CHIP_ICON_SOURCES } from "../../lib/contextChipIcons.generated";
 import type { MarkdownLinkCustomization } from "../../native/SelectableMarkdownText.types";
+import { enrichedContextLinkCustomization } from "../../native/useEnrichedLinkVariants";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
 import { useForkMessageLinksEnabled } from "./forkMessageLinks";
 
 // The pill of an attached thread with no record, so both looks stay one.
-const threadPill = enrichedContextLinkPresentation(
+const threadPill = enrichedContextLinkCustomization(
   formatComposerContextHref("thread", "thread-link" as ComposerContextId),
 );
 
@@ -73,16 +73,11 @@ export function useForkThreadLinks(environmentId: EnvironmentId) {
   const linkCustomization = useCallback(
     (href: string): MarkdownLinkCustomization | undefined =>
       threadPill && chips && (parseThreadLinkHref(href) !== null || knownThreadAddress(href))
-        ? {
-            color: threadPill.color,
-            // The message bubble icon, as for "text.bubble" context chips, marks a message link.
-            icon: markdownFileIconSource(
-              messageLinks &&
-                (threadLinkMessageId(href) !== null || knownThreadAddress(href)?.messageId)
-                ? "markdown"
-                : threadPill.icon,
-            ),
-          }
+        ? messageLinks &&
+          (threadLinkMessageId(href) !== null || knownThreadAddress(href)?.messageId)
+          ? // The message bubble icon of review comment chips marks a message link.
+            { ...threadPill, icon: CONTEXT_CHIP_ICON_SOURCES["message-circle"] }
+          : threadPill
         : undefined,
     [chips, knownThreadAddress, messageLinks],
   );
