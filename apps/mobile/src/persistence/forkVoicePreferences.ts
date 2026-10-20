@@ -30,6 +30,10 @@ export interface VoicePreferences {
   readonly assistantAttachScreenText?: boolean;
   /** Opens the new thread in the app after the server takes it. */
   readonly assistantOpenThread?: boolean;
+  /** Offers the newest gallery photo as a pill. Needs photo access. */
+  readonly assistantRecentPhoto?: boolean;
+  /** Offers the last known location as a pill. Needs location access. */
+  readonly assistantLocation?: boolean;
   /** Keeps the panel open until the first reply is read aloud. */
   readonly assistantSpeakFirstReply?: boolean;
   /** Absent: the project of the last new thread. */
@@ -49,6 +53,8 @@ export const VOICE_PREFERENCE_DEFAULTS = {
   assistantAttachScreenText: true,
   assistantOpenThread: false,
   assistantSpeakFirstReply: false,
+  assistantRecentPhoto: false,
+  assistantLocation: false,
   assistantProject: null,
   readAloudButton: true,
   readAloudRate: 1,
@@ -93,6 +99,8 @@ export function sanitizeVoicePreferences(value: unknown): VoicePreferences | und
     "assistantAttachScreenText",
     "assistantOpenThread",
     "assistantSpeakFirstReply",
+    "assistantRecentPhoto",
+    "assistantLocation",
     "readAloudButton",
   ] as const) {
     const flag = parsed[key];

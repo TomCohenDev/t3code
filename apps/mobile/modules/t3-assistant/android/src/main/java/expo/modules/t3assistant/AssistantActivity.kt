@@ -1,5 +1,8 @@
 package expo.modules.t3assistant
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -19,6 +22,28 @@ class AssistantActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // react-native-screens cannot restore its fragments, and the panel always starts fresh.
     super.onCreate(null)
+    takeShare(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    takeShare(intent)
+  }
+
+  private fun takeShare(intent: Intent?) {
+    if (intent?.action != Intent.ACTION_SEND) return
+    val text = listOfNotNull(
+      intent.getStringExtra(Intent.EXTRA_SUBJECT),
+      intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+    ).filter(String::isNotBlank).joinToString("\n").ifBlank { null }
+    val image = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+    } else {
+      @Suppress("DEPRECATION")
+      intent.getParcelableExtra(Intent.EXTRA_STREAM)
+    }
+    AssistantCapture.beginShare(this, text, image)
   }
 
   override fun onDestroy() {

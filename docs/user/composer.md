@@ -210,11 +210,15 @@ send button. To add the message to an existing thread or to pick another
 project, tap the title of the panel and search or pick from the list. With more
 than one machine, tap the machine icon to pick the machine first.
 
-Context pills above the text show what goes along: the screenshot, the screen text,
-text you selected on screen, the page link, and the clipboard. Tap a pill to attach
-it or leave it out. Hold a pill to read and edit its text, or to draw on the
-screenshot. The clipboard is left out until you tap it, and password fields are
-never included.
+To ask about something in another app, you can also share it: pick **Ask T3 Code**
+in the Android share sheet.
+
+Context pills above the text show what goes along: what you shared, the screenshot,
+the screen text, text you selected on screen, the page link, and the clipboard. In
+**Settings → Voice → Context pills** you can also turn on your newest photo and your
+location. Tap a pill to attach it or leave it out. Hold a pill to read and edit its
+text, or to draw on an image. The clipboard, the photo and the location are left out
+until you tap them, and password fields are never included.
 
 If you close the panel without sending, your text comes back when you open it
 again within a minute.

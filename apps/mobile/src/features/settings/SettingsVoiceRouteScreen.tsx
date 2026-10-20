@@ -1,9 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
 import { ProjectId } from "@t3tools/contracts";
-import { Platform, View } from "react-native";
+import { PermissionsAndroid, Platform, View, type Permission } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import * as Dialog from "../../components/ui/Dialog";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { assistantNative } from "../../native/assistant";
@@ -44,6 +45,12 @@ const INPUT_OPTIONS: ReadonlyArray<{
   { mode: "voice", label: "Voice", description: "The panel opens the speech dialog right away." },
 ];
 
+// Android 13 split photo access out of storage access.
+const PHOTO_PERMISSION =
+  Platform.OS === "android" && Platform.Version >= 33
+    ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
+    : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
+
 const RATE_LABELS: Record<ReadAloudRate, string> = {
   0.75: "Slow",
   1: "Normal",
@@ -58,6 +65,21 @@ export function SettingsVoiceRouteScreen() {
   const insets = useSafeAreaInsets();
   const voice = useVoicePreferences();
   const updateVoice = useUpdateVoicePreferences();
+  // Turning a pill on asks for its access first; a refusal keeps it off.
+  const setWithPermission = async (
+    key: "assistantRecentPhoto" | "assistantLocation",
+    value: boolean,
+    permission: Permission,
+    access: string,
+  ) => {
+    if (!value) return updateVoice({ [key]: false });
+    const result = await PermissionsAndroid.request(permission);
+    if (result === PermissionsAndroid.RESULTS.GRANTED) return updateVoice({ [key]: true });
+    Dialog.alert(
+      `No ${access} access`,
+      `Allow ${access} access for T3 Code in Android settings to use this pill.`,
+    );
+  };
   const chosenProject = useProject(
     voice.assistantProject
       ? {
@@ -144,6 +166,32 @@ export function SettingsVoiceRouteScreen() {
                 subtitle="The panel stays open until the agent replies and reads the reply."
                 value={voice.assistantSpeakFirstReply}
                 onValueChange={(value) => updateVoice({ assistantSpeakFirstReply: value })}
+              />
+            </SettingsSection>
+            <SettingsSection
+              title="Context pills"
+              footer="These pills wait for a tap before they go along. Revoke the access in Android settings."
+            >
+              <SettingsSwitchRow
+                label="Recent photo"
+                subtitle="Offers the newest photo from the last 15 minutes. Asks for photo access."
+                value={voice.assistantRecentPhoto}
+                onValueChange={(value) =>
+                  void setWithPermission("assistantRecentPhoto", value, PHOTO_PERMISSION, "photo")
+                }
+              />
+              <SettingsSwitchRow
+                label="Location"
+                subtitle="Offers the place the phone last knew. Asks for approximate location."
+                value={voice.assistantLocation}
+                onValueChange={(value) =>
+                  void setWithPermission(
+                    "assistantLocation",
+                    value,
+                    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+                    "location",
+                  )
+                }
               />
             </SettingsSection>
             <SettingsSection title="New threads">

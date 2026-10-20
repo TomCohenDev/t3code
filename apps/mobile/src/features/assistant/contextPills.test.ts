@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   contextPillLabel,
+  locationText,
   inlineContextText,
   joinMessageText,
   screenTextDocument,
@@ -21,12 +22,22 @@ describe("context pills", () => {
   it("quotes the selection and the clipboard, and skips empty context", () => {
     expect(
       inlineContextText({
+        sharedText: null,
         selection: "line one\nline two",
         link: "https://x.dev",
+        location: null,
         clipboard: "  ",
       }),
     ).toBe("Link: https://x.dev\n\nSelected text:\n> line one\n> line two");
-    expect(inlineContextText({ selection: null, link: null, clipboard: null })).toBe("");
+    expect(
+      inlineContextText({
+        sharedText: null,
+        selection: null,
+        link: null,
+        location: null,
+        clipboard: null,
+      }),
+    ).toBe("");
   });
 
   it("joins the message with its context, and heads the screen text with its app", () => {
@@ -38,5 +49,19 @@ describe("context pills", () => {
       "App: com.android.chrome\n\nbody",
     );
     expect(screenTextDocument(null, "body")).toBe("body");
+  });
+
+  it("writes the location with its place, or the coordinates alone", () => {
+    const text = locationText({
+      latitude: 32.085301,
+      longitude: 34.781769,
+      accuracyMeters: 1203.4,
+      place: "Tel Aviv, Israel",
+    });
+    expect(text).toBe("Tel Aviv, Israel (32.08530, 34.78177, ±1203 m)");
+    expect(contextPillLabel("location", text)).toBe("Tel Aviv, Israel");
+    expect(locationText({ latitude: 1, longitude: 2, accuracyMeters: 30, place: null })).toBe(
+      "1.00000, 2.00000, ±30 m",
+    );
   });
 });

@@ -1,5 +1,5 @@
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, PanResponder, Pressable, View, type GestureResponderEvent } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
@@ -68,6 +68,10 @@ const CONTEXT_PILL_ICONS = {
   selection: "text.alignleft",
   link: "link",
   clipboard: "doc.on.doc",
+  sharedText: "text.alignleft",
+  sharedImage: "photo",
+  recentPhoto: "photo",
+  location: "mappin",
 } as const satisfies Record<ContextPillKind, AppSymbolName>;
 
 function EditorHeader(props: {
@@ -148,8 +152,9 @@ function strokePath(points: ReadonlyArray<number>): string {
   return path;
 }
 
-/** Draws on the screenshot. Done paints the strokes onto a copy of the image. */
-export function ScreenshotEditor(props: {
+/** Draws on an image pill. Done paints the strokes onto a copy of the image. */
+export function ImageContextEditor(props: {
+  readonly title: string;
   readonly uri: string;
   readonly imageWidth: number;
   readonly imageHeight: number;
@@ -162,9 +167,31 @@ export function ScreenshotEditor(props: {
   const [strokes, setStrokes] = useState<ReadonlyArray<ReadonlyArray<number>>>([]);
   const [current, setCurrent] = useState<ReadonlyArray<number> | null>(null);
   const [availableWidth, setAvailableWidth] = useState(0);
-  // A phone screenshot is about 9:20 until the real size arrives.
-  const aspect =
-    props.imageWidth > 0 && props.imageHeight > 0 ? props.imageWidth / props.imageHeight : 9 / 20;
+  const [measured, setMeasured] = useState<{
+    readonly width: number;
+    readonly height: number;
+  } | null>(null);
+  const knownSize = props.imageWidth > 0 && props.imageHeight > 0;
+  const uri = props.uri;
+  // Only the screenshot arrives with its size; a photo is measured once.
+  useEffect(() => {
+    if (knownSize) return;
+    let cancelled = false;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (!cancelled) setMeasured({ width, height });
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [knownSize, uri]);
+  const size = knownSize
+    ? { width: props.imageWidth, height: props.imageHeight }
+    : (measured ?? { width: 9, height: 20 });
+  const aspect = size.width / size.height;
   const width = Math.min(availableWidth, EDITOR_MAX_HEIGHT * aspect);
   const height = width / aspect;
   const [responder] = useState(() => {
@@ -200,7 +227,7 @@ export function ScreenshotEditor(props: {
   return (
     <View className="gap-2">
       <EditorHeader
-        title="Screenshot"
+        title={props.title}
         subtitle={props.annotated ? "Marked up. Draw to add more." : "Draw to mark it up."}
       >
         <TextButton

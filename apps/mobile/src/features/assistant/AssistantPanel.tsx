@@ -33,6 +33,7 @@ import {
   assistantNative,
   type AnnotationStroke,
   type AssistantCapture,
+  type RecentPhoto,
 } from "../../native/assistant";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { useNavigationThreadShells, useProjects, useServerConfigs } from "../../state/entities";
@@ -69,7 +70,7 @@ import {
   ContextPills,
   MachineButton,
   MachineList,
-  ScreenshotEditor,
+  ImageContextEditor,
   TextContextEditor,
   type ContextPillView,
   type PanelMachine,
@@ -78,19 +79,35 @@ import {
   CONTEXT_PILL_ORDER,
   contextPillLabel,
   inlineContextText,
-  isTextContextPill,
+  isImageContextPill,
+  locationText,
   joinMessageText,
   screenTextDocument,
   type ContextPillKind,
+  type ImageContextPillKind,
   type TextContextPillKind,
 } from "./contextPills";
 
-const CONTEXT_PILL_TITLES: Record<TextContextPillKind, string> = {
-  screenText: "Screen text",
+const CONTEXT_PILL_TITLES: Record<ContextPillKind, string> = {
+  sharedText: "Shared text",
+  sharedImage: "Shared image",
   selection: "Selected text",
+  screenshot: "Screenshot",
+  screenText: "Screen text",
   link: "Link",
+  recentPhoto: "Recent photo",
+  location: "Location",
   clipboard: "Clipboard",
 };
+
+const IMAGE_CONTEXT_PILLS: ReadonlyArray<ImageContextPillKind> = [
+  "sharedImage",
+  "screenshot",
+  "recentPhoto",
+];
+
+/** A photo older than this is not "recent": the panel offers only what was likely just taken. */
+const RECENT_PHOTO_MAX_AGE_SECONDS = 15 * 60;
 
 /**
  * Fork: the Android assistant panel. `AssistantActivity` renders this root over the app that
@@ -179,7 +196,7 @@ function keepUnsentDraft(draft: Omit<UnsentDraft, "savedAt"> | null): void {
 /** Turns the panel input into the message text and the draft attachments. */
 async function prepareAssistantMessage(input: {
   readonly text: string;
-  readonly screenshotUri: string | null;
+  readonly imageUris: ReadonlyArray<string>;
   readonly screenText: string | null;
   /** Undefined when the server takes no file uploads. */
   readonly maxUploadBytes: number | undefined;
@@ -188,14 +205,17 @@ async function prepareAssistantMessage(input: {
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
 }> {
   await waitForComposerDraftsLoaded();
-  const attachments: DraftComposerAttachment[] = input.screenshotUri
-    ? [
-        ...(await convertPastedImagesToAttachments({
-          uris: [input.screenshotUri],
-          existingCount: 0,
-        })),
-      ]
-    : [];
+  // A gallery photo is a content URI; attachments read plain files.
+  const native = assistantNative;
+  const files = await Promise.all(
+    input.imageUris.map((uri) =>
+      uri.startsWith("content:") && native ? native.copyToCache(uri) : Promise.resolve(uri),
+    ),
+  );
+  const attachments: DraftComposerAttachment[] =
+    files.length > 0
+      ? [...(await convertPastedImagesToAttachments({ uris: files, existingCount: 0 }))]
+      : [];
   const text = input.text.trim();
   if (!input.screenText) return { text, attachments };
   if (input.maxUploadBytes === undefined) {
@@ -237,7 +257,11 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     {},
   );
   const [editedText, setEditedText] = useState<Partial<Record<TextContextPillKind, string>>>({});
-  const [annotatedScreenshotUri, setAnnotatedScreenshotUri] = useState<string | null>(null);
+  const [annotatedImages, setAnnotatedImages] = useState<
+    Partial<Record<ImageContextPillKind, string>>
+  >({});
+  const [recentPhoto, setRecentPhoto] = useState<RecentPhoto | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<{
     readonly available: boolean;
     readonly text: string | null;
@@ -387,19 +411,59 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     const value = AsyncResult.isSuccess(read) ? read.value : "";
     setClipboard({ available: value.length > 0, text: value });
   };
+  // Opt-in pills from Settings > Voice. Each asks the phone only when it is turned on.
+  const wantsRecentPhoto = voice.assistantRecentPhoto;
+  const wantsLocation = voice.assistantLocation;
+  useEffect(() => {
+    const native = assistantNative;
+    if (!wantsRecentPhoto || !native) return;
+    let cancelled = false;
+    void native.recentPhoto(RECENT_PHOTO_MAX_AGE_SECONDS).then(
+      (photo) => {
+        if (!cancelled) setRecentPhoto(photo);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsRecentPhoto]);
+  useEffect(() => {
+    const native = assistantNative;
+    if (!wantsLocation || !native) return;
+    let cancelled = false;
+    void native.lastLocation().then(
+      (last) => {
+        if (!cancelled) setLocation(last ? locationText(last) : null);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsLocation]);
   const originalContext: Record<ContextPillKind, string | null> = {
+    sharedText: capture?.sharedText ?? null,
+    sharedImage: capture?.sharedImageUri ?? null,
+    selection: capture?.selectedText ?? null,
     screenshot: capture?.screenshotUri ?? null,
     screenText: capture?.screenText ?? null,
-    selection: capture?.selectedText ?? null,
     link: capture?.webUri ?? null,
+    recentPhoto: wantsRecentPhoto ? (recentPhoto?.uri ?? null) : null,
+    location: wantsLocation ? location : null,
     clipboard: clipboard.available ? (clipboard.text ?? "") : null,
   };
   const defaultAttached: Record<ContextPillKind, boolean> = {
-    screenshot: voice.assistantAttachScreenshot,
-    screenText: voice.assistantAttachScreenText,
-    // The user picked these on purpose, so they go along unless left out.
+    // The user handed these over on purpose, so they go along unless left out.
+    sharedText: true,
+    sharedImage: true,
     selection: true,
     link: true,
+    screenshot: voice.assistantAttachScreenshot,
+    screenText: voice.assistantAttachScreenText,
+    // Private, so they wait for a tap.
+    recentPhoto: false,
+    location: false,
     clipboard: false,
   };
   const isAttached = (kind: ContextPillKind) => attachedChoice[kind] ?? defaultAttached[kind];
@@ -407,6 +471,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     editedText[kind] ?? originalContext[kind] ?? "";
   const attachedText = (kind: TextContextPillKind) =>
     isAttached(kind) && originalContext[kind] !== null ? contextValue(kind) : null;
+  const imageUri = (kind: ImageContextPillKind) => annotatedImages[kind] ?? originalContext[kind];
   const togglePill = async (kind: ContextPillKind) => {
     const next = !isAttached(kind);
     if (kind === "clipboard" && next && clipboard.text === null) await readClipboard();
@@ -420,35 +485,36 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     (kind) => originalContext[kind] !== null,
   ).map((kind) => ({
     kind,
-    label:
-      kind === "screenshot" || kind === "clipboard"
+    label: isImageContextPill(kind)
+      ? contextPillLabel(kind, "")
+      : kind === "clipboard"
         ? contextPillLabel(kind, "")
         : contextPillLabel(kind, contextValue(kind)),
     attached: isAttached(kind),
-    thumbnailUri:
-      kind === "screenshot" ? (annotatedScreenshotUri ?? originalContext.screenshot) : null,
+    thumbnailUri: isImageContextPill(kind) ? imageUri(kind) : null,
   }));
-  const screenshotUri = isAttached("screenshot")
-    ? (annotatedScreenshotUri ?? originalContext.screenshot)
-    : null;
+  const attachedImageUris = IMAGE_CONTEXT_PILLS.filter((kind) => isAttached(kind))
+    .map(imageUri)
+    .filter((uri) => uri !== null && uri !== undefined);
   const attachedScreenText = attachedText("screenText");
   const screenText = attachedScreenText?.trim()
     ? screenTextDocument(capture?.sourcePackage ?? null, attachedScreenText)
     : null;
   const inlineContext = inlineContextText({
+    sharedText: attachedText("sharedText"),
     selection: attachedText("selection"),
     link: attachedText("link"),
+    location: attachedText("location"),
     clipboard: attachedText("clipboard"),
   });
-  const annotate = async (strokes: ReadonlyArray<AnnotationStroke>) => {
-    const base = annotatedScreenshotUri ?? originalContext.screenshot;
+  const annotate = async (kind: ImageContextPillKind, strokes: ReadonlyArray<AnnotationStroke>) => {
+    const base = imageUri(kind);
     const native = assistantNative;
     if (!base || !native) return;
     const result = await settlePromise(() => native.annotateImage(base, strokes));
-    if (AsyncResult.isFailure(result))
-      return fail(result, "The screenshot could not be marked up.");
-    setAnnotatedScreenshotUri(result.value);
-    setAttachedChoice((current) => ({ ...current, screenshot: true }));
+    if (AsyncResult.isFailure(result)) return fail(result, "The image could not be marked up.");
+    setAnnotatedImages((current) => ({ ...current, [kind]: result.value }));
+    setAttachedChoice((current) => ({ ...current, [kind]: true }));
     setView("compose");
   };
   const targetEnvironmentId = targetThread?.environmentId ?? selectedProject?.environmentId;
@@ -471,7 +537,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const ready = !busy && (targetThread !== null || (selectedProject !== null && draftKey !== null));
   const hasContent = (messageText: string) =>
     joinMessageText(messageText, inlineContext).length > 0 ||
-    screenshotUri !== null ||
+    attachedImageUris.length > 0 ||
     screenText !== null;
 
   const fail = (result: Parameters<typeof squashAtomCommandFailure>[0], fallback: string) => {
@@ -486,7 +552,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     const prepared = await settlePromise(() =>
       prepareAssistantMessage({
         text: joinMessageText(messageText, inlineContext),
-        screenshotUri,
+        imageUris: attachedImageUris,
         screenText,
         maxUploadBytes:
           capabilities?.attachmentUploads === true
@@ -675,17 +741,24 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
                 setView("compose");
               }}
             />
-          ) : view === "screenshot" && originalContext.screenshot ? (
-            <ScreenshotEditor
-              uri={annotatedScreenshotUri ?? originalContext.screenshot}
-              imageWidth={capture?.screenshotWidth ?? 0}
-              imageHeight={capture?.screenshotHeight ?? 0}
-              annotated={annotatedScreenshotUri !== null}
-              onSave={(strokes) => void annotate(strokes)}
-              onReset={() => setAnnotatedScreenshotUri(null)}
+          ) : view !== "compose" && isImageContextPill(view) ? (
+            <ImageContextEditor
+              title={CONTEXT_PILL_TITLES[view]}
+              uri={imageUri(view) ?? ""}
+              imageWidth={view === "screenshot" ? (capture?.screenshotWidth ?? 0) : 0}
+              imageHeight={view === "screenshot" ? (capture?.screenshotHeight ?? 0) : 0}
+              annotated={annotatedImages[view] !== undefined}
+              onSave={(strokes) => void annotate(view, strokes)}
+              onReset={() =>
+                setAnnotatedImages((current) => {
+                  const next = { ...current };
+                  delete next[view];
+                  return next;
+                })
+              }
               onDone={() => setView("compose")}
             />
-          ) : view !== "compose" && view !== "screenshot" && isTextContextPill(view) ? (
+          ) : view !== "compose" ? (
             <TextContextEditor
               title={CONTEXT_PILL_TITLES[view]}
               subtitle={view === "screenText" ? (capture?.sourcePackage ?? null) : null}

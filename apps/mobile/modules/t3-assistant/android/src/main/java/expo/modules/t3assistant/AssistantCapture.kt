@@ -1,10 +1,13 @@
 package expo.modules.t3assistant
 
 import android.content.Context
+import android.net.Uri
+import android.util.Log
 import android.os.Handler
 import android.os.Looper
 import java.io.File
 import java.lang.ref.WeakReference
+import kotlin.concurrent.thread
 
 /**
  * The screen context of the latest assistant press. The session writes it while the system
@@ -21,6 +24,9 @@ object AssistantCapture {
     val screenshotUri: String?,
     val screenshotWidth: Int,
     val screenshotHeight: Int,
+    /** Text and an image that another app shared to "Ask T3 Code". */
+    val sharedText: String? = null,
+    val sharedImageUri: String? = null,
   )
 
   private val main = Handler(Looper.getMainLooper())
@@ -37,6 +43,28 @@ object AssistantCapture {
     session = WeakReference(owner)
     screenshotDirectory(context).listFiles()?.forEach { it.delete() }
     publish(Snapshot(System.currentTimeMillis(), null, null, null, null, null, 0, 0))
+  }
+
+  /**
+   * A share from another app. The image is copied while the share grant lasts.
+   * Limit: only the first image of a multi-image share. Revisit if users share albums.
+   */
+  fun beginShare(context: Context, text: String?, image: Uri?) {
+    screenshotDirectory(context).listFiles()?.forEach { it.delete() }
+    publish(Snapshot(System.currentTimeMillis(), null, null, null, null, null, 0, 0, text, null))
+    if (image == null) return
+    val appContext = context.applicationContext
+    thread(name = "t3-assistant-share") {
+      try {
+        val file = File(screenshotDirectory(appContext), "shared-${System.currentTimeMillis()}")
+        appContext.contentResolver.openInputStream(image)?.use { input ->
+          file.outputStream().use { input.copyTo(it) }
+        }
+        if (file.length() > 0) update { it.copy(sharedImageUri = Uri.fromFile(file).toString()) }
+      } catch (error: Exception) {
+        Log.w("T3Assistant", "Could not copy the shared image", error)
+      }
+    }
   }
 
   fun addScreen(
