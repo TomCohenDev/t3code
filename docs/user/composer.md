@@ -205,15 +205,19 @@ button in any app to start a thread about what is on the screen.
    **Use screenshot** on the same page.
 3. Press the assistant button, or hold the home button.
 
-The panel opens over the current app. Type or tap the microphone, then tap
-**Start thread**. To add the message to an existing thread or to pick another
-project, tap the title of the panel and search or pick from the list. The screenshot and the screen text attach to the message; turn
-off either one for a single message with its switch. Password fields are never
-included.
+The panel opens over the current app. Type or tap the microphone, then tap the
+send button. To add the message to an existing thread or to pick another
+project, tap the title of the panel and search or pick from the list. With more
+than one machine, tap the machine icon to pick the machine first.
+
+The screenshot and the screen text attach to the message. Tap their chips to see
+what was picked up, and turn off either one for a single message. Password fields
+are never included.
 
 **Settings → Voice** sets what the panel does: send to a new thread or to the
-thread you opened last, open with the keyboard or with the speech dialog, start the thread right after you speak, open the new thread, or
-stay open and read the first reply aloud. It also sets the project of new threads.
+thread you opened last, open with the keyboard or with the speech dialog, start
+the thread right after you speak, open the new thread, or stay open and read the
+first reply aloud. It also sets the project of new threads.
 T3 Code replaces your current assistant while it is selected. To go back, pick the
 other assistant on the same Android page.
 

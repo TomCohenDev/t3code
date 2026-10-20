@@ -1,19 +1,27 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { CommandId, MessageId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  CommandId,
+  MessageId,
+  resolveEnvironmentMachineKind,
+  type EnvironmentId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { BackHandler, Image, Pressable, View } from "react-native";
-import { KeyboardAvoidingView, KeyboardProvider } from "react-native-keyboard-controller";
+import { BackHandler, Pressable, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  KeyboardProvider,
+  useKeyboardState,
+} from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
-import { Button } from "../../components/ui/Button";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { IconButton } from "../../components/ui/IconButton";
-import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import {
   convertPastedImagesToAttachments,
@@ -52,6 +60,14 @@ import {
 import { resolveAssistantProject } from "./assistantProject";
 import { lastOpenedThread } from "./assistantTargets";
 import { AssistantTargetPicker, type AssistantTarget } from "./AssistantTargetPicker";
+import {
+  CaptureChips,
+  CapturePreview,
+  MachineButton,
+  MachineList,
+  type CaptureKind,
+  type PanelMachine,
+} from "./AssistantPanelParts";
 
 /**
  * Fork: the Android assistant panel. `AssistantActivity` renders this root over the app that
@@ -172,7 +188,10 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const threads = useNavigationThreadShells();
   const [text, setText] = useState("");
   const [pickedTarget, setPickedTarget] = useState<AssistantTarget | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickedEnvironmentId, setPickedEnvironmentId] = useState<EnvironmentId | null>(null);
+  // The panel body shows one thing at a time, so it never grows past the composer.
+  const [view, setView] = useState<"compose" | "target" | "machine" | CaptureKind>("compose");
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   // Null follows the setting; a tap on the switch overrides it for this press.
   const [attachScreenshotChoice, setAttachScreenshot] = useState<boolean | null>(null);
   const [attachScreenTextChoice, setAttachScreenText] = useState<boolean | null>(null);
@@ -183,9 +202,18 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   const attachScreenshot = attachScreenshotChoice ?? voice.assistantAttachScreenshot;
   const attachScreenText = attachScreenTextChoice ?? voice.assistantAttachScreenText;
 
+  // A picked machine limits the defaults and the picker to its threads and projects.
+  const machineProjects =
+    pickedEnvironmentId === null
+      ? projects
+      : projects.filter((project) => project.environmentId === pickedEnvironmentId);
+  const machineThreads =
+    pickedEnvironmentId === null
+      ? threads
+      : threads.filter((thread) => thread.environmentId === pickedEnvironmentId);
   const defaultProject = AsyncResult.isSuccess(preferences)
     ? resolveAssistantProject({
-        projects,
+        projects: machineProjects,
         chosen: voice.assistantProject,
         preferences: preferences.value,
         scratchWorkspaceRoot: (environmentId) =>
@@ -194,7 +222,8 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     : null;
   // The picked target wins. A picked thread is looked up again on each render, so a rename shows
   // and an archived or deleted thread falls back to a new thread.
-  const defaultThread = voice.assistantTarget === "lastThread" ? lastOpenedThread(threads) : null;
+  const defaultThread =
+    voice.assistantTarget === "lastThread" ? lastOpenedThread(machineThreads) : null;
   const targetThread =
     pickedTarget === null
       ? defaultThread
@@ -257,7 +286,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     assistantNative?.close();
   };
   const onBackPress = useEffectEvent(() => {
-    if (pickerOpen) setPickerOpen(false);
+    if (view !== "compose") setView("compose");
     else close();
     return true;
   });
@@ -295,6 +324,15 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     connectedEnvironments.find((candidate) => candidate.environmentId === targetEnvironmentId)
       ?.connectionState === "connected";
   const busy = phase.type !== "editing" && phase.type !== "failed";
+  const machines: ReadonlyArray<PanelMachine> = connectedEnvironments
+    .filter((environment) => environment.isEnabled)
+    .map((environment) => ({
+      environmentId: environment.environmentId,
+      label: environment.environmentLabel,
+      kind: resolveEnvironmentMachineKind(serverConfigs.get(environment.environmentId) ?? null),
+      connected: environment.connectionState === "connected",
+    }));
+  const targetMachine = machines.find((machine) => machine.environmentId === targetEnvironmentId);
   const ready = !busy && (targetThread !== null || (selectedProject !== null && draftKey !== null));
   const hasContent = (messageText: string) =>
     messageText.trim().length > 0 || screenshotUri !== null || screenText !== null;
@@ -398,11 +436,15 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
     startWithVoice();
   }, [preferencesLoaded]);
 
+  // Above the keyboard the system inset is gone, so the row sits right on its edge.
+  const bottomPadding = keyboardVisible ? 8 : insets.bottom + 12;
   const targetLabel = targetThread
     ? targetThread.title.trim() || "Untitled thread"
     : project
       ? `New thread · ${project.title}`
-      : "Loading projects…";
+      : pickedEnvironmentId !== null && machineProjects.length === 0
+        ? "No projects on this machine"
+        : "Loading projects…";
   const status = (() => {
     if (afterDelivery === "wait") return "Waiting for the reply…";
     if (afterDelivery === "read") return "Reading the reply aloud";
@@ -424,23 +466,33 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
       <KeyboardAvoidingView behavior="padding">
         <View
           className="gap-3 rounded-t-3xl bg-sheet px-4 pt-4"
-          style={{ paddingBottom: insets.bottom + 12 }}
+          style={{ paddingBottom: bottomPadding }}
         >
           <View className="flex-row items-center justify-between gap-2">
+            {machines.length > 1 && targetMachine ? (
+              <MachineButton
+                machine={targetMachine}
+                expanded={view === "machine"}
+                disabled={busy}
+                onPress={() =>
+                  setView((current) => (current === "machine" ? "compose" : "machine"))
+                }
+              />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${targetLabel}. Change where to send`}
-              accessibilityState={{ expanded: pickerOpen, disabled: busy }}
+              accessibilityState={{ expanded: view === "target", disabled: busy }}
               className="flex-1"
               disabled={busy}
-              onPress={() => setPickerOpen((open) => !open)}
+              onPress={() => setView((current) => (current === "target" ? "compose" : "target"))}
             >
               <View className="flex-row items-center gap-1">
                 <Text textRole="body" className="shrink font-medium" numberOfLines={1}>
                   {targetLabel}
                 </Text>
                 <SymbolView
-                  name={pickerOpen ? "chevron.up" : "chevron.down"}
+                  name={view === "target" ? "chevron.up" : "chevron.down"}
                   size={14}
                   tintColorClassName="accent-foreground-muted"
                 />
@@ -459,63 +511,51 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
             <IconButton accessibilityLabel="Close" icon="xmark" onPress={close} />
           </View>
 
-          {pickerOpen ? (
+          {view === "machine" ? (
+            <MachineList
+              machines={machines}
+              selected={targetEnvironmentId}
+              onPick={(environmentId) => {
+                setPickedEnvironmentId(environmentId);
+                // A target on another machine no longer fits; the machine's default takes over.
+                if (environmentId !== targetEnvironmentId) setPickedTarget(null);
+                setView("compose");
+              }}
+            />
+          ) : view === "target" ? (
             <AssistantTargetPicker
               target={target}
-              threads={threads}
-              projects={projects}
+              threads={machineThreads}
+              projects={machineProjects}
               environmentLabel={environmentLabel}
               onPick={(picked) => {
                 setPickedTarget(picked);
-                setPickerOpen(false);
+                setView("compose");
               }}
+            />
+          ) : (view === "screenshot" || view === "screenText") && capture ? (
+            <CapturePreview
+              kind={view}
+              capture={capture}
+              attached={view === "screenshot" ? attachScreenshot : attachScreenText}
+              onAttachedChange={view === "screenshot" ? setAttachScreenshot : setAttachScreenText}
+              onDone={() => setView("compose")}
             />
           ) : (
             <>
-              {capture?.screenshotUri ? (
-                <View className="flex-row items-center gap-3">
-                  <Image
-                    source={{ uri: capture.screenshotUri }}
-                    className="h-24 w-14 rounded-lg"
-                    resizeMode="cover"
-                  />
-                  <Text className="flex-1 text-sm">Attach screenshot</Text>
-                  <ThemedSwitch
-                    accessibilityLabel="Attach screenshot"
-                    disabled={busy}
-                    value={attachScreenshot}
-                    onValueChange={setAttachScreenshot}
-                  />
-                </View>
+              {capture ? (
+                <CaptureChips
+                  capture={capture}
+                  attachScreenshot={attachScreenshot}
+                  attachScreenText={attachScreenText}
+                  onOpen={setView}
+                />
               ) : null}
-              {capture?.screenText ? (
-                <View className="flex-row items-center gap-3">
-                  <Text className="flex-1 text-sm" numberOfLines={1}>
-                    Attach screen text
-                    {capture.sourcePackage ? ` from ${capture.sourcePackage}` : ""}
-                  </Text>
-                  <ThemedSwitch
-                    accessibilityLabel="Attach screen text"
-                    disabled={busy}
-                    value={attachScreenText}
-                    onValueChange={setAttachScreenText}
-                  />
-                </View>
-              ) : null}
-
-              <AppTextInput
-                autoFocus={voice.assistantInput === "text"}
-                editable={!busy}
-                multiline
-                className="max-h-48"
-                placeholder="What should the agent do?"
-                value={text}
-                onChangeText={setText}
-              />
               {phase.type === "failed" ? (
                 <Text className="text-sm text-danger-foreground">{phase.message}</Text>
               ) : null}
-              <View className="flex-row items-center justify-end gap-2">
+              {/* The buttons sit beside the text, so they stay on the keyboard edge. */}
+              <View className="flex-row items-end gap-2">
                 <IconButton
                   accessibilityLabel="Speak"
                   icon="mic"
@@ -523,12 +563,22 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
                   disabled={busy}
                   onPress={speak}
                 />
-                <Button
-                  label={targetThread ? "Send" : "Start thread"}
+                <View className="flex-1">
+                  <AppTextInput
+                    autoFocus={voice.assistantInput === "text"}
+                    editable={!busy}
+                    multiline
+                    className="max-h-40"
+                    placeholder={targetThread ? "Message" : "What should the agent do?"}
+                    value={text}
+                    onChangeText={setText}
+                  />
+                </View>
+                <IconButton
+                  accessibilityLabel={targetThread ? "Send" : "Start thread"}
                   icon="arrow.up"
-                  tone="primary"
+                  variant="primary"
                   disabled={!ready || !hasContent(text)}
-                  loading={busy}
                   onPress={() => void send(text)}
                 />
               </View>
