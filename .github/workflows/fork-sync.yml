@@ -1,13 +1,13 @@
 name: Fork Sync
 
-# Merges pingdotgg/t3code main into fork main once a day. Main only moves
+# Merges pingdotgg/t3code main into fork main every 3 hours. Main only moves
 # forward: no rebase and no force-push, so checkouts and tags stay valid.
 # A merge conflict (except one only in README.md), a failed typecheck or a failed fork test stops the sync,
 # reports it in an issue and calls the repair agent. See docs/fork/operations.md "Fork Sync".
 
 on:
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 */3 * * *"
   workflow_dispatch:
     inputs:
       notify_agent:
