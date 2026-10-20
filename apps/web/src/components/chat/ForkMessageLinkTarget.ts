@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { LegendListRef } from "@legendapp/list/react";
 import type {
   EnvironmentId,
@@ -21,7 +22,6 @@ import { randomUUID } from "../../lib/utils";
 import type { TimelineEntry } from "../../session-logic";
 import { useThreadStatus } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
-import { isThreadRoutePathname } from "../../threadRoutes";
 import { toastManager } from "../ui/toast";
 import type { MessagesTimelineHistoryControls } from "./MessagesTimeline";
 import {
@@ -51,6 +51,8 @@ export interface ForkMessageLinkRequest {
   /** As written in the link. Match rows with `isLinkedMessage`. */
   readonly messageId: MessageId;
   readonly key: string;
+  /** `scopedThreadKey` of the thread. The timeline still shows the last thread for a moment. */
+  readonly threadKey: string;
   /** The thread caught up with the server, so a message that it lacks is older history. */
   readonly synced: boolean;
   /** Drops the message from the address, so a remount does not scroll there again. */
@@ -92,8 +94,23 @@ export function forkMessageLinkNavigation(messageId: MessageId | null | undefine
   };
 }
 
+/** `isThreadRoutePathname`, for the percent-encoded path of an id with `:` too. */
+function isRoutePathOf(pathname: string, threadRef: ScopedThreadRef): boolean {
+  const [, environmentId, threadId] = pathname.split("/");
+  try {
+    return (
+      environmentId !== undefined &&
+      threadId !== undefined &&
+      decodeURIComponent(environmentId) === threadRef.environmentId &&
+      decodeURIComponent(threadId) === threadRef.threadId
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Fork: the message that the current location names for the timeline of `threadRef`, while the
+ * Fork: the message that the location names in the route thread `threadRef`, while the
  * `messageLinks` setting of its environment is on. ChatView reads it and hands it to the timeline,
  * which also renders outside a router.
  */
@@ -104,16 +121,18 @@ export function useForkMessageLinkRequest(
   const navigate = useNavigate();
   const router = useRouter();
   // Primitives only: an object here is new on every router store update.
-  const pathname = useLocation({ select: (location) => location.pathname });
   const hash = useLocation({ select: (location) => location.hash });
+  // ChatView, and the route params, still name the last thread for a moment after the location
+  // names the next one.
+  const pathname = useLocation({ select: (location) => location.pathname });
   const searchStr = useLocation({ select: (location) => location.searchStr });
   const key = useLocation({
     select: (location) => location.state.forkMessageLinkActivation ?? location.state.__TSR_key,
   });
-  const routed = enabled && threadRef !== null && isThreadRoutePathname(pathname, threadRef);
-  const messageId = routed ? messageLinkFromLocation(hash, searchStr) : null;
+  const routed = threadRef !== null && isRoutePathOf(pathname, threadRef);
+  const messageId = enabled && routed ? messageLinkFromLocation(hash, searchStr) : null;
   const status = useThreadStatus(messageId === null ? null : threadRef);
-  if (messageId === null) return null;
+  if (messageId === null || threadRef === null) return null;
   const clear = () => {
     const location = router.state.location;
     const search = new URLSearchParams(location.searchStr);
@@ -125,7 +144,13 @@ export function useForkMessageLinkRequest(
       resetScroll: false,
     });
   };
-  return { messageId, key: key ?? `${hash}${searchStr}`, synced: status === "live", clear };
+  return {
+    messageId,
+    key: key ?? `${hash}${searchStr}`,
+    threadKey: scopedThreadKey(threadRef),
+    synced: status === "live",
+    clear,
+  };
 }
 
 function rowMessageId(row: MessagesTimelineRow): string | null {
@@ -137,7 +162,8 @@ function rowMessageId(row: MessagesTimelineRow): string | null {
  * it at any step. A message that the thread does not have shows the note "Message not found".
  */
 export function useForkMessageLinkTarget({
-  request,
+  request: requestForAnyThread,
+  threadKey,
   rows,
   listRef,
   listReady,
@@ -150,6 +176,8 @@ export function useForkMessageLinkTarget({
   onManualNavigation,
 }: {
   request: ForkMessageLinkRequest | null;
+  /** The thread that the timeline shows now. */
+  threadKey: string;
   rows: ReadonlyArray<MessagesTimelineRow>;
   listRef: RefObject<LegendListRef | null>;
   listReady: boolean;
@@ -161,6 +189,7 @@ export function useForkMessageLinkTarget({
   expandAttempt: (attemptId: RunAttemptId) => void;
   onManualNavigation: () => void;
 }) {
+  const request = requestForAnyThread?.threadKey === threadKey ? requestForAnyThread : null;
   const [finishedKey, setFinishedKey] = useState<string | null>(null);
   const progressRef = useRef<{
     key: string;

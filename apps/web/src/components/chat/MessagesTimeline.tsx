@@ -1026,6 +1026,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [findListReady, setFindListReady] = useState(false);
   const forkMessageLinkTarget = useForkMessageLinkTarget({
     request: forkMessageLink,
+    threadKey: routeThreadKey,
     rows,
     listRef,
     listReady: findListReady,
