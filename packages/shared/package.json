@@ -283,6 +283,10 @@
       "types": "./src/threadAddress.ts",
       "import": "./src/threadAddress.ts"
     },
+    "./threadMessageLinks": {
+      "types": "./src/threadMessageLinks.ts",
+      "import": "./src/threadMessageLinks.ts"
+    },
     "./threadMarkers": {
       "types": "./src/threadMarkers.ts",
       "import": "./src/threadMarkers.ts"

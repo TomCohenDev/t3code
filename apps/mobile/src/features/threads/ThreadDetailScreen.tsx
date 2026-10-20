@@ -144,6 +144,7 @@ import {
 } from "./ThreadComposer";
 import { ComposerPopoverHost } from "./ComposerPopoverHost";
 import { ThreadFeed, type ThreadFeedHistoryControls } from "./ThreadFeed";
+import type { ForkMessageLinkRequest } from "./forkMessageLinks";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
@@ -193,6 +194,8 @@ export interface ThreadDetailScreenProps {
   readonly connectionStateLabel: EnvironmentConnectionPhase;
   readonly threadSyncStatus?: EnvironmentThreadStatus;
   readonly historyControls?: ThreadFeedHistoryControls;
+  /** Fork: a message link's target. See forkMessageLinks. */
+  readonly forkMessageLink?: ForkMessageLinkRequest | undefined;
   readonly activeThreadBusy: boolean;
   readonly canStopThread: boolean;
   readonly queuedRunEdit: QueuedRunEdit | null;
@@ -1073,6 +1076,8 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
               }
               contentMaxWidth={contentMaxWidth}
               historyControls={props.historyControls}
+              forkMessageLink={props.forkMessageLink}
+              forkThreadSynced={props.threadSyncStatus === "live"}
               contentSideInsets={nativeMetrics?.safeArea}
               layoutVariant={layoutVariant}
               usesAutomaticContentInsets={props.usesAutomaticContentInsets}
