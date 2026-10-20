@@ -68,8 +68,10 @@ function acquire(paths) {
   };
 }
 
-function viteCache(configUrl) {
-  if (!enabled()) return {};
+// Keep this on cacheDir, not a config spread: vp statically reads task config during filtered installs.
+// Callers assert the optional value for exactOptionalPropertyTypes; Vite treats undefined as its default.
+function viteCacheDir(configUrl) {
+  if (!enabled()) return undefined;
   const { fileURLToPath } = require("node:url");
   const configDir = path.dirname(fileURLToPath(configUrl));
   let worktree = configDir;
@@ -88,7 +90,7 @@ function viteCache(configUrl) {
   });
   // Configs also load in tests and pack. A process lease covers those entry points and dev-server restarts.
   process.once("exit", release);
-  return { cacheDir: path.join(paths.folder, app) };
+  return path.join(paths.folder, app);
 }
 
 function androidBuildLink(worktree) {
@@ -259,7 +261,7 @@ module.exports = {
   enabled,
   hashPath,
   workspacePaths,
-  viteCache,
+  viteCacheDir,
   androidBuildLink,
   gradleLeaseScript,
   prune,
