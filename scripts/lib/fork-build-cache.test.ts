@@ -5,6 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { resolveConfig } from "vite-plus";
 import cache from "./fork-build-cache.cjs";
 
 let temp: string;
@@ -57,11 +58,18 @@ describe("central build cache", () => {
     expect(cache.hashPath(worktree)).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("leaves Vite unchanged when opt-in is absent", () => {
-    vi.stubEnv("T3_FORK_CENTRAL_BUILD_CACHE", "0");
-    expect(
-      cache.viteCache(NodeURL.pathToFileURL(NodePath.join(worktree, "vite.config.ts")).href),
-    ).toEqual({});
+  it.each([undefined, "0"])("leaves Vite defaults unchanged with opt-in %s", async (value) => {
+    vi.stubEnv("T3_FORK_CENTRAL_BUILD_CACHE", value);
+    const cacheDir = cache.viteCacheDir(
+      NodeURL.pathToFileURL(NodePath.join(worktree, "vite.config.ts")).href,
+    );
+    expect(cacheDir).toBeUndefined();
+    const defaults = await resolveConfig({ configFile: false, root: worktree }, "build");
+    const configured = await resolveConfig(
+      { configFile: false, root: worktree, cacheDir: cacheDir! },
+      "build",
+    );
+    expect(configured.cacheDir).toBe(defaults.cacheDir);
     expect(NodeFS.existsSync(NodePath.join(temp, "cache"))).toBe(false);
   });
 
@@ -71,14 +79,22 @@ describe("central build cache", () => {
       NodePath.join(worktree, "apps/mobile/vite.config.ts"),
     ).href;
     const helper = NodeURL.fileURLToPath(new URL("./fork-build-cache.cjs", import.meta.url));
-    NodeChildProcess.execFileSync(process.execPath, [
-      "-e",
-      `const cache = require(process.argv[1]); cache.viteCache(process.argv[2]); cache.viteCache(process.argv[3]);`,
-      helper,
-      config,
-      mobile,
-    ]);
+    const output = NodeChildProcess.execFileSync(
+      process.execPath,
+      [
+        "-e",
+        `const cache = require(process.argv[1]); console.log(cache.viteCacheDir(process.argv[2])); console.log(cache.viteCacheDir(process.argv[3]));`,
+        helper,
+        config,
+        mobile,
+      ],
+      { encoding: "utf8" },
+    );
     const paths = cache.workspacePaths(worktree, "vite");
+    expect(output.trim().split("\n")).toEqual([
+      NodePath.join(paths.folder, "root"),
+      NodePath.join(paths.folder, "apps-mobile"),
+    ]);
     expect(NodeFS.existsSync(NodePath.join(paths.folder, "root"))).toBe(true);
     expect(NodeFS.existsSync(NodePath.join(paths.folder, "apps-mobile"))).toBe(true);
     expect(NodeFS.readdirSync(NodePath.join(paths.folder, "locks"))).toEqual([]);

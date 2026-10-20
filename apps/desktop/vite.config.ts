@@ -1,5 +1,5 @@
 import "vite-plus/test/config";
-import { viteCache as forkViteCache } from "../../scripts/lib/fork-build-cache.cjs";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
 import { defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
@@ -20,7 +20,7 @@ const publicConfigDefine = {
 };
 
 export default defineConfig({
-  ...forkViteCache(import.meta.url),
+  cacheDir: forkViteCacheDir(import.meta.url)!,
   run: {
     tasks: {
       build: {
