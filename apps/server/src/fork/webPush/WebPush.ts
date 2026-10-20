@@ -21,7 +21,13 @@ import { type AgentAwarenessPhase, projectThreadAwarenessV2 } from "@t3tools/sha
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
-import { generateVapidJwk, sendPush, type VapidKey, vapidKey } from "@t3tools/shared/webPush";
+import {
+  generateVapidJwk,
+  pushThreadNotificationTag,
+  sendPush,
+  type VapidKey,
+  vapidKey,
+} from "@t3tools/shared/webPush";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -96,7 +102,7 @@ function messageFor(
   return {
     title,
     body: thread.title,
-    tag: `${environmentId}:${thread.id}`,
+    tag: pushThreadNotificationTag(environmentId, thread.id),
     url: `/${environmentId}/${thread.id}`,
   };
 }

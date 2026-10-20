@@ -249,7 +249,7 @@ function EnvironmentNotifications({
           title,
           {
             body: thread.title,
-            tag: `${environmentId}:${threadId}`,
+            tag: threadNotificationTag(environmentId, threadId),
             url: `/${environmentId}/${threadId}`,
           },
           () =>
