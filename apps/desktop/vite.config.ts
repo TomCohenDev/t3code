@@ -1,6 +1,6 @@
 import "vite-plus/test/config";
-import { viteCache as forkViteCache } from "../../scripts/lib/fork-build-cache.cjs";
-import { defineConfig } from "vite-plus";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
+import { defaultInclude, defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
@@ -20,7 +20,7 @@ const publicConfigDefine = {
 };
 
 export default defineConfig({
-  ...forkViteCache(import.meta.url),
+  cacheDir: forkViteCacheDir(import.meta.url)!,
   run: {
     tasks: {
       build: {
@@ -143,6 +143,7 @@ export default defineConfig({
     },
   ],
   test: {
+    include: [...defaultInclude, "../../native/kde-snap-shot/src/*.test.ts"],
     // The Windows lane runs workspace suites concurrently; filesystem-heavy
     // desktop integration tests can exceed Vitest's 5 second default there.
     testTimeout: 15_000,

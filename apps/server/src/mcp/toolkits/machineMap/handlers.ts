@@ -30,20 +30,22 @@ const toFailure = (error: { readonly message: string }) =>
   new OrchestratorMcpFailure({ code: "capability_denied", message: error.message });
 
 /** MM-806: the portal records the calling thread and its title with each change. */
-const callThroughPortal = (tool: MapToolName, input: unknown) =>
-  Effect.gen(function* () {
-    const scope = yield* refuseMachineCaller;
-    const threads = yield* ThreadManagementService.ThreadManagementService;
-    const machineMap = yield* MachineMap.MachineMap;
-    const threadId = scope.thread?.threadId ?? null;
-    const shell =
-      threadId === null
-        ? null
-        : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
-    return yield* machineMap
-      .callMapTool({ tool, input, threadId, threadTitle: shell?.title ?? null })
-      .pipe(Effect.mapError(toFailure));
-  });
+const callThroughPortal = Effect.fn("MachineMapMcp.callThroughPortal")(function* (
+  tool: MapToolName,
+  input: unknown,
+) {
+  const scope = yield* refuseMachineCaller;
+  const threads = yield* ThreadManagementService.ThreadManagementService;
+  const machineMap = yield* MachineMap.MachineMap;
+  const threadId = scope.thread?.threadId ?? null;
+  const shell =
+    threadId === null
+      ? null
+      : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+  return yield* machineMap
+    .callMapTool({ tool, input, threadId, threadTitle: shell?.title ?? null })
+    .pipe(Effect.mapError(toFailure));
+});
 
 export const layer = McpToolAccess.toLayer(MachineMapToolkit, {
   machines_read: McpToolAccess.reads(() => callThroughPortal("machines_read", {})),

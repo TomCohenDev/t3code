@@ -1,5 +1,5 @@
 import "vite-plus/test/config";
-import { viteCache as forkViteCache } from "../../scripts/lib/fork-build-cache.cjs";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
 import { defineConfig, mergeConfig } from "vite-plus";
 
 import baseConfig from "../../vite.config.ts";
@@ -62,7 +62,7 @@ const packExecutableTargets = packExecutableTarget
 export default mergeConfig(
   baseConfig,
   defineConfig({
-    ...forkViteCache(import.meta.url),
+    cacheDir: forkViteCacheDir(import.meta.url)!,
     run: {
       tasks: {
         build: {

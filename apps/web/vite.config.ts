@@ -1,5 +1,5 @@
 import * as NodeZlib from "node:zlib";
-import { viteCache as forkViteCache } from "../../scripts/lib/fork-build-cache.cjs";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
 
 import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
@@ -19,6 +19,7 @@ import {
 import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
+import { warmBundledDevPlugin } from "./vite/warmBundledDev";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -172,7 +173,7 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
 export default defineConfig(() => {
   return {
-    ...forkViteCache(import.meta.url),
+    cacheDir: forkViteCacheDir(import.meta.url)!,
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),
@@ -188,6 +189,7 @@ export default defineConfig(() => {
       tanstackRouter({ autoCodeSplitting: true }),
       react({ compiler: true }),
       tailwindPlugins(bundledDev),
+      warmBundledDevPlugin(),
     ],
     optimizeDeps: {
       include: [
@@ -243,7 +245,8 @@ export default defineConfig(() => {
       // Transform the whole module graph at server start instead of on the
       // first request. Without this, a cold worktree discovers and transforms
       // modules one import-level at a time while the browser waits — which
-      // over a tailnet origin turns into minutes of waterfall.
+      // over a tailnet origin turns into minutes of waterfall. Bundled dev
+      // ignores this; warmBundledDevPlugin covers it there.
       warmup: {
         clientFiles: ["./src/main.tsx"],
       },
