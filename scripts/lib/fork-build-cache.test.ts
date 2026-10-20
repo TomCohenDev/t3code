@@ -90,6 +90,34 @@ describe("central build cache", () => {
     expect(() => cache.workspacePaths(worktree, "vite")).toThrow("outside the checkout");
   });
 
+  it.each(["vite", "gradle"] as const)("allows a %s cache below a stray .git folder", (kind) => {
+    const home = NodePath.join(temp, "home");
+    NodeFS.mkdirSync(NodePath.join(home, ".git/info"), { recursive: true });
+    vi.stubEnv("XDG_CACHE_HOME", NodePath.join(home, ".cache"));
+    const paths = kind === "gradle" ? cache.androidBuildLink(worktree) : record(kind, 30);
+    expect(paths.root.startsWith(NodePath.join(home, ".cache") + NodePath.sep)).toBe(true);
+    if (kind === "gradle") {
+      const link = NodePath.join(worktree, "apps/mobile/android/app/build");
+      expect(NodeFS.readlinkSync(link).startsWith(paths.folder + NodePath.sep)).toBe(true);
+      NodeFS.writeFileSync(NodePath.join(paths.folder, "last-used"), "0");
+    }
+    expect(cache.prune({ log: quiet })).toBeGreaterThan(0);
+    expect(NodeFS.existsSync(paths.folder)).toBe(false);
+  });
+
+  it.each(["vite", "gradle"] as const)("refuses a %s cache below a real Git repository", (kind) => {
+    const paths = record(kind, 30);
+    NodeChildProcess.execFileSync("git", ["init", "--quiet", temp], {
+      env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+    });
+    expect(() => cache.workspacePaths(worktree, kind)).toThrow("outside the checkout");
+    if (kind === "gradle") {
+      expect(() => cache.androidBuildLink(worktree)).toThrow("outside the checkout");
+    }
+    expect(cache.prune({ log: quiet })).toBe(0);
+    expect(NodeFS.existsSync(paths.folder)).toBe(true);
+  });
+
   it("will not create or prune a cache inside a different checkout", () => {
     const paths = record("vite", 30);
     const other = NodePath.join(temp, "other-checkout");

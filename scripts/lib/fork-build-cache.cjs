@@ -14,7 +14,8 @@ const inside = (parent, child) => child === parent || child.startsWith(parent + 
 function inCheckout(folder) {
   for (let current = folder; ; current = path.dirname(current)) {
     if (
-      fs.existsSync(path.join(current, ".git")) ||
+      fs.statSync(path.join(current, ".git"), { throwIfNoEntry: false })?.isFile() ||
+      fs.existsSync(path.join(current, ".git/HEAD")) ||
       fs.existsSync(path.join(current, "pnpm-workspace.yaml"))
     )
       return true;
