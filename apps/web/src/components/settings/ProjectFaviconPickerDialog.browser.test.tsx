@@ -167,12 +167,16 @@ async function publishUrl(path: string, url: string) {
 }
 
 // Decoding sets naturalWidth before the load event reaches React, so wait for both together.
+// Fork: Fork CI runners decode slower than upstream's, so the poll waits longer than 1 s.
 async function expectPreview(row: HTMLElement) {
   await expect
-    .poll(() => ({
-      width: row.querySelector("img")?.naturalWidth,
-      fallback: row.querySelector("svg") !== null,
-    }))
+    .poll(
+      () => ({
+        width: row.querySelector("img")?.naturalWidth,
+        fallback: row.querySelector("svg") !== null,
+      }),
+      { timeout: 5_000 },
+    )
     .toEqual({ width: 8, fallback: false });
 }
 
