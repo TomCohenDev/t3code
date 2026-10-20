@@ -1,5 +1,5 @@
 import * as NodeZlib from "node:zlib";
-import { viteCache as forkViteCache } from "../../scripts/lib/fork-build-cache.cjs";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
 
 import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
@@ -173,7 +173,7 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
 export default defineConfig(() => {
   return {
-    ...forkViteCache(import.meta.url),
+    cacheDir: forkViteCacheDir(import.meta.url)!,
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),

@@ -1,7 +1,7 @@
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
-import { viteCache as forkViteCache } from "./scripts/lib/fork-build-cache.cjs";
+import { viteCacheDir as forkViteCacheDir } from "./scripts/lib/fork-build-cache.cjs";
 
 const DOM_TEST_ENVIRONMENT_ALLOWLIST: Array<string> = [];
 
@@ -50,7 +50,7 @@ const RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS = {
 };
 
 export default defineConfig({
-  ...forkViteCache(import.meta.url),
+  cacheDir: forkViteCacheDir(import.meta.url)!,
   resolve: {
     alias: {
       "~": NodeURL.fileURLToPath(new URL("./apps/web/src", import.meta.url)),
