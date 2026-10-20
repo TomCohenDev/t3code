@@ -1231,27 +1231,28 @@ const make = Effect.gen(function* () {
    * An explicit scheduled task model must name a provider instance and model
    * from the live catalog, so a wrong id fails on save instead of on every run.
    */
-  const checkScheduledTaskModelSelection = (selection: ModelSelection) =>
-    Effect.gen(function* () {
-      const providers = yield* loadProviders;
-      const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
-      if (provider === undefined) {
-        return yield* failure(
-          "invalid_request",
-          `Provider instance ${selection.instanceId} is not configured. Use one of: ${providers.map((candidate) => candidate.instanceId).join(", ")}.`,
-        );
-      }
-      if (
-        provider.models.length > 0 &&
-        !provider.models.some((candidate) => candidate.slug === selection.model)
-      ) {
-        return yield* failure(
-          "model_unavailable",
-          `Model ${selection.model} is not advertised by provider ${selection.instanceId}.`,
-        );
-      }
-      return selection;
-    });
+  const checkScheduledTaskModelSelection = Effect.fn(
+    "OrchestratorMcpService.checkScheduledTaskModelSelection",
+  )(function* (selection: ModelSelection) {
+    const providers = yield* loadProviders;
+    const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+    if (provider === undefined) {
+      return yield* failure(
+        "invalid_request",
+        `Provider instance ${selection.instanceId} is not configured. Use one of: ${providers.map((candidate) => candidate.instanceId).join(", ")}.`,
+      );
+    }
+    if (
+      provider.models.length > 0 &&
+      !provider.models.some((candidate) => candidate.slug === selection.model)
+    ) {
+      return yield* failure(
+        "model_unavailable",
+        `Model ${selection.model} is not advertised by provider ${selection.instanceId}.`,
+      );
+    }
+    return selection;
+  });
 
   const loadOrchestrationCapableInstanceIds = () =>
     providerAdapters.list().pipe(Effect.map((instanceIds) => new Set(instanceIds)));

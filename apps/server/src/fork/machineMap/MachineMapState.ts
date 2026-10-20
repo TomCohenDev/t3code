@@ -338,28 +338,29 @@ const make = Effect.gen(function* () {
   const lastReported = new Map<string, number>();
   const modeOf = (local: LocalState): ClientAccessMode =>
     local.enabled ? local.clientAccess : "off";
-  const browserGrant: MachineMapState["Service"]["browserGrant"] = (input) =>
-    Effect.gen(function* () {
-      const local = yield* SubscriptionRef.get(state);
-      const mode = modeOf(local);
-      const desired = local.saved.desired;
-      // Without a readable desired state, `enforce` lets no browser in (MM-918).
-      if (mode === "off" || desired === null) return undefined;
-      const nowMs = yield* Clock.currentTimeMillis;
-      const grant = browserGrantFor(desired, input.thumbprint, nowMs, mode);
-      if (grant !== undefined) return grant;
-      if (nowMs - (lastReported.get(input.thumbprint) ?? 0) >= 60_000) {
-        if (lastReported.size >= 1000) lastReported.clear();
-        lastReported.set(input.thumbprint, nowMs);
-        yield* Queue.offer(clientSeen, {
-          _tag: "clientSeen",
-          thumbprint: input.thumbprint,
-          describedAs: input.describedAs.slice(0, 200),
-          email: input.subject,
-        });
-      }
-      return undefined;
-    });
+  const browserGrant: MachineMapState["Service"]["browserGrant"] = Effect.fn(
+    "MachineMapState.browserGrant",
+  )(function* (input) {
+    const local = yield* SubscriptionRef.get(state);
+    const mode = modeOf(local);
+    const desired = local.saved.desired;
+    // Without a readable desired state, `enforce` lets no browser in (MM-918).
+    if (mode === "off" || desired === null) return undefined;
+    const nowMs = yield* Clock.currentTimeMillis;
+    const grant = browserGrantFor(desired, input.thumbprint, nowMs, mode);
+    if (grant !== undefined) return grant;
+    if (nowMs - (lastReported.get(input.thumbprint) ?? 0) >= 60_000) {
+      if (lastReported.size >= 1000) lastReported.clear();
+      lastReported.set(input.thumbprint, nowMs);
+      yield* Queue.offer(clientSeen, {
+        _tag: "clientSeen",
+        thumbprint: input.thumbprint,
+        describedAs: input.describedAs.slice(0, 200),
+        email: input.subject,
+      });
+    }
+    return undefined;
+  });
 
   return MachineMapState.of({
     snapshot: SubscriptionRef.get(state),

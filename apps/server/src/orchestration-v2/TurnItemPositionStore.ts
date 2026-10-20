@@ -53,12 +53,13 @@ export const layer: Layer.Layer<TurnItemPositionStoreV2, never, SqlClient.SqlCli
      * bucket per run, because each free bucket number is the ordinal of a later
      * run. Revisit if users see a late item of a turn under the next turn.
      */
-    const runBucket = (input: {
-      readonly threadId: ThreadId;
-      readonly runId: RunId;
-      readonly runOrdinal: number;
-    }) =>
-      Effect.gen(function* () {
+    const runBucket =
+      /* It runs inside `allocate`, per orchestration event; the enclosing operation owns the span. */
+      Effect.fnUntraced(function* (input: {
+        readonly threadId: ThreadId;
+        readonly runId: RunId;
+        readonly runOrdinal: number;
+      }) {
         const newest = yield* sql<{ readonly ordinal: number | null }>`
           SELECT MAX(ordinal) AS ordinal
           FROM orchestration_v2_turn_item_positions

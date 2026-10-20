@@ -87,82 +87,80 @@ const make = Effect.gen(function* () {
   // change on the peer revokes it (MM-1306); the next call then pairs again.
   const sessions = new Map<MachineId, PeerSession>();
 
-  const resolvePeer = (machine: string) =>
-    Effect.gen(function* () {
-      const local = yield* state.snapshot;
-      const desired = local.enabled ? local.saved.desired : null;
-      if (desired === null || local.token === null) {
-        return yield* new MachinePeerError({
-          reason: "not-on-map",
-          detail: "This machine is not on the machine map. Join it first.",
-        });
-      }
-      const wanted = machine.trim().toLowerCase();
-      const peer = desired.peers.find(
-        (candidate) => candidate.id === machine || candidate.name.toLowerCase() === wanted,
-      );
-      if (peer === undefined || peer.id === desired.self.id) {
-        return yield* new MachinePeerError({
-          reason: "unknown-machine",
-          detail: `No other machine named "${machine}" is on the map.`,
-        });
-      }
-      if (peer.hostname === null) {
-        return yield* new MachinePeerError({
-          reason: "no-hostname",
-          detail: `${peer.name} has not reported its tunnel hostname yet.`,
-        });
-      }
-      const arrow = desired.arrowsOut.find(
-        (candidate) => candidate.from === desired.self.id && candidate.to === peer.id,
-      );
-      return {
-        peer: { ...peer, hostname: peer.hostname },
-        arrow,
-        token: local.token,
-        selfName: desired.self.name,
-      };
-    });
+  const resolvePeer = Effect.fn("MachinePeers.resolvePeer")(function* (machine: string) {
+    const local = yield* state.snapshot;
+    const desired = local.enabled ? local.saved.desired : null;
+    if (desired === null || local.token === null) {
+      return yield* new MachinePeerError({
+        reason: "not-on-map",
+        detail: "This machine is not on the machine map. Join it first.",
+      });
+    }
+    const wanted = machine.trim().toLowerCase();
+    const peer = desired.peers.find(
+      (candidate) => candidate.id === machine || candidate.name.toLowerCase() === wanted,
+    );
+    if (peer === undefined || peer.id === desired.self.id) {
+      return yield* new MachinePeerError({
+        reason: "unknown-machine",
+        detail: `No other machine named "${machine}" is on the map.`,
+      });
+    }
+    if (peer.hostname === null) {
+      return yield* new MachinePeerError({
+        reason: "no-hostname",
+        detail: `${peer.name} has not reported its tunnel hostname yet.`,
+      });
+    }
+    const arrow = desired.arrowsOut.find(
+      (candidate) => candidate.from === desired.self.id && candidate.to === peer.id,
+    );
+    return {
+      peer: { ...peer, hostname: peer.hostname },
+      arrow,
+      token: local.token,
+      selfName: desired.self.name,
+    };
+  });
 
-  const pair = (
+  const pair = Effect.fn("MachinePeers.pair")(function* (
     peer: PeerMachine & { readonly hostname: string },
     token: MachineMapState.MachineToken,
     selfName: string,
-  ) =>
-    Effect.gen(function* () {
-      const origin = peerOrigin(peer);
-      const headers = MachineMapState.tokenHeaders(token);
-      const credential = yield* HttpClientRequest.post(
-        `${origin}/api/auth/cloudflare-access/pairing-credential`,
-      ).pipe(
-        HttpClientRequest.setHeaders(headers),
-        httpClient.execute,
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(AuthPairingCredentialResult)),
-        Effect.timeout(REQUEST_TIMEOUT),
-      );
-      const exchanged = yield* HttpClientRequest.post(`${origin}/oauth/token`).pipe(
-        HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyUrlParams({
-          grant_type: AuthTokenExchangeGrantType,
-          subject_token: credential.credential,
-          subject_token_type: AuthEnvironmentBootstrapTokenType,
-          requested_token_type: AuthAccessTokenType,
-          client_label: `machine ${selfName}`,
-          client_device_type: "bot",
-        }),
-        httpClient.execute,
-        Effect.flatMap(HttpClientResponse.filterStatusOk),
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(AuthAccessTokenResult)),
-        Effect.timeout(REQUEST_TIMEOUT),
-      );
-      const session: PeerSession = {
-        accessToken: exchanged.access_token,
-        scopes: exchanged.scope.split(" ").filter((scope) => scope.length > 0),
-      };
-      sessions.set(peer.id, session);
-      return session;
-    });
+  ) {
+    const origin = peerOrigin(peer);
+    const headers = MachineMapState.tokenHeaders(token);
+    const credential = yield* HttpClientRequest.post(
+      `${origin}/api/auth/cloudflare-access/pairing-credential`,
+    ).pipe(
+      HttpClientRequest.setHeaders(headers),
+      httpClient.execute,
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(AuthPairingCredentialResult)),
+      Effect.timeout(REQUEST_TIMEOUT),
+    );
+    const exchanged = yield* HttpClientRequest.post(`${origin}/oauth/token`).pipe(
+      HttpClientRequest.setHeaders(headers),
+      HttpClientRequest.bodyUrlParams({
+        grant_type: AuthTokenExchangeGrantType,
+        subject_token: credential.credential,
+        subject_token_type: AuthEnvironmentBootstrapTokenType,
+        requested_token_type: AuthAccessTokenType,
+        client_label: `machine ${selfName}`,
+        client_device_type: "bot",
+      }),
+      httpClient.execute,
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(AuthAccessTokenResult)),
+      Effect.timeout(REQUEST_TIMEOUT),
+    );
+    const session: PeerSession = {
+      accessToken: exchanged.access_token,
+      scopes: exchanged.scope.split(" ").filter((scope) => scope.length > 0),
+    };
+    sessions.set(peer.id, session);
+    return session;
+  });
 
   const describe = (cause: unknown): string => {
     if (HttpClientError.isHttpClientError(cause)) {
@@ -171,8 +169,8 @@ const make = Effect.gen(function* () {
     return Predicate.isTagged(cause, "TimeoutError") ? "timed out" : "unexpected response";
   };
 
-  const testArrow: MachinePeers["Service"]["testArrow"] = (to) =>
-    Effect.gen(function* () {
+  const testArrow: MachinePeers["Service"]["testArrow"] = Effect.fn("MachinePeers.testArrow")(
+    function* (to) {
       const resolved = yield* resolvePeer(to);
       const startedAt = yield* Clock.currentTimeMillis;
       return yield* pair(resolved.peer, resolved.token, resolved.selfName).pipe(
@@ -204,21 +202,24 @@ const make = Effect.gen(function* () {
           ),
         ),
       );
-    }).pipe(
-      Effect.catchTags({
-        MachinePeerError: (error) =>
-          Effect.succeed({
-            to,
-            reachable: false,
-            roundTripMs: null,
-            scopes: [],
-            error: error.detail,
-          } satisfies ArrowTestResult),
-      }),
-    );
+    },
+    (effect, to) =>
+      effect.pipe(
+        Effect.catchTags({
+          MachinePeerError: (error) =>
+            Effect.succeed({
+              to,
+              reachable: false,
+              roundTripMs: null,
+              scopes: [],
+              error: error.detail,
+            } satisfies ArrowTestResult),
+        }),
+      ),
+  );
 
-  const callTool: MachinePeers["Service"]["callTool"] = (input) =>
-    Effect.gen(function* () {
+  const callTool: MachinePeers["Service"]["callTool"] = Effect.fn("MachinePeers.callTool")(
+    function* (input) {
       const resolved = yield* resolvePeer(input.machine);
       const nowMs = yield* Clock.currentTimeMillis;
       if (
@@ -273,7 +274,8 @@ const make = Effect.gen(function* () {
               }),
         ),
       );
-    });
+    },
+  );
 
   return MachinePeers.of({ testArrow, callTool });
 });
