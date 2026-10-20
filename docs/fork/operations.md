@@ -11,15 +11,16 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 ### Fork Sync
 
-`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main every day.
+`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main every 3 hours, at 00:17 UTC and then at 03:17, 06:17, 09:17, 12:17, 15:17, 18:17 and 21:17.
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
+- For a local sync repair, run `vp run typecheck` and those fork tests with `vp test run <files>`. Run apps/web tests from `apps/web` with `vp test run --project unit --project browser <files>`; install Playwright Chromium first if needed. Do not run the changed-file checks over all upstream changes; wait for Fork CI on the repair pull request.
 - The apps/web fork tests run from `apps/web`, in its unit and browser projects. A browser test needs Playwright Chromium, so the job installs it first.
 - A conflict only in `README.md` resolves by itself. See [Change the fork](#change-the-fork).
 - If the merge conflicts, the typecheck fails or a fork test fails, the sync comments on the issue "Fork sync: upstream merge failed" and stops.
 - After each sync, the job "Check upstream workflows" fails when another workflow is active. It prints the `gh workflow disable` command for that workflow.
-- GitHub can start the daily run hours after its 03:17 UTC schedule. Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
+- GitHub can delay a scheduled run. Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
 
 ### Fork Release
 
@@ -52,7 +53,7 @@ A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` 
 
 - The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (`yarden-zamir-vps-2`), project "t3code fork" (`/root/Github/t3code/main`).
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
-- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 6 hours before.
+- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 2 hours before. This window is shorter than the 3-hour sync interval, so the next scheduled failure can call again.
 - The repair agent ignores a cancelled run.
 - How the agent works, and how to stop it: [Repair agent](../fork-agents.md#repair-agent).
 
@@ -115,6 +116,7 @@ vp run fork:check
 ```
 
 - It runs the quick Fork CI checks on the files that changed since the merge base with `origin/main`. Uncommitted and untracked files count.
+- On a branch with a merge whose second parent is not in `origin/main`, it prints one line and exits 0 without checks. This keeps sync repairs from checking every upstream change locally. Run `vp run typecheck` and the fork tests described in [Fork Sync](#fork-sync), then wait for Fork CI on the pull request.
 - The steps are format and lint of the changed files, knip, typecheck of the changed packages, the tests of the changed files, and the doc link check. The tests are the changed test files, the tests next to changed source files, `forkSettingsRegistration.test.ts`, the React Compiler coverage test of a changed web or mobile app, and the import cycle test (`dependency-graph.test.ts`) of a changed mobile app.
 - It prints one line per step: pass, fail or skipped with the reason. It exits with an error when a step fails.
 - Without Playwright Chromium, it skips the browser tests and prints the install command.
