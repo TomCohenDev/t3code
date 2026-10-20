@@ -5,7 +5,9 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-vi.mock("~/hooks/useSettings", () => ({
+// Fork: ShortcutHint reads client settings, so keep the rest of the module.
+vi.mock(import("~/hooks/useSettings"), async (original) => ({
+  ...(await original()),
   useEnvironmentIdentificationMode: () => "none",
 }));
 vi.mock("../SidebarStageBackdrop", () => ({
