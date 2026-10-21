@@ -126,7 +126,7 @@ import {
   useAllEnvironmentProjectSnapshotsReady,
   useProjects,
   useServerConfigs,
-  useThreadShells,
+  useQuietThreadShells,
 } from "../state/entities";
 import { environmentPresentations } from "../state/presentation";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -376,7 +376,7 @@ function useSidebarThreads(input: {
 }) {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
     input;
-  const threads = useThreadShells();
+  const threads = useQuietThreadShells();
   const routeRowThreadKey =
     routeThreadRef === null
       ? null
@@ -716,7 +716,7 @@ function useSidebarLookups() {
   const providerEntriesByEnvironment = useAtomValue(sidebarProviderEntriesAtom);
   const { unsortedProjectGroups, projectGroups } = useSidebarProjectGroupSnapshots();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const threads = useThreadShells();
+  const threads = useQuietThreadShells();
   // Fork: the owner filter shows only or hides the projects of the selected repository owners.
   // The project scope offers only the projects that it shows.
   const owner = ForkSidebar.useSidebarOwnerFilter({
