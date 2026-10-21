@@ -126,6 +126,7 @@ export class ServePortOccupiedError extends Schema.TaggedError<ServePortOccupied
   }
 }
 
+// Fork: a loopback server with tunnel pairing on pairs through its tunnel URL.
 export const resolveDirectPairingBaseUrl = (state: PersistedServerRuntimeState): string =>
   state.devUrl ?? state.tunnelPairingUrl ?? resolveHeadlessConnectionString(state.host, state.port);
 

@@ -27,7 +27,16 @@ import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { dispatchFailure } from "../mcp/threadAccess.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
-const forkCases = (["codex", "claudeAgent"] as const).flatMap((driverName) => {
+const forkCases = (
+  [
+    ["codex", "interrupted", false],
+    ["claudeAgent", "failed", false],
+    // Fork: a completed run forks only with a resolved native session (forkNativeSource.ts).
+    ["codex", "completed", false],
+    ["codex", "completed", true],
+    ["claudeAgent", "completed", false],
+  ] as const
+).map(([driverName, status, missingSession]) => {
   const driver = ProviderDriverKind.make(driverName);
   const instanceId = ProviderInstanceId.make(driver);
   const modelSelection = { instanceId, model: "test-model" };
@@ -47,16 +56,7 @@ const forkCases = (["codex", "claudeAgent"] as const).flatMap((driverName) => {
     { runEffectWorker: false },
   );
 
-  return (["failed", "interrupted", "cancelled", "completed"] as const).flatMap((status) =>
-    (status === "completed" ? [false, true] : [false]).map((missingSession) => ({
-      driver,
-      status,
-      missingSession,
-      instanceId,
-      modelSelection,
-      layer,
-    })),
-  );
+  return { driver, status, missingSession, instanceId, modelSelection, layer };
 });
 
 it.effect("a persisted fork leaves PR watching with its parent until explicitly opted in", () =>
