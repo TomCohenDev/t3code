@@ -36,6 +36,7 @@ export interface ThreadQueueWorkflowState {
   readonly heldByUsageLimit: boolean;
   readonly canReorder: boolean;
   readonly canPromoteToSteer: boolean;
+  readonly canSendNow: boolean;
 }
 
 export function resolveActiveThreadRun(projection: Pick<Projection, "runs">): Run | null {
@@ -159,6 +160,10 @@ export function deriveThreadQueueWorkflowState(projection: Projection): ThreadQu
       usageLimitBlockedRun(projection.runs, projection.turnItems, session?.lastError ?? null) !==
       null,
     canReorder: capabilities?.supportsQueuedMessages === true,
+    canSendNow:
+      activeRun === null &&
+      projection.thread.archivedAt == null &&
+      projection.thread.deletedAt == null,
     canPromoteToSteer:
       hasSteerableProviderTurn &&
       (capabilities?.supportsActiveSteering === true ||
