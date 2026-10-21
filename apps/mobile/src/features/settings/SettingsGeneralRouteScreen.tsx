@@ -1,19 +1,49 @@
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigation } from "@react-navigation/native";
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import { AsyncResult } from "effect/reactivity";
-import { Platform, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { AppState, Linking, Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
 import { AppText as Text } from "../../components/ui/AppText";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsEnvironmentFilterHeader } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { VoiceTranscriptionKeySection } from "./VoiceTranscriptionKeySection";
+
+type MicrophonePermission = "checking" | "granted" | "ask" | "denied";
+
+function useMicrophonePermission() {
+  const [permission, setPermission] = useState<MicrophonePermission>("checking");
+  const apply = useCallback(
+    (response: { readonly granted: boolean; readonly canAskAgain: boolean }) =>
+      setPermission(response.granted ? "granted" : response.canAskAgain ? "ask" : "denied"),
+    [],
+  );
+  const refresh = useCallback(
+    () => void getRecordingPermissionsAsync().then(apply, () => setPermission("ask")),
+    [apply],
+  );
+  useEffect(() => {
+    refresh();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
+  const request = useCallback(
+    () => void requestRecordingPermissionsAsync().then(apply, refresh),
+    [apply, refresh],
+  );
+  return { permission, request };
+}
 
 export function SettingsGeneralRouteScreen() {
   const navigation = useNavigation();
@@ -24,6 +54,7 @@ export function SettingsGeneralRouteScreen() {
   const voiceInputEnabled = AsyncResult.isSuccess(preferencesResult)
     ? preferencesResult.value.voiceInputEnabled !== false
     : true;
+  const { permission, request: requestPermission } = useMicrophonePermission();
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -51,6 +82,24 @@ export function SettingsGeneralRouteScreen() {
             onValueChange={(value) => savePreferences({ voiceInputEnabled: value })}
           />
         </SettingsSection>
+        {permission === "ask" || permission === "denied" ? (
+          <>
+            <SettingsSection title="Microphone access">
+              <SettingsActionRow
+                icon="mic"
+                label={permission === "ask" ? "Allow microphone access" : "Open system Settings"}
+                onPress={
+                  permission === "ask" ? requestPermission : () => void Linking.openSettings()
+                }
+              />
+            </SettingsSection>
+            <Text className="px-2 text-sm text-foreground-muted">
+              {permission === "ask"
+                ? "Voice input needs microphone access before it can record."
+                : "Microphone access is off for T3 Code. Turn it on in system Settings to use voice input."}
+            </Text>
+          </>
+        ) : null}
         <Text className="px-2 text-sm text-foreground-muted">
           Turn this on to show the mic. On Android, transcription needs an OpenAI API key on the
           selected environment. On iPhone, the device can transcribe without a key when it can.
