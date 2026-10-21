@@ -28,11 +28,12 @@ const owner: OwnerContext = {
   browser: "Chrome",
   place: "Test",
 };
+const NOW = "2026-10-20T08:00:00.000Z";
 const databases: Array<NodeSqlite.DatabaseSync> = [];
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-20T08:00:00.000Z"));
+  vi.setSystemTime(new Date(NOW));
   vi.stubGlobal(
     "WebSocketRequestResponsePair",
     class {
@@ -59,7 +60,7 @@ function portal(machines = false) {
   db.prepare("INSERT INTO meta VALUES ('map', ?)").run(
     JSON.stringify(machines ? threeMachines() : emptyMap()),
   );
-  db.prepare("INSERT INTO meta VALUES ('absolute_places', ?)").run(new Date().toISOString());
+  db.prepare("INSERT INTO meta VALUES ('absolute_places', ?)").run(NOW);
   const send = vi.fn();
   const setAlarm = vi.fn(async (_at: number) => {});
   const ctx = {
@@ -195,7 +196,7 @@ it("supersedes a waiting rotation when the owner makes a join code", async () =>
   if (!join.ok) throw new Error(join.error);
   expect(db.prepare("SELECT sealed_secret, expires_at FROM rotations").get()).toEqual({
     sealed_secret: "",
-    expires_at: new Date().toISOString(),
+    expires_at: NOW,
   });
   expect((await object.enroll("127.0.0.1", join.value.code)).ok).toBe(true);
   expect(db.prepare("SELECT * FROM rotations").all()).toEqual([]);
@@ -295,8 +296,8 @@ it("rechecks a browser key after the asynchronous approval check", async () => {
     describedAs: "Chrome",
     seenOn: MAC,
     state: "pending" as const,
-    firstSeenAt: new Date().toISOString(),
-    lastSeenAt: new Date().toISOString(),
+    firstSeenAt: NOW,
+    lastSeenAt: NOW,
   };
   db.prepare("INSERT INTO pending_clients VALUES (?, ?, ?, ?, ?, ?, ?)").run(
     pending.thumbprint,
