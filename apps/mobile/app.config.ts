@@ -329,7 +329,13 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: true,
     // expo-sensors declares this for its pedometer, which the app does not use.
     blockedPermissions: ["android.permission.ACTIVITY_RECOGNITION"],
-    ...(forkApkUpdatesRepo ? { permissions: ["android.permission.REQUEST_INSTALL_PACKAGES"] } : {}),
+    // Declared here so voice input keeps RECORD_AUDIO even if a plugin forgets to add it.
+    // Do not put RECORD_AUDIO in blockedPermissions: expo-image-picker's microphonePermission:
+    // false uses tools:node=remove and strips it from the whole APK.
+    permissions: [
+      "android.permission.RECORD_AUDIO",
+      ...(forkApkUpdatesRepo ? ["android.permission.REQUEST_INSTALL_PACKAGES"] : []),
+    ],
   },
   web: {
     favicon: variant.assets.appIcon,
@@ -420,7 +426,9 @@ const config: ExpoConfig = {
         recordAudioAndroid: false,
       },
     ],
-    ["expo-image-picker", { photosPermission: false, microphonePermission: false }],
+    // Do not set microphonePermission: false — that blocks android.permission.RECORD_AUDIO
+    // for the whole app (tools:node=remove), which breaks voice input on Android.
+    ["expo-image-picker", { photosPermission: false }],
     [
       "expo-splash-screen",
       {
