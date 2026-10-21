@@ -35,10 +35,9 @@ function record(kind: "vite" | "gradle" = "vite", age = 0) {
     NodePath.join(paths.folder, "workspace.json"),
     JSON.stringify({ worktree: paths.worktree }),
   );
-  NodeFS.writeFileSync(
-    NodePath.join(paths.folder, "last-used"),
-    String(Date.now() - age * 86_400_000),
-  );
+  // The new folder's mtime stands in for now: prune compares real file times with the real clock.
+  const now = NodeFS.statSync(paths.folder).mtimeMs;
+  NodeFS.writeFileSync(NodePath.join(paths.folder, "last-used"), String(now - age * 86_400_000));
   NodeFS.writeFileSync(NodePath.join(paths.folder, "payload"), Buffer.alloc(8192));
   return paths;
 }
@@ -279,7 +278,7 @@ describe("central build cache", () => {
     const paths = record("vite", 30);
     const gate = NodePath.join(paths.root, ".gate");
     NodeFS.mkdirSync(gate);
-    const old = new Date(Date.now() - 60_000);
+    const old = new Date(NodeFS.statSync(gate).mtimeMs - 60_000);
     NodeFS.utimesSync(gate, old, old);
     expect(cache.prune({ log: quiet })).toBeGreaterThan(0);
     expect(NodeFS.existsSync(paths.folder)).toBe(false);
@@ -290,7 +289,7 @@ describe("central build cache", () => {
     const paths = record("vite", 30);
     const gate = NodePath.join(paths.root, ".gate");
     NodeFS.mkdirSync(gate);
-    const now = Date.now();
+    const now = NodeFS.statSync(gate).mtimeMs;
     const clock = vi
       .spyOn(Date, "now")
       .mockReturnValueOnce(now)
