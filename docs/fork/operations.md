@@ -38,6 +38,17 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 The builds use the `nightly` update channel, the app id `com.t3tools.t3code` and the data directory `~/.t3`. They replace the upstream Nightly app and keep its data.
 
+### Daily release
+
+Each day at 09:00 Israel time, the VPS task "Fork daily release" promotes a nightly to a release. It builds nothing.
+
+- `node scripts/fork-daily-release-data.ts` picks the newest nightly on main that has `SHA256SUMS`. It prints JSON with the changes since the previous release: fork changes, upstream changes and integration. If no new nightly exists, it prints `skip`.
+- Integration is a merge that brings upstream commits: a Fork Sync merge or a sync pull request. Its fork commits are the conflict resolutions and fixes.
+- Without a previous release, the range starts where the fork began, and the upstream group holds only the last upstream merge.
+- An agent writes the top 5 highlights of each section from the JSON. `--full-changelog` prints the full lists as markdown. Then the agent runs `gh release edit <tag> --prerelease=false --latest --notes-file <file>`. The tag, the title and the assets stay.
+- Every updater picks a release by its tag, not by the prerelease flag. The tag keeps `-nightly.`, so nightly users get the next nightlies as before.
+- The desktop update popover shows the last 8 lines of the notes before "Full changelog". So the highlights come before that heading, and the full lists come after it.
+
 ### Fork CI
 
 `.github/workflows/fork-ci.yml` runs the `ci.yml` commands on GitHub-hosted runners, for each push to main and each pull request to main. `ci.yml` needs upstream's Blacksmith runners, so it is disabled.

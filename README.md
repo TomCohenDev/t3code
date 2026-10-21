@@ -36,6 +36,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 **Updates and releases**
 
 - **[Fork releases](docs/fork/features.md#fork-releases):** nightly desktop builds and Linux server archives from fork main.
+- **[Daily release](docs/fork/operations.md#daily-release):** each morning a VPS task promotes the newest nightly to a release with highlighted notes.
 - **[Android APK](docs/fork/features.md#android-apk):** a signed APK of fork main that installs next to the store app.
 - **[Fork installers](docs/fork/features.md#fork-installers):** one command installs the fork and joins the machine map.
 - **[Install when idle](docs/fork/features.md#install-when-idle):** while agents run, the update offers "Install when idle".
