@@ -4,7 +4,7 @@ import {
   CLI_RELEASES_PAGE_URL,
   cliReleaseDownloadBaseUrl,
   cliReleaseIndexPageUrl,
-} from "./cliRelease";
+} from "./cliRelease.ts";
 
 // Fork: servers, `t3 update` and the mobile update check read the fork releases.
 describe("fork release repository", () => {
