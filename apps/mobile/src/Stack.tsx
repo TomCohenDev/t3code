@@ -96,6 +96,8 @@ import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsForkRouteScreen } from "./features/settings/SettingsForkRouteScreen";
+import { SettingsVoiceRouteScreen } from "./features/settings/SettingsVoiceRouteScreen";
+import { SettingsVoiceProjectRouteScreen } from "./features/settings/SettingsVoiceProjectRouteScreen";
 import { SettingsSidebarGroupRouteScreen } from "./features/settings/forkSidebarGroupEditor";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
@@ -152,8 +154,9 @@ import { deriveLayout } from "./lib/layout";
 import { useNativeLayoutMetrics } from "./native/native-layout-metrics";
 import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
 import { FORM_SHEET_PRESENTATION_OPTIONS } from "./native/sheet-surface";
-import { useThreadOutboxDrain } from "./state/use-thread-outbox-drain";
-import { useComposerAttachmentUploadWorker } from "./state/composer-attachment-uploads";
+// Fork: runs once across the app and the Android assistant panel.
+import { ThreadOutboxWorker } from "./state/thread-outbox-worker";
+import { ReadAloudWorker } from "./features/read-aloud/ReadAloudWorker";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -307,6 +310,20 @@ const SettingsContentStack = createV5SheetStackNavigator({
       linking: "fork",
       options: {
         title: "Fork",
+      },
+    }),
+    SettingsVoice: createNativeStackScreen({
+      screen: SettingsVoiceRouteScreen,
+      linking: "voice",
+      options: {
+        title: "Voice",
+      },
+    }),
+    SettingsVoiceProject: createNativeStackScreen({
+      screen: SettingsVoiceProjectRouteScreen,
+      linking: "voice/project",
+      options: {
+        title: "Project",
       },
     }),
     SettingsSidebarGroup: createNativeStackScreen({
@@ -601,16 +618,6 @@ function workspaceLocationFromState(state: NavigationState) {
   };
 }
 
-// The drain hook subscribes to the outbox, all thread shells, projects, and
-// connection statuses. Hosting it in a null-rendering leaf keeps those
-// updates from re-rendering RootStackLayout (and with it every screen) on
-// each enqueue, shell change, or reconnect.
-function ThreadOutboxDrainWorker() {
-  useThreadOutboxDrain();
-  useComposerAttachmentUploadWorker();
-  return null;
-}
-
 function RootStackLayout(props: {
   readonly children: React.ReactNode;
   readonly state: NavigationState;
@@ -642,7 +649,8 @@ function RootStackLayout(props: {
 
   return (
     <HardwareKeyboardCommandProvider pathname={pathname}>
-      <ThreadOutboxDrainWorker />
+      <ThreadOutboxWorker />
+      <ReadAloudWorker />
       <ShowcaseCaptureCoordinator pathname={pathname} />
       <ExistingThreadSettingsRouteProvider>
         <WorkspaceConnectionStatusProvider>

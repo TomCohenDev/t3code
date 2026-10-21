@@ -195,6 +195,50 @@ microphone.
 Transcription runs on your device. T3 Code deletes the temporary audio after
 transcription or cancellation; only the message text is sent when you submit.
 
+## Android assistant
+
+On Android 10 or later, T3 Code can be your digital assistant. Press the assistant
+button in any app to start a thread about what is on the screen.
+
+1. Open **Settings → Voice** in the app and tap **Choose the digital assistant**.
+2. Pick T3 Code. To share the screen, turn on **Use text from screen** and
+   **Use screenshot** on the same page.
+3. Press the assistant button, or hold the home button.
+
+The panel opens over the current app. Type or tap the microphone, then tap the
+send button. To add the message to an existing thread or to pick another
+project, tap the title of the panel and search or pick from the list. With more
+than one machine, tap the machine icon to pick the machine first.
+
+To ask about something in another app, you can also share it: pick **Ask T3 Code**
+in the Android share sheet.
+
+Context pills above the text show what goes along: what you shared, the screenshot,
+the screen text, text you selected on screen, the page link, and the clipboard. In
+**Settings → Voice → Context pills** you can also turn on your newest photo and your
+location. Tap a pill to attach it or leave it out. Hold a pill to read and edit its
+text, or to draw on an image. The clipboard, the photo and the location are left out
+until you tap them, and password fields are never included.
+
+If you close the panel without sending, your text comes back when you open it
+again within a minute.
+
+**Settings → Voice** sets what the panel does: send to a new thread or to the
+thread you opened last, open with the keyboard or with the speech dialog, start
+the thread right after you speak, open the new thread, or stay open and read the
+first reply aloud. It also sets the project of new threads.
+T3 Code replaces your current assistant while it is selected. To go back, pick the
+other assistant on the same Android page.
+
+## Read replies aloud on mobile
+
+Tap the speaker next to a reply to hear it. Tap it again to stop. Hold the speaker
+to hear every new reply in that thread; hold it again to stop. A tinted speaker
+shows a thread that reads new replies. **Settings → Voice** sets the speech rate,
+hides the button, and stops all threads that read new replies.
+
+Replies are read only while the app is on screen.
+
 ## Queued messages
 
 On web and desktop, the composer shows **Interrupt** while the agent is working and the draft is

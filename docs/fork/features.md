@@ -396,6 +396,26 @@ The plus button of the mobile composer, the new thread draft and question answer
 - **Works on:** mobile.
 - **Limits:** photos only, because the app asks for no microphone access. Revisit if video from the camera is needed.
 
+### Android assistant panel
+
+T3 Code can be the Android digital assistant. The assistant button opens a panel over the current app. The panel attaches the screenshot and the screen text, takes typed or spoken text, and starts a new thread or adds the message to an existing thread. The title of the panel opens a picker with a search, the recent threads and the projects. With more than one machine, a machine icon opens the machine list, and the picker then shows the threads and projects of that machine. "Ask T3 Code" in the Android share sheet opens the same panel with the shared text or image. Context pills show the context: the shared item, the screenshot, the screen text, the text selected on screen, the page link, the clipboard, and, when turned on in Settings > Voice, the newest photo of the last 15 minutes and the last known location. A tap attaches a pill or leaves it out; a hold opens it to read and edit the text, or to draw on the screenshot. Text that was not sent comes back when the panel opens again within a minute.
+
+- **Setting:** the Android setting Default apps > Digital assistant app. The options are phone-local preferences under `voice` (`apps/mobile/src/persistence/forkVoicePreferences.ts`), in Settings > Voice of the mobile app: a new thread or the last opened thread (a new thread by default), keyboard or voice first (keyboard by default), start the thread after speaking (off), attach the screenshot (on), attach the screen text (on), open the thread (off), read the first reply aloud (off), and the project (the last new thread project by default).
+- **Works on:** mobile, Android 10 or later.
+- The panel and the app share one JS runtime. The outbox sender and the T3 Connect sign-in run once across both (`apps/mobile/src/lib/singletonHost.ts`).
+- The message goes through the thread outbox, so a new thread uses the project's model defaults, and the message waits for the connection when offline. A message to an existing thread is queued after a running turn, so "read the first reply aloud" reads the reply to that message.
+- **Limits:** no lock screen launch, because anyone that holds the phone could start agent work. A share of several images keeps only the first; revisit if users share albums. The location is the last fix the phone knows, so it can be old or missing; it never turns on GPS. Revisit with a request to unlock first. Password fields are left out of the screen text. Apps that block screenshots send none.
+
+### Read aloud on mobile
+
+A read-aloud button next to copy and fork on each reply. Holding it reads every new reply of that thread aloud, until it is held again.
+
+- **Setting:** phone-local preferences under `voice`, in Settings > Voice of the mobile app: the read-aloud button (on by default), the threads that read new replies, and the speech rate.
+- **Works on:** mobile.
+- The text is cleaned for speech: a code block becomes "Code block.", and markup characters are dropped.
+- Only replies of runs that complete after the thread starts to read aloud count, so a thread never reads its history.
+- **Limits:** replies are read only while the app or the assistant panel is on screen, because Android pauses JS timers in the background. Revisit if users ask for replies with the screen off: that needs a native player driven by the agent push notification.
+
 ### Thread card layouts
 
 Build the thread card from its elements, for desktop and web and for mobile.

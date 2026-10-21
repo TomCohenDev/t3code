@@ -87,6 +87,7 @@ import IconLayoutSidebarRight from "@tabler/icons-react-native/IconLayoutSidebar
 import IconLetterSpacing from "@tabler/icons-react-native/IconLetterSpacing";
 import IconMicrophone from "@tabler/icons-react-native/IconMicrophone";
 import IconLink from "@tabler/icons-react-native/IconLink";
+import IconMapPin from "@tabler/icons-react-native/IconMapPin";
 import IconListCheck from "@tabler/icons-react-native/IconListCheck";
 import IconListNumbers from "@tabler/icons-react-native/IconListNumbers";
 import IconMenu2 from "@tabler/icons-react-native/IconMenu2";
@@ -132,6 +133,7 @@ import IconUserX from "@tabler/icons-react-native/IconUserX";
 import IconUserQuestion from "@tabler/icons-react-native/IconUserQuestion";
 import IconUserPlus from "@tabler/icons-react-native/IconUserPlus";
 import IconUsers from "@tabler/icons-react-native/IconUsers";
+import IconVolume from "@tabler/icons-react-native/IconVolume";
 import IconWifi from "@tabler/icons-react-native/IconWifi";
 import IconWifiOff from "@tabler/icons-react-native/IconWifiOff";
 import IconWorld from "@tabler/icons-react-native/IconWorld";
@@ -221,6 +223,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   keyboard: IconKeyboard,
   laptopcomputer: IconDeviceLaptop,
   link: IconLink,
+  mappin: IconMapPin,
   lock: IconLock,
   "lock.open": IconLockOpen,
   "list.number": IconListNumbers,
@@ -261,6 +264,8 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "square.on.square": IconCopy,
   "square.grid.2x2": IconApps,
   "square.split.2x1": IconLayoutColumns,
+  "speaker.wave.2": IconVolume,
+  "speaker.wave.2.fill": IconVolume,
   star: IconStar,
   "star.fill": IconStarFilled,
   "sun.max": IconSun,
