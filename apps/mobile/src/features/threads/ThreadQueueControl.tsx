@@ -235,7 +235,8 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         const controls = resolveThreadQueueRowControls({
           busy: busyRunId !== null || draggedRunId !== null,
           canPromoteToSteer: workflow?.canPromoteToSteer ?? false,
-          canSendNow: workflow?.canSendNow ?? false,
+          // Fork: the server refuses to start a usage-limited queue, and mobile cannot continue it.
+          canSendNow: workflow?.canSendNow === true && !workflow.heldByUsageLimit,
           canReorder: workflow?.canReorder ?? false,
           index,
           isEditing: editing?.runId === run.id,
