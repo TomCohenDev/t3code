@@ -5,6 +5,9 @@ import android.content.ActivityNotFoundException
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.location.Geocoder
 import android.location.LocationManager
 import android.os.Build
@@ -30,10 +33,11 @@ import expo.modules.kotlin.records.Record
 
 class T3AssistantModule : Module() {
   private var pendingSpeech: Promise? = null
+  private var photoObserver: ContentObserver? = null
 
   override fun definition() = ModuleDefinition {
     Name("T3Assistant")
-    Events(CAPTURE_EVENT)
+    Events(CAPTURE_EVENT, PHOTOS_EVENT)
 
     OnStartObserving(CAPTURE_EVENT) {
       AssistantCapture.listener = { sendEvent(CAPTURE_EVENT, it.toMap()) }
@@ -130,6 +134,34 @@ class T3AssistantModule : Module() {
       }
     }
 
+    /**
+     * Reports gallery changes while the panel is open. A new photo reaches the gallery index a
+     * few seconds after it is taken, so one query when the panel opens can miss it.
+     */
+    Function("watchPhotos") { watching: Boolean ->
+      val context = appContext.reactContext ?: return@Function null
+      photoObserver?.let(context.contentResolver::unregisterContentObserver)
+      photoObserver = null
+      if (!watching) return@Function null
+      val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+          sendEvent(PHOTOS_EVENT, emptyMap<String, Any?>())
+        }
+      }
+      context.contentResolver.registerContentObserver(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        true,
+        observer,
+      )
+      photoObserver = observer
+      null
+    }
+
+    OnDestroy {
+      photoObserver?.let { appContext.reactContext?.contentResolver?.unregisterContentObserver(it) }
+      photoObserver = null
+    }
+
     /** Copies a content URI into the panel's cache, since attachments read plain files. */
     AsyncFunction("copyToCache") { uri: String ->
       val context = appContext.reactContext
@@ -157,19 +189,27 @@ class T3AssistantModule : Module() {
         .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
         .maxByOrNull { it.time }
         ?: return@AsyncFunction null
-      val place = runCatching {
-        @Suppress("DEPRECATION")
-        Geocoder(context).getFromLocation(location.latitude, location.longitude, 1)
-          ?.firstOrNull()
-          ?.let { address -> listOfNotNull(address.locality, address.adminArea, address.countryName).distinct().joinToString(", ") }
-      }.getOrNull()?.ifBlank { null }
       mapOf(
         "latitude" to location.latitude,
         "longitude" to location.longitude,
         "accuracyMeters" to location.accuracy.toDouble(),
-        "place" to place,
         "timeMs" to location.time.toDouble(),
       )
+    }
+
+    /** The place name of a coordinate. Separate, because the lookup can take the network. */
+    AsyncFunction("placeName") { latitude: Double, longitude: Double ->
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      runCatching {
+        @Suppress("DEPRECATION")
+        Geocoder(context).getFromLocation(latitude, longitude, 1)
+          ?.firstOrNull()
+          ?.let { address ->
+            listOfNotNull(address.locality, address.adminArea, address.countryName)
+              .distinct()
+              .joinToString(", ")
+          }
+      }.getOrNull()?.ifBlank { null }
     }
 
     OnActivityResult { _, payload ->
@@ -220,6 +260,7 @@ class T3AssistantModule : Module() {
 
   private companion object {
     const val CAPTURE_EVENT = "onCapture"
+    const val PHOTOS_EVENT = "onPhotosChanged"
     const val SPEECH_REQUEST_CODE = 0x7433
     const val ANNOTATED_QUALITY = 90
     const val MAX_ANNOTATED_SIDE = 2560

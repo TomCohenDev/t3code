@@ -29,7 +29,6 @@ export interface LastLocation {
   readonly latitude: number;
   readonly longitude: number;
   readonly accuracyMeters: number;
-  readonly place: string | null;
   readonly timeMs: number;
 }
 
@@ -42,6 +41,8 @@ export interface AnnotationStroke {
 
 type AssistantEvents = {
   readonly onCapture: (capture: AssistantCapture) => void;
+  /** The gallery changed while `watchPhotos(true)` is on. */
+  readonly onPhotosChanged: () => void;
 };
 
 declare class T3AssistantModule extends NativeModule<AssistantEvents> {
@@ -53,6 +54,8 @@ declare class T3AssistantModule extends NativeModule<AssistantEvents> {
   recentPhoto(maxAgeSeconds: number): Promise<RecentPhoto | null>;
   copyToCache(uri: string): Promise<string>;
   lastLocation(): Promise<LastLocation | null>;
+  placeName(latitude: number, longitude: number): Promise<string | null>;
+  watchPhotos(watching: boolean): void;
 }
 
 export const assistantNative =

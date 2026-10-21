@@ -1,6 +1,13 @@
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
-import { Image, PanResponder, Pressable, View, type GestureResponderEvent } from "react-native";
+import {
+  Image,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  View,
+  type GestureResponderEvent,
+} from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
@@ -27,8 +34,14 @@ export function ContextPills(props: {
   readonly onOpen: (kind: ContextPillKind) => void;
 }) {
   if (props.pills.length === 0) return null;
+  // One row that scrolls, so the pills never push the text field up.
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <ScrollView
+      horizontal
+      keyboardShouldPersistTaps="handled"
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="gap-2"
+    >
       {props.pills.map((pill) => (
         <Pressable
           key={pill.kind}
@@ -37,7 +50,7 @@ export function ContextPills(props: {
           accessibilityHint="Hold to read and edit"
           accessibilityState={{ checked: pill.attached }}
           className={cn(
-            "flex-row items-center gap-1.5 rounded-full border border-input-border px-2.5 py-1",
+            "h-8 flex-row items-center gap-1.5 rounded-full border border-input-border px-2.5",
             pill.attached ? "bg-input" : "opacity-45",
           )}
           delayLongPress={350}
@@ -58,7 +71,7 @@ export function ContextPills(props: {
           </Text>
         </Pressable>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 

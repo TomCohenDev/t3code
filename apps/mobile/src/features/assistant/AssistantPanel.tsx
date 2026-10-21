@@ -414,27 +414,42 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
   // Opt-in pills from Settings > Voice. Each asks the phone only when it is turned on.
   const wantsRecentPhoto = voice.assistantRecentPhoto;
   const wantsLocation = voice.assistantLocation;
+  // A photo reaches the gallery a few seconds after it is taken, so the pill appears when it does.
   useEffect(() => {
     const native = assistantNative;
     if (!wantsRecentPhoto || !native) return;
     let cancelled = false;
-    void native.recentPhoto(RECENT_PHOTO_MAX_AGE_SECONDS).then(
-      (photo) => {
-        if (!cancelled) setRecentPhoto(photo);
-      },
-      () => {},
-    );
+    const query = () =>
+      void native.recentPhoto(RECENT_PHOTO_MAX_AGE_SECONDS).then(
+        (photo) => {
+          if (!cancelled) setRecentPhoto(photo);
+        },
+        () => {},
+      );
+    query();
+    const subscription = native.addListener("onPhotosChanged", query);
+    native.watchPhotos(true);
     return () => {
       cancelled = true;
+      subscription.remove();
+      native.watchPhotos(false);
     };
   }, [wantsRecentPhoto]);
+  // The coordinates come at once; the place name follows, since its lookup can take the network.
   useEffect(() => {
     const native = assistantNative;
     if (!wantsLocation || !native) return;
     let cancelled = false;
     void native.lastLocation().then(
       (last) => {
-        if (!cancelled) setLocation(last ? locationText(last) : null);
+        if (cancelled || !last) return;
+        setLocation(locationText({ ...last, place: null }));
+        void native.placeName(last.latitude, last.longitude).then(
+          (place) => {
+            if (!cancelled && place) setLocation(locationText({ ...last, place }));
+          },
+          () => {},
+        );
       },
       () => {},
     );
@@ -642,6 +657,7 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
 
   // Above the keyboard the system inset is gone, so the row sits right on its edge.
   const bottomPadding = keyboardVisible ? 8 : insets.bottom + 12;
+  const typed = text.trim().length > 0;
   const targetLabel = targetThread
     ? targetThread.title.trim() || "Untitled thread"
     : project
@@ -784,33 +800,55 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
               {phase.type === "failed" ? (
                 <Text className="text-sm text-danger-foreground">{phase.message}</Text>
               ) : null}
-              {/* The buttons sit beside the text, so they stay on the keyboard edge. */}
+              {/*
+                One button in one place, next to the thumb: the mic while the field is empty,
+                send once there is text. While typing, a small mic in the field adds speech.
+              */}
               <View className="flex-row items-end gap-2">
-                <IconButton
-                  accessibilityLabel="Speak"
-                  icon="mic"
-                  variant="tonal"
-                  disabled={busy}
-                  onPress={speak}
-                />
                 <View className="flex-1">
                   <AppTextInput
                     autoFocus={voice.assistantInput === "text"}
                     editable={!busy}
                     multiline
-                    className="max-h-40"
+                    className={typed ? "max-h-40 pr-11" : "max-h-40"}
                     placeholder={targetThread ? "Message" : "What should the agent do?"}
                     value={text}
                     onChangeText={setText}
                   />
+                  {typed ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Add speech"
+                      disabled={busy}
+                      hitSlop={6}
+                      className="absolute bottom-0 right-0 h-13.5 w-11 items-center justify-center"
+                      onPress={() => void speak()}
+                    >
+                      <SymbolView
+                        name="mic"
+                        size={18}
+                        tintColorClassName="accent-foreground-muted"
+                      />
+                    </Pressable>
+                  ) : null}
                 </View>
-                <IconButton
-                  accessibilityLabel={targetThread ? "Send" : "Start thread"}
-                  icon="arrow.up"
-                  variant="primary"
-                  disabled={!ready || !hasContent(text)}
-                  onPress={() => void send(text)}
-                />
+                {typed ? (
+                  <IconButton
+                    accessibilityLabel={targetThread ? "Send" : "Start thread"}
+                    icon="arrow.up"
+                    variant="primary"
+                    disabled={!ready || !hasContent(text)}
+                    onPress={() => void send(text)}
+                  />
+                ) : (
+                  <IconButton
+                    accessibilityLabel="Speak"
+                    icon="mic"
+                    variant="primary"
+                    disabled={busy}
+                    onPress={() => void speak()}
+                  />
+                )}
               </View>
             </>
           )}
