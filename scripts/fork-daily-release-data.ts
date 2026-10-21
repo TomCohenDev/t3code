@@ -2,14 +2,16 @@
 // @effect-diagnostics nodeBuiltinImport:off - plain Node, so the daily release task runs it without `vp i`.
 // Fork: collects the data of the daily release. See docs/fork/operations.md "Daily release".
 //
-//   node scripts/fork-daily-release-data.ts [--since <ref>] [--full-changelog]
+//   node scripts/fork-daily-release-data.ts [--release <tag>] [--since <ref>] [--full-changelog]
 //
 // It picks the newest complete nightly on fork main after the previous stable release, and
 // prints JSON with the changes since that stable release, in three groups: fork changes,
 // upstream changes and the integration of upstream into the fork. An agent writes the notes
 // from it and promotes the nightly. Without a stable release, the range starts where the fork
 // began, and the upstream group holds only the commits of the last upstream merge.
+// With --release, it writes the data of that release again, for example after a promotion.
 // With --full-changelog, it prints the "Full changelog" part of the notes as markdown instead.
+// Each pull request item carries the images of its body; the notes show them in a collapsed block.
 
 import * as NodeChildProcess from "node:child_process";
 
@@ -43,8 +45,15 @@ export type ChangeSource =
   | { readonly _tag: "PullRequest"; readonly number: number; readonly url: string }
   | { readonly _tag: "Commit"; readonly sha: string; readonly url: string };
 
+export interface PullRequestImage {
+  readonly url: string;
+  readonly alt: string;
+}
+
 export interface ForkChange {
   readonly source: ChangeSource;
+  /** From the pull request body. Empty for a commit. */
+  readonly images: ReadonlyArray<PullRequestImage>;
   readonly title: string;
   readonly author: string;
   /** ISO 8601. The merge time of a pull request, the commit time of a commit. */
@@ -58,6 +67,7 @@ export interface UpstreamChange {
   readonly author: string;
   /** Upstream squash merges end their subject with `(#123)`. */
   readonly pullRequest: { readonly number: number; readonly url: string } | null;
+  readonly images: ReadonlyArray<PullRequestImage>;
 }
 
 export interface IntegrationChange extends ForkChange {
@@ -96,12 +106,14 @@ function toUpstreamChange(commit: GitCommit): UpstreamChange {
     title: commit.subject,
     author: commit.author,
     pullRequest: upstreamPullRequest(commit.subject),
+    images: [],
   };
 }
 
 function toForkCommit(commit: GitCommit): ForkChange {
   return {
     source: { _tag: "Commit", sha: commit.sha, url: commitUrl(FORK_REPOSITORY, commit.sha) },
+    images: [],
     title: commit.subject,
     author: commit.author,
     at: commit.committedAt,
@@ -141,6 +153,7 @@ export function groupDailyChanges(
               number: kind.number,
               url: `https://github.com/${FORK_REPOSITORY}/pull/${kind.number}`,
             },
+            images: [],
             title: kind.title,
             author: branchAuthor ?? commit.author,
             at: commit.committedAt,
@@ -173,6 +186,120 @@ export function groupDailyChanges(
   };
 }
 
+/** Text outside HTML comments and fenced code blocks: pull request templates hide examples there. */
+function visibleMarkdown(body: string): string {
+  let text = "";
+  let rest = body;
+  for (let start = rest.indexOf("<!--"); start !== -1; start = rest.indexOf("<!--")) {
+    const end = rest.indexOf("-->", start + 4);
+    text += rest.slice(0, start);
+    rest = end === -1 ? "" : rest.slice(end + 3);
+  }
+  text += rest;
+  let inFence = false;
+  return text
+    .split("\n")
+    .filter((line) => {
+      if (line.trimStart().startsWith("```")) {
+        inFence = !inFence;
+        return false;
+      }
+      return !inFence;
+    })
+    .join("\n");
+}
+
+function htmlAttribute(tag: string, name: string): string | undefined {
+  const lower = tag.toLowerCase();
+  for (const quote of ['"', "'"]) {
+    const marker = ` ${name}=${quote}`;
+    const start = lower.indexOf(marker);
+    if (start === -1) continue;
+    const valueStart = start + marker.length;
+    const end = tag.indexOf(quote, valueStart);
+    if (end !== -1) return tag.slice(valueStart, end);
+  }
+  return undefined;
+}
+
+/** A badge, or a video that an image tag cannot show. */
+function isSkipped(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    [".mp4", ".mov", ".webm"].some((extension) => lower.endsWith(extension)) ||
+    lower.includes("shields.io") ||
+    lower.includes("badgen.net") ||
+    lower.includes("/badge") ||
+    lower.endsWith("badge.svg")
+  );
+}
+
+/** The markdown images and `<img>` tags of a pull request body, in order, without badges and videos. */
+export function extractImages(body: string): PullRequestImage[] {
+  const text = visibleMarkdown(body);
+  const found: Array<PullRequestImage & { readonly at: number }> = [];
+  for (let at = text.indexOf("!["); at !== -1; at = text.indexOf("![", at + 2)) {
+    const altEnd = text.indexOf("](", at + 2);
+    const urlEnd = altEnd === -1 ? -1 : text.indexOf(")", altEnd + 2);
+    if (altEnd === -1 || urlEnd === -1 || text.slice(at + 2, altEnd).includes("\n")) continue;
+    const url =
+      text
+        .slice(altEnd + 2, urlEnd)
+        .trim()
+        .split(" ")[0] ?? "";
+    found.push({ at, url, alt: text.slice(at + 2, altEnd).trim() });
+  }
+  const lower = text.toLowerCase();
+  for (let at = lower.indexOf("<img"); at !== -1; at = lower.indexOf("<img", at + 4)) {
+    const end = text.indexOf(">", at);
+    if (end === -1) break;
+    const tag = text.slice(at, end).replaceAll("\n", " ");
+    found.push({ at, url: htmlAttribute(tag, "src") ?? "", alt: htmlAttribute(tag, "alt") ?? "" });
+  }
+  const images = new Map<string, PullRequestImage>();
+  for (const { url, alt } of found.toSorted((left, right) => left.at - right.at)) {
+    if (url.startsWith("https://") && !isSkipped(url) && !images.has(url))
+      images.set(url, { url, alt });
+  }
+  return [...images.values()];
+}
+
+const escapeAttribute = (value: string) =>
+  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+
+const MAX_IMAGES_PER_ITEM = 4;
+const MAX_ALT_LENGTH = 100;
+/**
+ * GitHub limits a release body to 125000 characters. The rest is for the highlights, which can
+ * repeat screenshots. Revisit if a daily release reaches it.
+ */
+const FULL_CHANGELOG_BUDGET = 70_000;
+
+/**
+ * The collapsed screenshots block under a list item, indented so that GitHub keeps it inside the
+ * item. The desktop update popover drops `<details>` blocks (apps/desktop/src/updates/releaseNotes.ts).
+ */
+export function renderScreenshots(
+  images: ReadonlyArray<PullRequestImage>,
+  pullRequestUrl: string,
+): string[] {
+  if (images.length === 0) return [];
+  const hidden = images.length - MAX_IMAGES_PER_ITEM;
+  return [
+    "  <details><summary>Screenshots</summary>",
+    "",
+    ...images.slice(0, MAX_IMAGES_PER_ITEM).map((image) => {
+      const alt =
+        image.alt.length > MAX_ALT_LENGTH
+          ? `${image.alt.slice(0, MAX_ALT_LENGTH - 3)}...`
+          : image.alt;
+      return `  <img src="${escapeAttribute(image.url)}" alt="${escapeAttribute(alt)}" width="600">`;
+    }),
+    ...(hidden > 0 ? ["", `  [${hidden} more in the pull request](${pullRequestUrl})`] : []),
+    "  </details>",
+  ];
+}
+
 function sourceLink(source: ChangeSource): string {
   return source._tag === "PullRequest"
     ? `[#${source.number}](${source.url})`
@@ -185,44 +312,90 @@ function upstreamTitle(change: UpstreamChange): string {
   return change.title.slice(0, change.title.lastIndexOf("(#")).trimEnd();
 }
 
+interface ChangelogEntry {
+  readonly line: string;
+  readonly images: ReadonlyArray<PullRequestImage>;
+  readonly pullRequestUrl: string;
+  readonly children: ReadonlyArray<string>;
+}
+
 /**
  * The full lists of the notes, newest first. The heading "Full changelog" also ends what the
  * desktop update popover reads (apps/desktop/src/updates/releaseNotes.ts), so it shows the
- * highlights above it.
+ * highlights above it. Over the size budget, the oldest items lose their screenshots first:
+ * integration, then upstream, then fork.
  */
-export function renderFullChangelog(changes: DailyChanges): string {
-  const fork = changes.fork
-    .toReversed()
-    .map(
-      (change) => `- ${sourceLink(change.source)} ${escapeText(change.title)} (${change.author})`,
-    );
-  const upstream = changes.upstream.toReversed().map((change) => {
+export function renderFullChangelog(
+  changes: DailyChanges,
+  budget: number = FULL_CHANGELOG_BUDGET,
+): string {
+  const fork = changes.fork.toReversed().map((change): ChangelogEntry => ({
+    line: `- ${sourceLink(change.source)} ${escapeText(change.title)} (${change.author})`,
+    images: change.images,
+    pullRequestUrl: change.source.url,
+    children: [],
+  }));
+  const upstream = changes.upstream.toReversed().map((change): ChangelogEntry => {
     const link =
       change.pullRequest === null
         ? `[${change.sha.slice(0, 7)}](${change.url})`
         : `[upstream #${change.pullRequest.number}](${change.pullRequest.url})`;
-    return `- ${link} ${escapeText(upstreamTitle(change))} (${change.author})`;
+    return {
+      line: `- ${link} ${escapeText(upstreamTitle(change))} (${change.author})`,
+      images: change.images,
+      pullRequestUrl: change.pullRequest?.url ?? change.url,
+      children: [],
+    };
   });
-  const integration = changes.integration
-    .toReversed()
-    .flatMap((change) => [
-      `- ${sourceLink(change.source)} ${escapeText(change.title)}: ${change.upstreamCommitCount} upstream ${change.upstreamCommitCount === 1 ? "commit" : "commits"}, ${change.fixes.length} fork ${change.fixes.length === 1 ? "fix" : "fixes"}`,
-      ...change.fixes.map(
-        (fix) => `  - [${fix.sha.slice(0, 7)}](${fix.url}) ${escapeText(fix.title)}`,
-      ),
-    ]);
-  const section = (title: string, lines: ReadonlyArray<string>) =>
-    [
-      `### ${title} (${lines.filter((line) => line.startsWith("- ")).length})`,
-      "",
-      ...(lines.length > 0 ? lines : ["- None."]),
-    ].join("\n");
-  return `${[
-    "## Full changelog",
-    section("Fork changes and additions", fork),
-    section("Upstream changes and additions", upstream),
-    section("Integration of upstream and fork", integration),
-  ].join("\n\n")}\n`;
+  const integration = changes.integration.toReversed().map((change): ChangelogEntry => ({
+    line: `- ${sourceLink(change.source)} ${escapeText(change.title)}: ${change.upstreamCommitCount} upstream ${change.upstreamCommitCount === 1 ? "commit" : "commits"}, ${change.fixes.length} fork ${change.fixes.length === 1 ? "fix" : "fixes"}`,
+    images: change.images,
+    pullRequestUrl: change.source.url,
+    children: change.fixes.map(
+      (fix) => `  - [${fix.sha.slice(0, 7)}](${fix.url}) ${escapeText(fix.title)}`,
+    ),
+  }));
+
+  const render = (withoutImages: ReadonlySet<ChangelogEntry>) => {
+    const section = (title: string, entries: ReadonlyArray<ChangelogEntry>) =>
+      [
+        `### ${title} (${entries.length})`,
+        "",
+        ...(entries.length > 0
+          ? entries.flatMap((entry) => [
+              entry.line,
+              ...(withoutImages.has(entry)
+                ? []
+                : renderScreenshots(entry.images, entry.pullRequestUrl)),
+              ...entry.children,
+            ])
+          : ["- None."]),
+      ].join("\n");
+    return `${[
+      "## Full changelog",
+      ...(withoutImages.size > 0
+        ? ["Older items leave out their screenshots, because a release has a size limit."]
+        : []),
+      section("Fork changes and additions", fork),
+      section("Upstream changes and additions", upstream),
+      section("Integration of upstream and fork", integration),
+    ].join("\n\n")}\n`;
+  };
+
+  const withoutImages = new Set<ChangelogEntry>();
+  let text = render(withoutImages);
+  // Each list is newest first, so its reverse starts with its oldest item.
+  const dropOrder = [
+    ...integration.toReversed(),
+    ...upstream.toReversed(),
+    ...fork.toReversed(),
+  ].filter((entry) => entry.images.length > 0);
+  for (const entry of dropOrder) {
+    if (text.length <= budget) break;
+    withoutImages.add(entry);
+    text = render(withoutImages);
+  }
+  return text;
 }
 
 const FIELD = "\x1f";
@@ -317,6 +490,68 @@ function readReleases(): GitHubRelease[] {
   return releases.filter((release) => !release.draft);
 }
 
+const PULL_REQUESTS_PER_QUERY = 100;
+
+/** The bodies of pull requests, one GraphQL call per 100. A number that is an issue has none. */
+function readPullRequestBodies(
+  repository: string,
+  numbers: ReadonlyArray<number>,
+): Map<number, string> {
+  const [owner, name] = repository.split("/");
+  const bodies = new Map<number, string>();
+  const unique = [...new Set(numbers)];
+  for (let start = 0; start < unique.length; start += PULL_REQUESTS_PER_QUERY) {
+    const chunk = unique.slice(start, start + PULL_REQUESTS_PER_QUERY);
+    const fields = chunk
+      .map(
+        (number) =>
+          `n${number}: issueOrPullRequest(number: ${number}) { ... on PullRequest { body } }`,
+      )
+      .join(" ");
+    const response: unknown = JSON.parse(
+      run("gh", [
+        "api",
+        "graphql",
+        "-f",
+        `query=query { repository(owner: "${owner}", name: "${name}") { ${fields} } }`,
+      ]),
+    );
+    const found = (response as { data?: { repository?: Record<string, unknown> } }).data
+      ?.repository;
+    if (found === undefined) throw new Error(`No pull requests of ${repository} in the response.`);
+    for (const number of chunk) {
+      const body = (found[`n${number}`] as { body?: unknown } | null | undefined)?.body;
+      if (typeof body === "string") bodies.set(number, body);
+    }
+  }
+  return bodies;
+}
+
+/** Adds the images of each pull request body. Two GraphQL calls per 100 pull requests at most. */
+function withImages(changes: DailyChanges): DailyChanges {
+  const forkNumbers = [...changes.fork, ...changes.integration].flatMap((change) =>
+    change.source._tag === "PullRequest" ? [change.source.number] : [],
+  );
+  const upstreamNumbers = changes.upstream.flatMap((change) =>
+    change.pullRequest === null ? [] : [change.pullRequest.number],
+  );
+  const forkBodies = readPullRequestBodies(FORK_REPOSITORY, forkNumbers);
+  const upstreamBodies = readPullRequestBodies(UPSTREAM_REPOSITORY, upstreamNumbers);
+  const forkImages = <Change extends ForkChange>(change: Change): Change =>
+    change.source._tag === "PullRequest"
+      ? { ...change, images: extractImages(forkBodies.get(change.source.number) ?? "") }
+      : change;
+  return {
+    fork: changes.fork.map(forkImages),
+    integration: changes.integration.map(forkImages),
+    upstream: changes.upstream.map((change) =>
+      change.pullRequest === null
+        ? change
+        : { ...change, images: extractImages(upstreamBodies.get(change.pullRequest.number) ?? "") },
+    ),
+  };
+}
+
 const tagCommit = (tag: string) => git(["rev-parse", "--verify", `${tag}^{commit}`]).trim();
 
 /** The parent of the oldest first-parent commit of fork main that upstream does not have. */
@@ -341,7 +576,23 @@ function main(args: ReadonlyArray<string>): void {
   const upstreamHead = fetchBranch(`https://github.com/${UPSTREAM_REPOSITORY}.git`, "main", false);
   const releases = readReleases();
 
-  const previousStable = releases.find((release) => !release.prerelease);
+  // The newest nightly first. Its build may still run: then it lacks SHA256SUMS, and an older one wins.
+  const releaseFlag = readFlag(args, "--release");
+  const targetIndex = releaseFlag
+    ? releases.findIndex((release) => release.tag_name === releaseFlag)
+    : releases.findIndex(
+        (release) =>
+          release.prerelease &&
+          release.tag_name.includes("-nightly.") &&
+          release.assets.some((asset) => asset.name === COMPLETE_RELEASE_ASSET) &&
+          isAncestor(tagCommit(release.tag_name), mainHead),
+      );
+  if (releaseFlag && targetIndex === -1) throw new Error(`The fork has no release ${releaseFlag}.`);
+  const target = releases[targetIndex];
+  // Releases come newest first. Of a given release, the previous stable release comes after it.
+  const previousStable = releases
+    .slice(releaseFlag ? targetIndex + 1 : 0)
+    .find((release) => !release.prerelease);
   const sinceFlag = readFlag(args, "--since");
   const since = sinceFlag
     ? {
@@ -358,12 +609,8 @@ function main(args: ReadonlyArray<string>): void {
       : { tag: null, ref: "fork base", sha: findForkBase(mainHead, upstreamHead) };
   const firstRelease = previousStable === undefined;
 
-  // The newest nightly first. Its build may still run: then it lacks SHA256SUMS, and an older one wins.
-  const nightly = releases
-    .filter((release) => release.prerelease && release.tag_name.includes("-nightly."))
-    .filter((release) => release.assets.some((asset) => asset.name === COMPLETE_RELEASE_ASSET))
-    .map((release) => ({ release, sha: tagCommit(release.tag_name) }))
-    .find(({ sha }) => isAncestor(sha, mainHead));
+  const nightly =
+    target === undefined ? undefined : { release: target, sha: tagCommit(target.tag_name) };
 
   if (nightly === undefined || isAncestor(nightly.sha, since.sha)) {
     process.stdout.write(
@@ -391,10 +638,12 @@ function main(args: ReadonlyArray<string>): void {
     },
   );
 
-  const grouped = groupDailyChanges(
-    changes,
-    (sha) => upstreamShas.has(sha),
-    firstRelease && sinceFlag === undefined,
+  const grouped = withImages(
+    groupDailyChanges(
+      changes,
+      (sha) => upstreamShas.has(sha),
+      firstRelease && sinceFlag === undefined,
+    ),
   );
   if (args.includes("--full-changelog")) {
     process.stdout.write(renderFullChangelog(grouped));
