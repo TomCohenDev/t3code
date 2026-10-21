@@ -5,7 +5,7 @@ import {
   type GitCommit,
   extractImages,
   type ForkChange,
-  renderFullChangelog,
+  renderNotes,
   groupDailyChanges,
 } from "./fork-daily-release-data.ts";
 
@@ -138,27 +138,82 @@ it("collects the images of a pull request body in order, without badges and hidd
   ]);
 });
 
-it("drops the screenshots of the oldest items first when the full changelog is too big", () => {
-  const image = { url: "https://github.com/user-attachments/assets/shot", alt: "A shot" };
-  const pullRequest = (number: number): ForkChange => ({
-    source: {
-      _tag: "PullRequest",
-      number,
-      url: `https://github.com/Yarden-zamir/t3code/pull/${number}`,
-    },
-    images: [image],
-    title: `feat: change ${number}`,
-    author: "Yarden",
-    at: "2026-10-20T10:00:00Z",
-  });
-  const changes = { fork: [pullRequest(1), pullRequest(2)], upstream: [], integration: [] };
-  const full = renderFullChangelog(changes);
-  assert.strictEqual(full.split("<details>").length - 1, 2);
+const pullRequest = (number: number, images = 0): ForkChange => ({
+  source: {
+    _tag: "PullRequest",
+    number,
+    url: `https://github.com/Yarden-zamir/t3code/pull/${number}`,
+  },
+  images: Array.from({ length: images }, (_, index) => ({
+    url: `https://github.com/user-attachments/assets/${number}-${index}`,
+    alt: `Shot ${index}`,
+  })),
+  title: `feat: change ${number}`,
+  author: "Yarden",
+  at: "2026-10-20T10:00:00Z",
+});
 
-  const blockLength = full.length - renderFullChangelog(changes, 0).length;
-  const trimmed = renderFullChangelog(changes, full.length - blockLength / 4);
-  // The list is newest first: #2 keeps its screenshots, #1 loses them.
-  assert.isTrue(trimmed.indexOf("<details>") > trimmed.indexOf("#2]"));
-  assert.isTrue(trimmed.indexOf("<details>") < trimmed.indexOf("#1]"));
-  assert.strictEqual(trimmed.split("<details>").length - 1, 1);
+const forkOnly = (fork: ReadonlyArray<ForkChange>) => ({ fork, upstream: [], integration: [] });
+const emptySection = { clusters: [] };
+
+it("renders clusters in plan order, highlights first and their changes folded", () => {
+  const notes = renderNotes(forkOnly([pullRequest(1), pullRequest(2, 1), pullRequest(3)]), {
+    intro: "Intro.",
+    fork: {
+      highlights: 1,
+      clusters: [
+        { name: "Big", sentence: "It matters.", changes: ["#2", "#1"] },
+        { name: "Small", sentence: "It helps.", changes: ["#3"] },
+      ],
+    },
+    upstream: emptySection,
+    integration: emptySection,
+  });
+  const [highlights = "", full = ""] = notes.split("## Full changelog");
+  assert.isTrue(highlights.includes("- **Big** ([#2]"));
+  assert.isFalse(highlights.includes("**Small**"));
+  assert.isTrue(full.indexOf("**Big**") < full.indexOf("**Small**"));
+  assert.isTrue(full.includes("<summary>2 changes, with screenshots</summary>"));
+  // The main change comes first in the fold, and its screenshots nest under it.
+  assert.isTrue(full.indexOf("  - [#2]") < full.indexOf("    <details><summary>Screenshots"));
+  assert.isTrue(full.indexOf("    <details><summary>Screenshots") < full.indexOf("  - [#1]"));
+});
+
+it("names every unknown, repeated and missing ref of a plan", () => {
+  assert.throws(
+    () =>
+      renderNotes(forkOnly([pullRequest(1), pullRequest(2), pullRequest(3)]), {
+        intro: "",
+        fork: {
+          clusters: [
+            { name: "A", sentence: "", changes: ["#1", "#9"] },
+            { name: "B", sentence: "", changes: ["#1"] },
+          ],
+        },
+        upstream: emptySection,
+        integration: emptySection,
+      }),
+    /"#9" names no change[\s\S]*"#1" is in more than one cluster[\s\S]*"#2"[\s\S]*"#3"/,
+  );
+});
+
+it("drops the screenshots of the last clusters first when the notes are too big", () => {
+  const changes = forkOnly([pullRequest(1, 1), pullRequest(2, 1)]);
+  const plan = {
+    intro: "",
+    fork: {
+      highlights: 0,
+      clusters: [
+        { name: "First", sentence: "", changes: ["#1"] },
+        { name: "Second", sentence: "", changes: ["#2"] },
+      ],
+    },
+    upstream: emptySection,
+    integration: emptySection,
+  };
+  const full = renderNotes(changes, plan);
+  const trimmed = renderNotes(changes, plan, full.length - 1);
+  assert.isTrue(trimmed.includes("assets/1-0"));
+  assert.isFalse(trimmed.includes("assets/2-0"));
+  assert.throws(() => renderNotes(changes, plan, 10), /over the budget/);
 });
