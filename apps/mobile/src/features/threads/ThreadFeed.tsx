@@ -44,7 +44,6 @@ import {
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import { parseThreadLinkHref, resolveThreadLinkRef } from "@t3tools/shared/threadLinks";
-import { PROMPT_LINK_MAX_PROMPT_LENGTH } from "@t3tools/shared/promptLinks";
 import {
   parseComposerContextHref,
   collectComposerContextReferences,
@@ -154,13 +153,11 @@ import {
   mediaVideoThumbnailKey,
   type MediaVideoPreviewSource,
 } from "../../lib/videoPreviewSource";
-import { CopyTextButton } from "./CopyTextButton";
+import { ForkMessageCopyButton } from "./ForkMessageCopyButton";
 import { getReviewSectionIdForCheckpoint } from "../review/reviewModel";
 import { setReviewSelectedSectionId } from "../review/reviewState";
 // Fork: read aloud, next to copy and fork.
 import { ReadAloudButton } from "../read-aloud/ReadAloudButton";
-import { Menu } from "../../components/ui/Menu";
-import { copyPromptLink } from "../prompt-links/prompt-link-actions";
 import { parseReviewCommentMessageSegments } from "../review/reviewCommentSelection";
 import type { ReviewDiffTheme } from "../review/shikiReviewHighlighter";
 import {
@@ -359,40 +356,6 @@ async function waitForThreadShell(
   return waitForThreadShellReady({
     read: () => appAtomRegistry.get(atom) !== null,
   });
-}
-
-const USER_MESSAGE_COPY_MENU_ACTIONS = [
-  { id: "copy-prompt-link", title: "Copy prompt link", image: "link" },
-];
-
-function UserMessageCopyButton(props: {
-  readonly text: string;
-  readonly onCopy: (() => Promise<void>) | undefined;
-  readonly tintColor: ColorValue;
-}) {
-  const button = (
-    <CopyTextButton
-      accessibilityLabel="Copy message"
-      text={props.text}
-      onCopy={props.onCopy}
-      tintColor={props.tintColor}
-      buttonSize={28}
-      iconSize={13}
-    />
-  );
-  const linkText = replaceComposerContextReferences(props.text, (reference) => reference.label);
-  if (linkText.length > PROMPT_LINK_MAX_PROMPT_LENGTH) return button;
-  return (
-    <Menu
-      actions={USER_MESSAGE_COPY_MENU_ACTIONS}
-      onPressAction={({ nativeEvent }) => {
-        if (nativeEvent.event === "copy-prompt-link") void copyPromptLink(linkText);
-      }}
-      shouldOpenOnLongPress
-    >
-      {button}
-    </Menu>
-  );
 }
 
 function AssistantForkButton(props: {
@@ -1391,8 +1354,15 @@ function renderFeedEntry(
                 <SymbolView name="pencil" size={14} tintColor={iconSubtleColor} />
               </Pressable>
             ) : null}
-            {presentation.text.trim().length > 0 ? (
-              <UserMessageCopyButton
+            {presentation.text.trim().length > 0 || !entry.pendingMessage || entry.acknowledged ? (
+              <ForkMessageCopyButton
+                environmentId={props.environmentId}
+                threadId={props.threadId}
+                messageId={entry.pendingMessage && !entry.acknowledged ? null : message.id}
+                promptLink
+                accessibilityLabel="Copy message"
+                buttonSize={28}
+                iconSize={13}
                 text={presentation.text}
                 onCopy={
                   message.context
@@ -1472,7 +1442,10 @@ function renderFeedEntry(
         ) : null}
         {showAssistantMeta ? (
           <View className="mt-1 flex-row items-center gap-1">
-            <CopyTextButton
+            <ForkMessageCopyButton
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+              messageId={message.id}
               accessibilityLabel="Copy message"
               text={renderedText}
               tintColor={iconSubtleColor}
@@ -1498,7 +1471,19 @@ function renderFeedEntry(
               {timestampLabel}
             </Text>
           </View>
-        ) : null}
+        ) : (
+          <ForkMessageCopyButton
+            environmentId={props.environmentId}
+            threadId={props.threadId}
+            messageId={message.id}
+            text={renderedText}
+            accessibilityLabel="Copy message"
+            tintColor={iconSubtleColor}
+            buttonSize={28}
+            iconSize={13}
+            menuOnly
+          />
+        )}
       </Animated.View>
     );
   }

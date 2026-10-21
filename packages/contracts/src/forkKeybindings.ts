@@ -40,6 +40,7 @@ export const FORK_KEYBINDING_COMMANDS = [
   "timeline.extendDown",
   "timeline.cite",
   "timeline.citeWithNote",
+  "timeline.copyMessageLink",
   "timeline.jumpToLatest",
   "thread.archive",
   "thread.snooze",

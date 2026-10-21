@@ -129,6 +129,7 @@ import {
 import { onOpenCommandPalette } from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { focusLevelPaletteItems } from "./focusLevels/focusLevelPaletteItems";
+import { handleForkMessageLinkPaletteShortcut } from "./chat/ForkCopyMessageLink";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   PULL_REQUESTS_PANEL_REF,
@@ -1522,7 +1523,12 @@ function OpenCommandPaletteDialog(props: {
     applyOpenIntent(openIntent);
   }, [openIntent, projectThreadItemCount]);
 
-  actionItems.push(...focusLevelPaletteItems(ITEM_ICON_CLASS));
+  actionItems.push(
+    ...focusLevelPaletteItems(
+      ITEM_ICON_CLASS,
+      activeThread !== null && activeThreadServerConfig?.settings.messageLinks !== false,
+    ),
+  );
   actionItems.push(themeEditorItem);
 
   if (
@@ -2355,6 +2361,7 @@ function OpenCommandPaletteDialog(props: {
       }
       return;
     }
+    if (handleForkMessageLinkPaletteShortcut(command, event, () => setOpen(false))) return;
     if (command === "thread.copyReference") {
       event.preventDefault();
       event.stopPropagation();

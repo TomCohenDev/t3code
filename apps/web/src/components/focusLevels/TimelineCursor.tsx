@@ -12,6 +12,7 @@ import {
 } from "~/lib/assistantTextSelection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { toastManager } from "../ui/toast";
+import { useForkCopyMessageLink } from "../chat/ForkCopyMessageLink";
 import {
   type FocusLevelCommandHandler,
   registerFocusLevelCommands,
@@ -211,15 +212,16 @@ function asHtmlElement(node: unknown): HTMLElement | null {
 export function TimelineCursor(props: {
   readonly viewport: HTMLElement | null;
   readonly listRef: RefObject<LegendListRef | null>;
-  readonly rows: ReadonlyArray<{ readonly id: string }>;
+  readonly rows: ReadonlyArray<{ readonly id: string; readonly message?: { readonly id: string } }>;
   readonly threadRef: ScopedThreadRef | null;
   readonly onCite:
     | ((citation: AssistantCitation, sourceAnchor: AssistantCitationSourceAnchor | null) => boolean)
     | undefined;
 }) {
-  const latest = useRef(props);
+  const copyMessageLink = useForkCopyMessageLink(props.threadRef);
+  const latest = useRef({ ...props, copyMessageLink });
   useLayoutEffect(() => {
-    latest.current = props;
+    latest.current = { ...props, copyMessageLink };
   });
 
   const enabled = useClientSettings(selectKeyboardFocusLevels);
@@ -240,6 +242,8 @@ export function TimelineCursor(props: {
   }, [props.viewport, props.listRef, enabled]);
 
   const hasViewport = props.viewport !== null;
+  const environmentId = props.threadRef?.environmentId;
+  const threadId = props.threadRef?.threadId;
   useEffect(() => {
     if (!hasViewport || !enabled) return;
     let cursor: Cursor | null = null;
@@ -632,6 +636,18 @@ export function TimelineCursor(props: {
       },
       "timeline.cite": cite(false),
       "timeline.citeWithNote": cite(true),
+      "timeline.copyMessageLink": (event) => {
+        // Do not start a cursor here: the palette must use the message the user chose.
+        const at = cursor;
+        if (!at || event.repeat) return false;
+        if (
+          latest.current.threadRef?.threadId !== threadId ||
+          latest.current.threadRef?.environmentId !== environmentId
+        )
+          return false;
+        const row = latest.current.rows.find((row) => row.id === at.rowId);
+        return latest.current.copyMessageLink(row?.message?.id);
+      },
       "timeline.jumpToLatest": () => {
         if (!active()) return false;
         show(null);
@@ -646,7 +662,7 @@ export function TimelineCursor(props: {
       document.removeEventListener("selectionchange", onSelectionChange);
       paint(null);
     };
-  }, [hasViewport, enabled]);
+  }, [hasViewport, enabled, environmentId, threadId]);
 
   return null;
 }
