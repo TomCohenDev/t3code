@@ -2,7 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - plain Node, so the daily release task runs it without `vp i`.
 // Fork: collects the data of the daily release. See docs/fork/operations.md "Daily release".
 //
-//   node scripts/fork-daily-release-data.ts [--release <tag>] [--since <ref>] [--full-changelog]
+//   node scripts/fork-daily-release-data.ts [--release <tag>] [--since <ref>] [--notes <plan.json>]
 //
 // It picks the newest complete nightly on fork main after the previous stable release, and
 // prints JSON with the changes since that stable release, in three groups: fork changes,
@@ -10,10 +10,12 @@
 // from it and promotes the nightly. Without a stable release, the range starts where the fork
 // began, and the upstream group holds only the commits of the last upstream merge.
 // With --release, it writes the data of that release again, for example after a promotion.
-// With --full-changelog, it prints the "Full changelog" part of the notes as markdown instead.
+// With --notes, it prints the release notes as markdown instead. The plan file, written by the
+// agent, groups the changes into clusters and orders them (NotesPlan).
 // Each pull request item carries the images of its body; the notes show them in a collapsed block.
 
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
 
 import { classifyFirstParentCommit, escapeText } from "./fork-release-notes.ts";
 
@@ -269,11 +271,9 @@ const escapeAttribute = (value: string) =>
 
 const MAX_IMAGES_PER_ITEM = 4;
 const MAX_ALT_LENGTH = 100;
-/**
- * GitHub limits a release body to 125000 characters. The rest is for the highlights, which can
- * repeat screenshots. Revisit if a daily release reaches it.
- */
-const FULL_CHANGELOG_BUDGET = 70_000;
+/** GitHub limits a release body to 125000 characters. */
+const NOTES_BUDGET = 120_000;
+const DEFAULT_HIGHLIGHTS = 5;
 
 /**
  * The collapsed screenshots block under a list item, indented so that GitHub keeps it inside the
@@ -282,21 +282,22 @@ const FULL_CHANGELOG_BUDGET = 70_000;
 export function renderScreenshots(
   images: ReadonlyArray<PullRequestImage>,
   pullRequestUrl: string,
+  indent = "  ",
 ): string[] {
   if (images.length === 0) return [];
   const hidden = images.length - MAX_IMAGES_PER_ITEM;
   return [
-    "  <details><summary>Screenshots</summary>",
+    `${indent}<details><summary>Screenshots</summary>`,
     "",
     ...images.slice(0, MAX_IMAGES_PER_ITEM).map((image) => {
       const alt =
         image.alt.length > MAX_ALT_LENGTH
           ? `${image.alt.slice(0, MAX_ALT_LENGTH - 3)}...`
           : image.alt;
-      return `  <img src="${escapeAttribute(image.url)}" alt="${escapeAttribute(alt)}" width="600">`;
+      return `${indent}<img src="${escapeAttribute(image.url)}" alt="${escapeAttribute(alt)}" width="600">`;
     }),
-    ...(hidden > 0 ? ["", `  [${hidden} more in the pull request](${pullRequestUrl})`] : []),
-    "  </details>",
+    ...(hidden > 0 ? ["", `${indent}[${hidden} more in the pull request](${pullRequestUrl})`] : []),
+    `${indent}</details>`,
   ];
 }
 
@@ -312,88 +313,287 @@ function upstreamTitle(change: UpstreamChange): string {
   return change.title.slice(0, change.title.lastIndexOf("(#")).trimEnd();
 }
 
-interface ChangelogEntry {
-  readonly line: string;
+/** How a notes plan names a change: `#123` for a pull request, else the full commit. */
+export function forkChangeRef(change: ForkChange): string {
+  return change.source._tag === "PullRequest" ? `#${change.source.number}` : change.source.sha;
+}
+
+export function upstreamChangeRef(change: UpstreamChange): string {
+  return change.pullRequest === null ? change.sha : `#${change.pullRequest.number}`;
+}
+
+export interface ClusterPlan {
+  readonly name: string;
+  /** One plain sentence on why the cluster matters. */
+  readonly sentence: string;
+  /** Refs of the changes, most important first. The first one is the main change. */
+  readonly changes: ReadonlyArray<string>;
+}
+
+export interface SectionPlan {
+  /** How many clusters, from the top, the highlights show. 5 when absent. */
+  readonly highlights?: number;
+  /** Most important and most visible first. */
+  readonly clusters: ReadonlyArray<ClusterPlan>;
+}
+
+/** Written by the agent: which changes belong together, and their order by cool factor. */
+export interface NotesPlan {
+  readonly intro: string;
+  readonly fork: SectionPlan;
+  readonly upstream: SectionPlan;
+  readonly integration: SectionPlan;
+}
+
+function isStringArray(value: unknown): value is ReadonlyArray<string> {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function decodeSectionPlan(value: unknown, name: string): SectionPlan {
+  const section = value as { highlights?: unknown; clusters?: unknown } | null;
+  if (typeof section !== "object" || section === null || !Array.isArray(section.clusters)) {
+    throw new Error(`The notes plan needs "${name}.clusters" as an array.`);
+  }
+  if (
+    section.highlights !== undefined &&
+    !(Number.isSafeInteger(section.highlights) && (section.highlights as number) >= 0)
+  ) {
+    throw new Error(`"${name}.highlights" must be a whole number, 0 or more.`);
+  }
+  const clusters = section.clusters.map((cluster: unknown, index): ClusterPlan => {
+    const candidate = cluster as Partial<Record<keyof ClusterPlan, unknown>> | null;
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      typeof candidate.name !== "string" ||
+      typeof candidate.sentence !== "string" ||
+      !isStringArray(candidate.changes) ||
+      candidate.changes.length === 0
+    ) {
+      throw new Error(
+        `"${name}.clusters[${index}]" needs a "name", a "sentence" and at least one ref in "changes".`,
+      );
+    }
+    return { name: candidate.name, sentence: candidate.sentence, changes: candidate.changes };
+  });
+  return section.highlights === undefined
+    ? { clusters }
+    : { highlights: section.highlights as number, clusters };
+}
+
+export function decodeNotesPlan(value: unknown): NotesPlan {
+  const plan = value as Partial<Record<keyof NotesPlan, unknown>> | null;
+  if (typeof plan !== "object" || plan === null || typeof plan.intro !== "string") {
+    throw new Error('The notes plan needs an "intro" text.');
+  }
+  return {
+    intro: plan.intro,
+    fork: decodeSectionPlan(plan.fork, "fork"),
+    upstream: decodeSectionPlan(plan.upstream, "upstream"),
+    integration: decodeSectionPlan(plan.integration, "integration"),
+  };
+}
+
+interface NoteEntry {
+  readonly ref: string;
+  readonly link: string;
+  readonly title: string;
   readonly images: ReadonlyArray<PullRequestImage>;
-  readonly pullRequestUrl: string;
+  readonly url: string;
+  /** Nested lines under the entry, without indent. */
   readonly children: ReadonlyArray<string>;
 }
 
-/**
- * The full lists of the notes, newest first. The heading "Full changelog" also ends what the
- * desktop update popover reads (apps/desktop/src/updates/releaseNotes.ts), so it shows the
- * highlights above it. Over the size budget, the oldest items lose their screenshots first:
- * integration, then upstream, then fork.
- */
-export function renderFullChangelog(
-  changes: DailyChanges,
-  budget: number = FULL_CHANGELOG_BUDGET,
-): string {
-  const fork = changes.fork.toReversed().map((change): ChangelogEntry => ({
-    line: `- ${sourceLink(change.source)} ${escapeText(change.title)} (${change.author})`,
+function forkEntry(change: ForkChange): NoteEntry {
+  return {
+    ref: forkChangeRef(change),
+    link: sourceLink(change.source),
+    title: `${escapeText(change.title)} (${change.author})`,
     images: change.images,
-    pullRequestUrl: change.source.url,
+    url: change.source.url,
     children: [],
-  }));
-  const upstream = changes.upstream.toReversed().map((change): ChangelogEntry => {
-    const link =
+  };
+}
+
+function upstreamEntry(change: UpstreamChange): NoteEntry {
+  return {
+    ref: upstreamChangeRef(change),
+    link:
       change.pullRequest === null
         ? `[${change.sha.slice(0, 7)}](${change.url})`
-        : `[upstream #${change.pullRequest.number}](${change.pullRequest.url})`;
-    return {
-      line: `- ${link} ${escapeText(upstreamTitle(change))} (${change.author})`,
-      images: change.images,
-      pullRequestUrl: change.pullRequest?.url ?? change.url,
-      children: [],
-    };
-  });
-  const integration = changes.integration.toReversed().map((change): ChangelogEntry => ({
-    line: `- ${sourceLink(change.source)} ${escapeText(change.title)}: ${change.upstreamCommitCount} upstream ${change.upstreamCommitCount === 1 ? "commit" : "commits"}, ${change.fixes.length} fork ${change.fixes.length === 1 ? "fix" : "fixes"}`,
+        : `[upstream #${change.pullRequest.number}](${change.pullRequest.url})`,
+    title: `${escapeText(upstreamTitle(change))} (${change.author})`,
     images: change.images,
-    pullRequestUrl: change.source.url,
-    children: change.fixes.map(
-      (fix) => `  - [${fix.sha.slice(0, 7)}](${fix.url}) ${escapeText(fix.title)}`,
-    ),
-  }));
+    url: change.pullRequest?.url ?? change.url,
+    children: [],
+  };
+}
 
-  const render = (withoutImages: ReadonlySet<ChangelogEntry>) => {
-    const section = (title: string, entries: ReadonlyArray<ChangelogEntry>) =>
-      [
-        `### ${title} (${entries.length})`,
+function integrationEntry(change: IntegrationChange): NoteEntry {
+  const commits = change.upstreamCommitCount === 1 ? "commit" : "commits";
+  const fixes = change.fixes.length === 1 ? "fix" : "fixes";
+  return {
+    ...forkEntry(change),
+    title: `${escapeText(change.title)}: ${change.upstreamCommitCount} upstream ${commits}, ${change.fixes.length} fork ${fixes}`,
+    children: change.fixes.map(
+      (fix) => `- [${fix.sha.slice(0, 7)}](${fix.url}) ${escapeText(fix.title)}`,
+    ),
+  };
+}
+
+/** A ref names a change by `#123`, or by its commit or a prefix of at least 7 characters. */
+function refMatches(ref: string, entry: NoteEntry): boolean {
+  if (ref.startsWith("#") || entry.ref.startsWith("#")) return ref === entry.ref;
+  return ref.length >= 7 && entry.ref.startsWith(ref);
+}
+
+interface Cluster {
+  readonly plan: ClusterPlan;
+  readonly entries: ReadonlyArray<NoteEntry>;
+}
+
+/** Fails with every unknown, repeated and missing ref, so that the agent fixes the plan at once. */
+function resolveClusters(
+  section: string,
+  plan: SectionPlan,
+  entries: ReadonlyArray<NoteEntry>,
+): Cluster[] {
+  const problems: string[] = [];
+  const used = new Set<NoteEntry>();
+  const clusters = plan.clusters.map((cluster) => ({
+    plan: cluster,
+    entries: cluster.changes.flatMap((ref) => {
+      const matches = entries.filter((entry) => refMatches(ref, entry));
+      const [entry] = matches;
+      if (entry === undefined || matches.length > 1) {
+        problems.push(
+          `${section}: "${ref}" ${entry === undefined ? "names no change" : "names more than one change"}.`,
+        );
+        return [];
+      }
+      if (used.has(entry)) {
+        problems.push(`${section}: "${ref}" is in more than one cluster.`);
+        return [];
+      }
+      used.add(entry);
+      return [entry];
+    }),
+  }));
+  for (const entry of entries) {
+    if (!used.has(entry))
+      problems.push(`${section}: "${entry.ref}" (${entry.title}) is in no cluster.`);
+  }
+  if (problems.length > 0)
+    throw new Error(`The notes plan does not match the changes:\n${problems.join("\n")}`);
+  return clusters;
+}
+
+function clusterHead(cluster: Cluster): string {
+  const main = cluster.entries[0];
+  return `- **${cluster.plan.name}** (${main?.link ?? ""}): ${cluster.plan.sentence}`;
+}
+
+/** The screenshots of the main change, or else of the first change that has any. */
+function clusterScreenshots(cluster: Cluster): string[] {
+  const shown = cluster.entries.find((entry) => entry.images.length > 0);
+  return shown === undefined ? [] : renderScreenshots(shown.images, shown.url);
+}
+
+const indentLines = (lines: ReadonlyArray<string>, indent: string) =>
+  lines.map((line) => (line === "" ? line : `${indent}${line}`));
+
+/** A cluster line, with its changes in a collapsed block below it. */
+function renderCluster(cluster: Cluster, withoutImages: ReadonlySet<NoteEntry>): string[] {
+  const count = cluster.entries.length;
+  const hasImages = cluster.entries.some(
+    (entry) => entry.images.length > 0 && !withoutImages.has(entry),
+  );
+  return [
+    clusterHead(cluster),
+    `  <details><summary>${count} ${count === 1 ? "change" : "changes"}${hasImages ? ", with screenshots" : ""}</summary>`,
+    "",
+    ...cluster.entries.flatMap((entry) => [
+      `  - ${entry.link} ${entry.title}`,
+      ...indentLines(entry.children, "    "),
+      ...(withoutImages.has(entry) ? [] : renderScreenshots(entry.images, entry.url, "    ")),
+    ]),
+    "  </details>",
+  ];
+}
+
+const SECTIONS = [
+  ["fork", "Fork changes and additions"],
+  ["upstream", "Upstream changes and additions"],
+  ["integration", "Integration of upstream and fork"],
+] as const;
+
+/**
+ * The release notes from the changes and the agent's plan. The highlights of each section come
+ * first. "## Full changelog" then lists every cluster with its changes folded. The desktop update
+ * popover reads only the lines above "Full changelog" and drops `<details>` blocks, so it shows
+ * the highlight lines. Over the size budget, the changes of the last clusters lose their
+ * screenshots first.
+ */
+export function renderNotes(
+  changes: DailyChanges,
+  plan: NotesPlan,
+  budget: number = NOTES_BUDGET,
+): string {
+  const clusters = {
+    fork: resolveClusters("fork", plan.fork, [...changes.fork].map(forkEntry)),
+    upstream: resolveClusters("upstream", plan.upstream, changes.upstream.map(upstreamEntry)),
+    integration: resolveClusters(
+      "integration",
+      plan.integration,
+      changes.integration.map(integrationEntry),
+    ),
+  };
+
+  const render = (withoutImages: ReadonlySet<NoteEntry>) => {
+    const highlights = SECTIONS.map(([key, title]) => {
+      const shown = clusters[key].slice(0, plan[key].highlights ?? DEFAULT_HIGHLIGHTS);
+      return [
+        `## ${title}`,
         "",
-        ...(entries.length > 0
-          ? entries.flatMap((entry) => [
-              entry.line,
-              ...(withoutImages.has(entry)
-                ? []
-                : renderScreenshots(entry.images, entry.pullRequestUrl)),
-              ...entry.children,
-            ])
+        ...(shown.length > 0
+          ? shown.flatMap((cluster) => [clusterHead(cluster), ...clusterScreenshots(cluster)])
           : ["- None."]),
       ].join("\n");
+    });
+    const full = SECTIONS.map(([key, title]) => {
+      const count = clusters[key].reduce((total, cluster) => total + cluster.entries.length, 0);
+      return [
+        `### ${title} (${count} ${count === 1 ? "change" : "changes"})`,
+        "",
+        ...(clusters[key].length > 0
+          ? clusters[key].flatMap((cluster) => renderCluster(cluster, withoutImages))
+          : ["- None."]),
+      ].join("\n");
+    });
     return `${[
+      plan.intro,
+      ...highlights,
       "## Full changelog",
       ...(withoutImages.size > 0
-        ? ["Older items leave out their screenshots, because a release has a size limit."]
+        ? ["The last groups leave out their screenshots, because a release has a size limit."]
         : []),
-      section("Fork changes and additions", fork),
-      section("Upstream changes and additions", upstream),
-      section("Integration of upstream and fork", integration),
+      ...full,
     ].join("\n\n")}\n`;
   };
 
-  const withoutImages = new Set<ChangelogEntry>();
+  const withoutImages = new Set<NoteEntry>();
   let text = render(withoutImages);
-  // Each list is newest first, so its reverse starts with its oldest item.
-  const dropOrder = [
-    ...integration.toReversed(),
-    ...upstream.toReversed(),
-    ...fork.toReversed(),
-  ].filter((entry) => entry.images.length > 0);
+  const dropOrder = [...clusters.fork, ...clusters.upstream, ...clusters.integration]
+    .flatMap((cluster) => cluster.entries)
+    .filter((entry) => entry.images.length > 0)
+    .toReversed();
   for (const entry of dropOrder) {
-    if (text.length <= budget) break;
+    if (text.length <= budget) return text;
     withoutImages.add(entry);
     text = render(withoutImages);
+  }
+  if (text.length > budget) {
+    throw new Error(`The notes have ${text.length} characters, over the budget of ${budget}.`);
   }
   return text;
 }
@@ -645,8 +845,10 @@ function main(args: ReadonlyArray<string>): void {
       firstRelease && sinceFlag === undefined,
     ),
   );
-  if (args.includes("--full-changelog")) {
-    process.stdout.write(renderFullChangelog(grouped));
+  const planFile = readFlag(args, "--notes");
+  if (planFile !== undefined) {
+    const plan = decodeNotesPlan(JSON.parse(NodeFS.readFileSync(planFile, "utf8")));
+    process.stdout.write(renderNotes(grouped, plan));
     return;
   }
   const data = {
@@ -659,7 +861,9 @@ function main(args: ReadonlyArray<string>): void {
     },
     since: { tag: since.tag, ref: since.ref, sha: since.sha },
     firstRelease,
-    ...grouped,
+    fork: grouped.fork.map((change) => ({ ref: forkChangeRef(change), ...change })),
+    upstream: grouped.upstream.map((change) => ({ ref: upstreamChangeRef(change), ...change })),
+    integration: grouped.integration.map((change) => ({ ref: forkChangeRef(change), ...change })),
   };
   process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
 }
