@@ -3,6 +3,9 @@ import { assert, it } from "@effect/vitest";
 import {
   type FirstParentChange,
   type GitCommit,
+  extractImages,
+  type ForkChange,
+  renderFullChangelog,
   groupDailyChanges,
 } from "./fork-daily-release-data.ts";
 
@@ -115,4 +118,47 @@ it("lists the fork commits of a direct merge of fork branches", () => {
     ["feat(fork): b"],
   );
   assert.strictEqual(grouped.integration.length, 0);
+});
+
+it("collects the images of a pull request body in order, without badges and hidden examples", () => {
+  const body = [
+    "[![CI](https://img.shields.io/badge/ci-passing-green)](https://example.com)",
+    "Before:",
+    "![Before the fix](https://github.com/user-attachments/assets/before)",
+    '<img width="1200" alt="After the fix" src="https://github.com/user-attachments/assets/after">',
+    "<!-- ![Template example](https://example.com/template.png) -->",
+    "```md",
+    "![In code](https://example.com/code.png)",
+    "```",
+    "![Before again](https://github.com/user-attachments/assets/before)",
+  ].join("\n");
+  assert.deepStrictEqual(extractImages(body), [
+    { url: "https://github.com/user-attachments/assets/before", alt: "Before the fix" },
+    { url: "https://github.com/user-attachments/assets/after", alt: "After the fix" },
+  ]);
+});
+
+it("drops the screenshots of the oldest items first when the full changelog is too big", () => {
+  const image = { url: "https://github.com/user-attachments/assets/shot", alt: "A shot" };
+  const pullRequest = (number: number): ForkChange => ({
+    source: {
+      _tag: "PullRequest",
+      number,
+      url: `https://github.com/Yarden-zamir/t3code/pull/${number}`,
+    },
+    images: [image],
+    title: `feat: change ${number}`,
+    author: "Yarden",
+    at: "2026-10-20T10:00:00Z",
+  });
+  const changes = { fork: [pullRequest(1), pullRequest(2)], upstream: [], integration: [] };
+  const full = renderFullChangelog(changes);
+  assert.strictEqual(full.split("<details>").length - 1, 2);
+
+  const blockLength = full.length - renderFullChangelog(changes, 0).length;
+  const trimmed = renderFullChangelog(changes, full.length - blockLength / 4);
+  // The list is newest first: #2 keeps its screenshots, #1 loses them.
+  assert.isTrue(trimmed.indexOf("<details>") > trimmed.indexOf("#2]"));
+  assert.isTrue(trimmed.indexOf("<details>") < trimmed.indexOf("#1]"));
+  assert.strictEqual(trimmed.split("<details>").length - 1, 1);
 });
