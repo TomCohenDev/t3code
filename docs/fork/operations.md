@@ -11,7 +11,7 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 ### Fork Sync
 
-`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main. The interval task "Fork Sync trigger" on the VPS T3 server starts it every 3 hours with `gh workflow run`. The workflow has no GitHub schedule, because GitHub delays and drops scheduled runs.
+`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main. The interval task "Fork Sync trigger" on the VPS T3 server starts it every 2 hours with `gh workflow run`. The workflow has no GitHub schedule, because GitHub delays and drops scheduled runs.
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
@@ -53,7 +53,7 @@ A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` 
 
 - The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (`yarden-zamir-vps-2`), project "t3code fork" (`/root/Github/t3code/main`).
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
-- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 2 hours before. This window is shorter than the 3-hour sync interval, so the next scheduled failure can call again.
+- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 90 minutes before. This window is shorter than the 2-hour sync interval, so the next scheduled failure can call again.
 - The repair agent ignores a cancelled run.
 - How the agent works, and how to stop it: [Repair agent](../fork-agents.md#repair-agent).
 
