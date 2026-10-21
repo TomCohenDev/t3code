@@ -148,6 +148,7 @@ describe("thread workflows", () => {
           { id: "queued", status: "queued", userMessageId: "message", ordinal: 2, queueHeld: true },
         ],
         messages: [{ id: "message", text: "Send this" }],
+        turnItems: [],
         providerThreads: [],
         providerTurns: [],
         providerSessions: [],

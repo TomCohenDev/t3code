@@ -177,6 +177,11 @@ export function QueuedRunsControl({
 
   const sendQueuedMessage = async (queuedRunId: RunId) => {
     if (!canSend || steerInFlightRef.current) return;
+    // Fork: the server refuses to start a usage-limited queue, so the limited run continues first.
+    if (workflow?.canSendNow && workflow.heldByUsageLimit) {
+      props.onResumeLimitedThread();
+      return;
+    }
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
     if (workflow?.canSendNow) {
