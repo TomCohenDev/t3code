@@ -84,7 +84,6 @@ export function QueuedRunsControl({
   )?.projection;
   const reorder = useAtomCommand(threadEnvironment.reorderQueuedRun);
   const promote = useAtomCommand(threadEnvironment.promoteQueuedRun);
-  const resume = useAtomCommand(threadEnvironment.resumeThreadQueue);
   const cancel = useAtomCommand(threadEnvironment.cancelQueuedRun);
   const resumeQueue = useAtomCommand(threadEnvironment.resumeThreadQueue);
   const [resuming, setResuming] = useState(false);
@@ -181,7 +180,7 @@ export function QueuedRunsControl({
     steerInFlightRef.current = true;
     setBusyRunId(queuedRunId);
     if (workflow?.canSendNow) {
-      await resume({
+      await resumeQueue({
         environmentId: props.environmentId,
         input: { threadId: props.threadId, runId: queuedRunId },
       });
