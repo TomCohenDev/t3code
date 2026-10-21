@@ -716,7 +716,7 @@ function useSidebarLookups() {
   const providerEntriesByEnvironment = useAtomValue(sidebarProviderEntriesAtom);
   const { unsortedProjectGroups, projectGroups } = useSidebarProjectGroupSnapshots();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const threads = useThreadShells();
+  const threads = useQuietThreadShells();
   // Fork: the owner filter shows only or hides the projects of the selected repository owners.
   // The project scope offers only the projects that it shows.
   const owner = ForkSidebar.useSidebarOwnerFilter({
