@@ -11,7 +11,7 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 ### Fork Sync
 
-`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main every 3 hours, at 00:17 UTC and then at 03:17, 06:17, 09:17, 12:17, 15:17, 18:17 and 21:17.
+`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main. The interval task "Fork Sync trigger" on the VPS T3 server starts it every 3 hours with `gh workflow run`. The workflow has no GitHub schedule, because GitHub delays and drops scheduled runs.
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
@@ -20,7 +20,7 @@ The fork disables every upstream workflow, because they need upstream's runners 
 - A conflict only in `README.md` resolves by itself. See [Change the fork](#change-the-fork).
 - If the merge conflicts, the typecheck fails or a fork test fails, the sync comments on the issue "Fork sync: upstream merge failed" and stops.
 - After each sync, the job "Check upstream workflows" fails when another workflow is active. It prints the `gh workflow disable` command for that workflow.
-- GitHub can delay a scheduled run. Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
+- To pause the automatic sync, disable the task "Fork Sync trigger" on the VPS. Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
 
 ### Fork Release
 
