@@ -12,13 +12,13 @@ fi
 
 # A repair agent's push to main starts new runs that cannot pass notify_agent=false.
 # So a failure right after a failure of the same workflow does not post again, when the
-# notify job of that failure succeeded and that failure started less than 2 hours before
+# notify job of that failure succeeded and that failure started less than 90 minutes before
 # this run: the repair agent watches the next run and reports it. A notify job that
 # failed reached no agent. Pull request runs never notify, so they do not count.
-# Stay below Fork Sync's 3-hour interval: skipped calls also have a successful notify
+# Stay below Fork Sync's 2-hour interval: skipped calls also have a successful notify
 # job, so a longer window could silence every scheduled failure in a chain.
-# Limit: a repair that takes more than 2 hours can get another call on the next sync.
-max_quiet_seconds=$((2 * 60 * 60))
+# Limit: a repair that takes more than 90 minutes can get another call on the next sync.
+max_quiet_seconds=$((90 * 60))
 previous="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$GITHUB_WORKFLOW" --status completed --limit 20 \
   --json databaseId,conclusion,event,startedAt --jq "[.[] | select(.databaseId != ${GITHUB_RUN_ID} and .event != \"pull_request\")
     | select(.conclusion != \"cancelled\" and .conclusion != \"skipped\")][0] // empty

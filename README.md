@@ -36,6 +36,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 **Updates and releases**
 
 - **[Fork releases](docs/fork/features.md#fork-releases):** nightly desktop builds and Linux server archives from fork main.
+- **[Daily release](docs/fork/operations.md#daily-release):** each morning a VPS task promotes the newest nightly to a release with highlighted notes.
 - **[Android APK](docs/fork/features.md#android-apk):** a signed APK of fork main that installs next to the store app.
 - **[Fork installers](docs/fork/features.md#fork-installers):** one command installs the fork and joins the machine map.
 - **[Install when idle](docs/fork/features.md#install-when-idle):** while agents run, the update offers "Install when idle".
@@ -45,7 +46,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Local deploy](docs/fork/operations.md#deploy-a-local-build):** `scripts/fork-deploy-local.sh <ssh-host>` deploys this checkout to a headless Linux server.
 - **[Local Mac build](docs/fork/operations.md#local-mac-build):** `scripts/fork-desktop-mac.sh` builds and signs the Mac app from this checkout.
 - **[Central build caches](docs/fork/features.md#central-build-caches):** opt-in Vite caches and Android app outputs outside checkouts, with central-only pruning.
-- **[Fork Sync](docs/fork/operations.md#fork-sync):** a workflow merges upstream main into fork main; a T3 task on the VPS starts it every 3 hours.
+- **[Fork Sync](docs/fork/operations.md#fork-sync):** a workflow merges upstream main into fork main; a T3 task on the VPS starts it every 2 hours.
 - **[Fork CI](docs/fork/operations.md#fork-ci):** runs on each push and pull request to main; branch protection requires "Fork CI result".
 - **[Repair agent](docs/fork/operations.md#repair-agent):** a failed Fork Sync, Fork Release or Fork CI run on main calls an agent on the VPS.
 

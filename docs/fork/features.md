@@ -171,7 +171,7 @@ A read-only map in the right panel of a thread. Open it from the "+" menu of the
 
 ### Fork releases
 
-Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives and `SHA256SUMS`. A release builds on each push to main that changes more than docs or the portal. `t3 update`, "Update everything" and `scripts/install.sh` install from the fork releases. How releases build: [Fork Release](operations.md#fork-release).
+Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives and `SHA256SUMS`. A release builds on each push to main that changes more than docs or the portal. `t3 update`, "Update everything" and `scripts/install.sh` install from the fork releases. Each morning one nightly becomes a release with notes in three sections: fork changes, upstream changes and their integration. How releases build: [Fork Release](operations.md#fork-release) and [Daily release](operations.md#daily-release).
 
 - **Works on:** desktop and server.
 - **Limits:** macOS builds use a self-made certificate and are not notarized, so the first install needs Control-click > Open. Revisit if the fork gets an Apple developer account.

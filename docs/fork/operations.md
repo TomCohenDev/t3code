@@ -11,7 +11,7 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 ### Fork Sync
 
-`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main. The interval task "Fork Sync trigger" on the VPS T3 server starts it every 3 hours with `gh workflow run`. The workflow has no GitHub schedule, because GitHub delays and drops scheduled runs.
+`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main. The interval task "Fork Sync trigger" on the VPS T3 server starts it every 2 hours with `gh workflow run`. The workflow has no GitHub schedule, because GitHub delays and drops scheduled runs.
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
@@ -38,6 +38,17 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 The builds use the `nightly` update channel, the app id `com.t3tools.t3code` and the data directory `~/.t3`. They replace the upstream Nightly app and keep its data.
 
+### Daily release
+
+Each day at 09:00 Israel time, the VPS task "Fork daily release" promotes a nightly to a release. It builds nothing.
+
+- `node scripts/fork-daily-release-data.ts` picks the newest nightly on main that has `SHA256SUMS`. It prints JSON with the changes since the previous release: fork changes, upstream changes and integration. If no new nightly exists, it prints `skip`.
+- Integration is a merge that brings upstream commits: a Fork Sync merge or a sync pull request. Its fork commits are the conflict resolutions and fixes.
+- Without a previous release, the range starts where the fork began, and the upstream group holds only the last upstream merge.
+- An agent writes the top 5 highlights of each section from the JSON. `--full-changelog` prints the full lists as markdown. Then the agent runs `gh release edit <tag> --prerelease=false --latest --notes-file <file>`. The tag, the title and the assets stay.
+- Every updater picks a release by its tag, not by the prerelease flag. The tag keeps `-nightly.`, so nightly users get the next nightlies as before.
+- The desktop update popover shows the last 8 lines of the notes before "Full changelog". So the highlights come before that heading, and the full lists come after it.
+
 ### Fork CI
 
 `.github/workflows/fork-ci.yml` runs the `ci.yml` commands on GitHub-hosted runners, for each push to main and each pull request to main. `ci.yml` needs upstream's Blacksmith runners, so it is disabled.
@@ -53,7 +64,7 @@ A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` 
 
 - The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (`yarden-zamir-vps-2`), project "t3code fork" (`/root/Github/t3code/main`).
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
-- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 2 hours before. This window is shorter than the 3-hour sync interval, so the next scheduled failure can call again.
+- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 90 minutes before. This window is shorter than the 2-hour sync interval, so the next scheduled failure can call again.
 - The repair agent ignores a cancelled run.
 - How the agent works, and how to stop it: [Repair agent](../fork-agents.md#repair-agent).
 
