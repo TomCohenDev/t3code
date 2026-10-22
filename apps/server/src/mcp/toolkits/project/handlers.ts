@@ -285,13 +285,25 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
       const rows = snapshot.projects.filter((project) => project.deletedAt === null);
       const start = input.cursor ?? 0,
         end = start + (input.limit ?? 20);
-      return { projects: rows.slice(start, end), nextCursor: end < rows.length ? end : null };
+      const page = yield* Effect.forEach(
+        rows.slice(start, end),
+        (project) =>
+          project.repositoryIdentity !== null
+            ? Effect.succeed(project)
+            : projects
+                .getById(project.id, { awaitRepositoryIdentity: true })
+                .pipe(Effect.mapError(unavailable), Effect.map(Option.getOrElse(() => project))),
+        { concurrency: 8 },
+      );
+      return { projects: page, nextCursor: end < rows.length ? end : null };
     }),
   ),
   t3_project_read: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const projects = yield* access;
-      const result = yield* projects.getById(input.projectId).pipe(Effect.mapError(unavailable));
+      const result = yield* projects
+        .getById(input.projectId, { awaitRepositoryIdentity: true })
+        .pipe(Effect.mapError(unavailable));
       if (Option.isNone(result))
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",
