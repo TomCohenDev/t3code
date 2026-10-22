@@ -981,6 +981,8 @@ function AgentMessageAttribution(props: {
 /** Automation prompts are long, repeated runbooks; a folded bubble keeps them out of the way. */
 function ThreadAutomationMessageRow(props: {
   readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly messageId: MessageId;
   readonly text: string;
   readonly context?: OrchestrationMessageContext;
   readonly scheduledTaskId: ScheduledTaskId | undefined;
@@ -1086,9 +1088,15 @@ function ThreadAutomationMessageRow(props: {
           <Text className="font-t3-medium text-xs tabular-nums text-foreground-secondary">
             {props.timestampLabel}
           </Text>
-          <UserMessageCopyButton
+          <ForkMessageCopyButton
+            environmentId={props.environmentId}
+            threadId={props.threadId}
+            messageId={props.messageId}
+            promptLink
+            accessibilityLabel="Copy message"
+            buttonSize={28}
+            iconSize={13}
             text={props.text}
-            onCopy={undefined}
             tintColor={props.iconSubtleColor}
           />
         </View>
@@ -1319,6 +1327,8 @@ function renderFeedEntry(
       return (
         <ThreadAutomationMessageRow
           environmentId={props.environmentId}
+          threadId={props.threadId}
+          messageId={message.id}
           text={presentation.text}
           context={message.context}
           scheduledTaskId={presentation.scheduledTaskId}
