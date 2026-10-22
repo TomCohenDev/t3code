@@ -124,7 +124,10 @@ export class ProjectService extends Context.Service<
     readonly delete: (input: ProjectDeleteInput) => Effect.Effect<Project, ProjectServiceError>;
     readonly getById: (
       projectId: ProjectId,
-      options?: { readonly includeDeleted?: boolean },
+      options?: {
+        readonly includeDeleted?: boolean;
+        readonly awaitRepositoryIdentity?: boolean;
+      },
     ) => Effect.Effect<Option.Option<Project>, ProjectOperationError>;
     readonly getByWorkspaceRoot: (
       workspaceRoot: string,
@@ -172,10 +175,13 @@ export const make = Effect.gen(function* () {
     deletedAt: row.deletedAt,
   });
 
-  const hydrate = Effect.fn("ProjectService.hydrate")(function* (row: ProjectStore.ProjectRow) {
+  const hydrate = Effect.fn("ProjectService.hydrate")(function* (
+    row: ProjectStore.ProjectRow,
+    options?: { readonly awaitRepositoryIdentity?: boolean },
+  ) {
     const enrichment =
       row.deletedAt === null
-        ? yield* projectEnrichment.getAvailable(row.workspaceRoot)
+        ? yield* projectEnrichment.getAvailable(row.workspaceRoot, options)
         : yield* projectEnrichment.peek(row.workspaceRoot);
     return toProject(row, enrichment);
   });
@@ -301,7 +307,7 @@ export const make = Effect.gen(function* () {
   const getById: ProjectService["Service"]["getById"] = Effect.fn("ProjectService.getById")(
     function* (projectId, options) {
       const row = yield* readRow(projectId, options);
-      return Option.isNone(row) ? Option.none() : Option.some(yield* hydrate(row.value));
+      return Option.isNone(row) ? Option.none() : Option.some(yield* hydrate(row.value, options));
     },
   );
 
@@ -555,7 +561,7 @@ export const make = Effect.gen(function* () {
           (cause) => new ProjectOperationError({ operation: "list-projects", cause }),
         ),
       );
-    const hydrated = yield* Effect.forEach(rows, hydrate, { concurrency: 8 });
+    const hydrated = yield* Effect.forEach(rows, (row) => hydrate(row), { concurrency: 8 });
     return {
       projects: hydrated,
       updatedAt: DateTime.formatIso(yield* DateTime.now),
