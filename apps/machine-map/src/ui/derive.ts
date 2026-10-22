@@ -180,6 +180,7 @@ export function describeChange(change: MapChange, map: MachineMapDocument): stri
       const a = change.arrow;
       const parts = [`${usesText(name(a.from), name(a.to))}: ${LEVEL_LABEL[a.level]}`];
       if (a.agentTools) parts.push("with agent tools");
+      if (a.exec) parts.push("with exec");
       if (a.expiresAt && a.revertLevel)
         parts.push(`until ${shortTime(a.expiresAt)}, then ${LEVEL_LABEL[a.revertLevel]}`);
       return parts.join(", ");

@@ -101,6 +101,7 @@ const machineName = (read: MachinesReadResult, id: string) =>
 const arrowLabel = (read: MachinesReadResult, arrow: ArrowRecord) =>
   `${machineName(read, arrow.from)} uses ${machineName(read, arrow.to)}: ${arrow.level}` +
   (arrow.agentTools ? ", agent tools" : "") +
+  (arrow.exec ? ", exec" : "") +
   (arrow.expiresAt === null ? "" : `, ends ${untilLabel(arrow.expiresAt)}`);
 
 /** An unknown kind of a newer portal shows as its raw name. */

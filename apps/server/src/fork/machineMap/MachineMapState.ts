@@ -13,6 +13,7 @@ import {
   DEFAULT_MACHINE_MAP_PORTAL_URL,
   type MachineToPortal,
   MachineCommand,
+  type MachineId,
   MachineDesiredState,
   type MachineMapTokenHeaders,
   TrimmedNonEmptyString,
@@ -184,7 +185,13 @@ export class MachineMapState extends Context.Service<
       readonly method: string;
       readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
     }) => Effect.Effect<
-      | { readonly sessionId: string; readonly label: string; readonly access: AuthMcpClientAccess }
+      | {
+          readonly sessionId: string;
+          readonly label: string;
+          readonly access: AuthMcpClientAccess;
+          /** The source machine, for the request namespace (MM-1908). */
+          readonly machineId: MachineId;
+        }
       | undefined
     >;
   }
@@ -408,6 +415,7 @@ const make = Effect.gen(function* () {
                 sessionId: session.sessionId,
                 label: `machine ${granted.peer.name}`,
                 access: granted.access,
+                machineId: granted.peer.id,
               };
         }),
       ),

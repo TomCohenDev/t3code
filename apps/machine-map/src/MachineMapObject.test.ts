@@ -369,3 +369,31 @@ it("rechecks an invite after asynchronous work, without replacing the previous i
   expect(await inviting).toEqual({ ok: false, status: 409, error: APPROVAL_CHANGED });
   expect(db.prepare("SELECT code_hash FROM client_invites").get()?.code_hash).toBe(previous);
 });
+
+it("records a run that a machine reports for History, once per run", async () => {
+  const { object, db, send } = portal(true);
+  const socket = {
+    deserializeAttachment: () => ({ kind: "machine", machineId: MAC }),
+  } as WebSocket;
+  const report = {
+    id: "run-1",
+    at: NOW,
+    from: "vps",
+    threadId: "thread-1",
+    threadTitle: "Fix the build",
+    command: "make test",
+    cwd: "/home/t3",
+    outcome: "exited",
+    exitCode: 2,
+    durationMs: 40,
+  };
+  await object.webSocketMessage(socket, JSON.stringify({ _tag: "execRan", report }));
+  // A report sent again after a reconnect counts once.
+  await object.webSocketMessage(socket, JSON.stringify({ _tag: "execRan", report }));
+  expect(db.prepare("SELECT id FROM exec_log").all()).toEqual([{ id: "run-1" }]);
+  // MM-1908: the machine that reported the run is the one that ran it.
+  expect(send.mock.calls.map(([text]) => JSON.parse(text)).at(-1)).toEqual({
+    _tag: "execs",
+    execs: [{ ...report, to: MAC }],
+  });
+});

@@ -5,6 +5,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "./atom-registry";
 
 const readableThreadEnvironmentAtoms = createReadableThreadEnvironmentAtoms(connectionAtomRuntime);
 
@@ -35,3 +36,14 @@ export function useReadableThreadEnvironmentIds(
       : readableThreadEnvironmentAtoms.readableIds(environmentId),
   );
 }
+
+/**
+ * MM-1906: the ids of `useReadableThreadEnvironmentIds` now. A send reads them at call time, so
+ * it sees the answer that `loadReadableThreadEnvironmentIds` waited for.
+ */
+export const currentReadableThreadEnvironmentIds = (environmentId: EnvironmentId) =>
+  appAtomRegistry.get(readableThreadEnvironmentAtoms.readableIds(environmentId));
+
+/** MM-1906: the readable environment ids of `environmentId` once its server answered. */
+export const loadReadableThreadEnvironmentIds = (environmentId: EnvironmentId) =>
+  readableThreadEnvironmentAtoms.loadReadableIds(appAtomRegistry, environmentId);

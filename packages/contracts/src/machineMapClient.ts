@@ -207,3 +207,60 @@ export class MachineMapRequestError extends Schema.TaggedError<MachineMapRequest
     return `Machine map (${this.reason}): ${this.detail}`;
   }
 }
+
+/**
+ * MM-1908: the longest `machine_exec` run. Cloudflare ends a proxied answer after 100 seconds,
+ * and the call waits for the whole run. Revisit when long runs need a job with its own status.
+ */
+const MACHINE_EXEC_MAX_TIMEOUT_SECONDS = 90;
+/** MM-1908: the most bytes of stdout and of stderr that `machine_exec` returns. */
+export const MACHINE_EXEC_MAX_OUTPUT_BYTES = 50_000;
+
+export const MachineExecInput = Schema.Struct({
+  machine: TrimmedNonEmptyString.annotate({
+    description: "Id or name of the other machine, as machines_read lists it. Names ignore case.",
+  }),
+  command: TrimmedNonEmptyString.annotate({
+    description:
+      "Shell command. macOS and Linux run it with `$SHELL -c` (or `/bin/sh -c`). Windows runs it with Windows PowerShell. It runs as the user of the T3 server on that machine, with its environment.",
+  }),
+  cwd: Schema.optionalKey(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "Working directory: an absolute path, or a path that starts with ~. Omit for the home directory of that user. A project path from t3_project_list on that machine works.",
+    }),
+  ),
+  timeoutSeconds: Schema.optionalKey(
+    Schema.Int.check(
+      Schema.isBetween({ minimum: 1, maximum: MACHINE_EXEC_MAX_TIMEOUT_SECONDS }),
+    ).annotate({
+      description: `Seconds before the command and its child processes stop. Default 30, at most ${MACHINE_EXEC_MAX_TIMEOUT_SECONDS}.`,
+    }),
+  ),
+  caller: Schema.optionalKey(
+    Schema.Struct({
+      threadId: Schema.NullOr(Schema.String),
+      threadTitle: Schema.NullOr(Schema.String),
+    }).annotate({
+      description: "Leave out. The calling machine sets it for the History of the portal.",
+    }),
+  ),
+});
+export type MachineExecInput = typeof MachineExecInput.Type;
+
+export const MachineExecResult = Schema.Struct({
+  /** The name of the machine that ran the command. */
+  machine: TrimmedNonEmptyString,
+  cwd: Schema.String,
+  shell: Schema.String,
+  /** `timedOut`: the timeout stopped the command, and its output is lost. */
+  outcome: Schema.Literals(["exited", "timedOut"]),
+  exitCode: Schema.NullOr(Schema.Int),
+  stdout: Schema.String,
+  stderr: Schema.String,
+  /** The stream had more than `MACHINE_EXEC_MAX_OUTPUT_BYTES`; its text ends with a marker. */
+  stdoutTruncated: Schema.Boolean,
+  stderrTruncated: Schema.Boolean,
+  durationMs: NonNegativeInt,
+});
+export type MachineExecResult = typeof MachineExecResult.Type;
