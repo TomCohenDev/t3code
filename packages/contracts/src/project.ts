@@ -45,6 +45,8 @@ export const ProjectScript = Schema.Struct({
    * The command runs, in the background, only when the page does not answer.
    */
   previewOverlay: Schema.optional(Schema.Boolean),
+  /** Fork: Electron accelerator, used only for scripts in the global scripts list. */
+  globalShortcut: Schema.optional(TrimmedNonEmptyString),
   /** Run without opening or focusing the terminal drawer. */
   runInBackground: Schema.optional(Schema.Boolean),
 });

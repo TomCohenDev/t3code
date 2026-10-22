@@ -92,7 +92,9 @@ export const GLOBAL_SCRIPTS_ITEMS = [
     title: "Global scripts",
     to: "/settings/general",
     scope: "environment-defaults",
-    searchTerms: ["scripts commands every project pin pinned buttons background overlay preview"],
+    searchTerms: [
+      "scripts commands every project pin pinned buttons background overlay preview global hotkey shortcut accelerator navgator",
+    ],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 

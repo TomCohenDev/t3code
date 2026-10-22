@@ -453,14 +453,17 @@ The active pull request filters show as chips above the list.
 
 ### Global scripts
 
-Scripts for every project, pinned script buttons, floating previews and app overlays.
+Scripts for every project, pinned script buttons, desktop global shortcuts, floating previews and app overlays.
 
 - **Setting:** server settings `globalScripts`, `pinnedGlobalScriptIds` and `pinnedProjectScriptIds` (all empty by default). Settings > General > Global scripts.
 - **Works on:** web, desktop.
 - Pin a script to get a button. Global pins show in the title bar. Project pins show next to the thread details toggle. Right-click a button for the pin menu.
 - A global script's preview opens as a floating popup. A script can run in the background without the terminal drawer (`runInBackground`).
-- An action with "Open as an app overlay" (`previewOverlay`) opens its page in a large panel over the app. It runs its command only when the page is down.
-- **Limits:** a remote client opens an app overlay in the preview instead, because it cannot frame the page. The mobile app runs project scripts only. Revisit when the mobile parity work reaches scripts.
+- An action with "Open as an app overlay" (`previewOverlay`) opens its page in a large panel over the app. It probes the page URL first. If the page is down, it runs the command in a background terminal and waits up to 20 seconds for an answer. The page can post `{ type: "t3:close-overlay" }` to close the overlay.
+- In the global script editor, set "Global shortcut" (`globalScripts[].globalShortcut`) to an Electron accelerator, for example `CommandOrControl+Alt+N` or `F18`. It is off until set. It works from any app while the desktop app runs. It shows and focuses T3 Code, then runs the script like its pinned button. Clear the field, or delete the script, to release its key. Settings > Fork > Global scripts opens the same editor.
+- The open thread's environment supplies the shortcuts. With no open thread, the primary environment supplies them. App-toggle keys take priority, then the first script with a key. An unavailable key shows a notification; choose a different key. An unrelated settings write does not release unchanged keys.
+- For navgator, add a global script with command `navgator web --no-open`, preview URL `http://127.0.0.1:4747` and "Open as an app overlay" on. Set its global shortcut and open a thread with terminal access. The shortcut starts navgator only if the page does not answer. It uses the page URL, not `/api/health` or a navgator-specific marker.
+- **Limits:** starting a command needs an open thread with terminal access, as pinned scripts do. A running overlay page can open without a thread. A remote environment opens an app overlay in the preview instead, because the client cannot frame its page. Web clients can edit the shortcut but cannot register an OS key. The mobile app runs project scripts only. Revisit when the mobile parity work reaches scripts.
 
 ### App toggle shortcuts
 

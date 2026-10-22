@@ -31,6 +31,22 @@ describe("projectScripts helpers", () => {
     expect("runInBackground" in off).toBe(false);
   });
 
+  it("saves, preserves and clears an optional global accelerator", () => {
+    const input = { ...backgroundInput, runInBackground: false };
+    const saved = buildProjectScript("nav", { ...input, globalShortcut: "F18" });
+    expect(saved.globalShortcut).toBe("F18");
+    const edited = buildProjectScript("nav", {
+      ...input,
+      globalShortcut: saved.globalShortcut ?? null,
+      name: "Navigator",
+    });
+    expect(edited.globalShortcut).toBe("F18");
+    expect(buildProjectScript("nav", { ...input, globalShortcut: null })).not.toHaveProperty(
+      "globalShortcut",
+    );
+    expect(buildProjectScript("nav", input)).not.toHaveProperty("globalShortcut");
+  });
+
   it("shows the terminal drawer unless the script runs in background", () => {
     const script = buildProjectScript("nav", { ...backgroundInput, runInBackground: false });
     expect(shouldShowScriptTerminal(script)).toBe(true);
