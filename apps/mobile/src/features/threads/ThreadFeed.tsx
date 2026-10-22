@@ -1587,7 +1587,9 @@ function renderFeedEntry(
                   <SymbolView name="pencil" size={14} tintColor={iconSubtleColor} />
                 </Pressable>
               ) : null}
-              {presentation.text.trim().length > 0 || !entry.pendingMessage || entry.acknowledged ? (
+              {presentation.text.trim().length > 0 ||
+              !entry.pendingMessage ||
+              entry.acknowledged ? (
                 <ForkMessageCopyButton
                   environmentId={props.environmentId}
                   threadId={props.threadId}
