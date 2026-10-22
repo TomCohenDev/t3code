@@ -2,10 +2,10 @@ import { type MapToolName, OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { isMachineRequestNamespace } from "../../../fork/machineMap/machineAccess.ts";
+import { historyCaller } from "../../../fork/machineMap/machineCallerAccess.ts";
 import * as MachineExec from "../../../fork/machineMap/MachineExec.ts";
 import * as MachineMap from "../../../fork/machineMap/MachineMap.ts";
 import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
-import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { MachineMapToolkit } from "./tools.ts";
@@ -35,16 +35,10 @@ const callThroughPortal = Effect.fn("MachineMapMcp.callThroughPortal")(function*
   tool: MapToolName,
   input: unknown,
 ) {
-  const scope = yield* refuseMachineCaller;
-  const threads = yield* ThreadManagementService.ThreadManagementService;
+  yield* refuseMachineCaller;
   const machineMap = yield* MachineMap.MachineMap;
-  const threadId = scope.thread?.threadId ?? null;
-  const shell =
-    threadId === null
-      ? null
-      : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
   return yield* machineMap
-    .callMapTool({ tool, input, threadId, threadTitle: shell?.title ?? null })
+    .callMapTool({ tool, input, ...(yield* historyCaller()) })
     .pipe(Effect.mapError(toFailure));
 });
 
