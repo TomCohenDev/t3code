@@ -22,25 +22,26 @@ import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
 import { fetchEnvironmentThreadTranscript } from "./threadTranscriptHttp.ts";
 import { loadOfflineThreadContinuation, type ThreadContinuation } from "./threadContinuation.ts";
 
-const fetchLiveTranscript = (threadId: ThreadId) =>
-  Effect.gen(function* () {
-    const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-    const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-    if (Option.isNone(prepared)) {
-      return yield* new EnvironmentRpcUnavailableError({
-        environmentId: supervisor.target.environmentId,
-        message: "The source environment is not connected.",
-      });
-    }
-    return yield* fetchEnvironmentThreadTranscript({
-      prepared: prepared.value,
-      threadId,
-      signer: yield* Effect.serviceOption(ManagedRelayDpopSigner.ManagedRelayDpopSigner),
-      remoteAuthorization: yield* Effect.serviceOption(
-        RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
-      ),
+const fetchLiveTranscript = Effect.fn("orchestration.fetchLiveTranscript")(function* (
+  threadId: ThreadId,
+) {
+  const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
+  const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+  if (Option.isNone(prepared)) {
+    return yield* new EnvironmentRpcUnavailableError({
+      environmentId: supervisor.target.environmentId,
+      message: "The source environment is not connected.",
     });
+  }
+  return yield* fetchEnvironmentThreadTranscript({
+    prepared: prepared.value,
+    threadId,
+    signer: yield* Effect.serviceOption(ManagedRelayDpopSigner.ManagedRelayDpopSigner),
+    remoteAuthorization: yield* Effect.serviceOption(
+      RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
+    ),
   });
+});
 
 /**
  * The live transcript, or while the source cannot answer, the newest offline copy (fork thread
