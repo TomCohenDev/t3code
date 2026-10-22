@@ -288,7 +288,7 @@ Requirements have stable numbers. Do not renumber them. Mark a removed requireme
 ## 19. Cross-machine work
 
 - **MM-1901** The arrow from A to B is the only machine-to-machine grant. Each cross-machine feature uses B's T3 server. It uses neither SSH nor a shared database.
-- **MM-1902** Each cross-machine call stays within the source thread's runtime mode, interaction mode and tool capabilities, and the arrow's grant. The narrower limit wins. A thread read of MM-1905 works in every mode: A pairs that session without `orchestration:operate`, B makes such a session read-only, and B refuses every write on it.
+- **MM-1902** Each cross-machine call stays within the source thread's runtime mode, interaction mode and tool capabilities, and the arrow's grant. The narrower limit wins. A restricted thread can call another machine: A sends the thread's limits with each call in the `T3-Mode-Limit` header, and B applies them there. A thread read of MM-1905 works in every mode: A pairs that session without `orchestration:operate`, B makes such a session read-only, and B refuses every write on it. Until the merge of upstream's linked environments brings `T3-Mode-Limit`, A refuses each other cross-machine call of a restricted thread.
 - **MM-1903** A machine's map role never raises a thread's limits. A restricted thread cannot use `edit` to change settings, send commands or raise access.
 - **MM-1904** When B cannot enforce a source limit, A refuses the call before it sends work. A checks the live caller again after pairing, after the MCP handshake and before a retry. B never lends its map role or onward arrows to the caller.
 - **MM-1905** One server-side thread reader serves `t3_thread_read` and thread attachments. It reads local threads from the local database and other threads through the same arrow and checks as `machine_tool_call`.
@@ -305,6 +305,7 @@ Requirements have stable numbers. Do not renumber them. Mark a removed requireme
 - **MM-1916** Arrow removal and emergency pause stop every cross-machine capability, including queued work and watch delivery. Resume does not restart cancelled work.
 - **MM-1917** The service that copies `.env` files or secrets to another machine, including "add project to another machine", needs the arrow's copy-secrets capability. Neither launch permission nor `exec` alone permits that service.
 - **MM-1918** Each cross-machine UI feature works on web, desktop and mobile, through local, remote, relay and tunnel connections. UI, MCP tools and scheduled work call the same server services and checks. Unsupported provider operations report that limit without using broader credentials.
+- **MM-1920** An agent's shell holds the MCP credential of its thread in `T3_ACP_MCP_ENDPOINT` and `T3_ACP_MCP_AUTHORIZATION`. `t3 tool call` and `t3 acp-mcp-call` use it, so a call from that shell acts as the thread, with its limits (MM-1902, MM-1903). Without it, `t3 tool call` uses a short full-access session of the local user, and History names that caller "CLI (local user)". The Cursor SDK and OpenCode 2 give no per-thread shell environment, so their shells and T3 terminals keep that fallback. T3 terminals never inherit a credential from the server's environment.
 
 ## Later
 

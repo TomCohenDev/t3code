@@ -1125,15 +1125,27 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         browserToolsAvailable: true,
       });
       const requests: Array<unknown> = [];
+      // Fork (MM-1920): the thread's shells get its credential next to its MCP server.
+      const shellCredential = {
+        "shell_environment_policy.set.T3_ACP_MCP_ENDPOINT": "http://127.0.0.1:43123/mcp",
+        "shell_environment_policy.set.T3_ACP_MCP_AUTHORIZATION": "Bearer secret-codex-token",
+      };
+      const entries = codexReplayPreamble({
+        nativeThreadId: "launch-mcp-thread",
+        nativeTurnId: "unused",
+        prompt: "unused",
+      }).slice(0, 5);
+      entries[3] = {
+        type: "expect_outbound",
+        label: "thread/start",
+        frame: {
+          id: 2,
+          method: "thread/start",
+          params: { config: { ...CodexAdapterV2.CODEX_THREAD_CONFIG, ...shellCredential } },
+        },
+      };
       yield* makeCodexReplayHarness(
-        makeCodexReplayTranscript({
-          scenario,
-          entries: codexReplayPreamble({
-            nativeThreadId: "launch-mcp-thread",
-            nativeTurnId: "unused",
-            prompt: "unused",
-          }).slice(0, 5),
-        }),
+        makeCodexReplayTranscript({ scenario, entries }),
         () => Effect.void,
         (method, params) =>
           Effect.sync(() => {
@@ -1152,6 +1164,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
               tool_timeout_sec: 3_900,
               http_headers: { Authorization: "Bearer secret-codex-token" },
             },
+            ...shellCredential,
           },
         },
       ]);

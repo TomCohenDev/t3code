@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { withThreadCredential } from "@t3tools/provider-core/server/forkThreadCredential";
 import {
   EnvironmentId,
   MACHINE_EXEC_MAX_OUTPUT_BYTES,
@@ -14,10 +15,14 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as NetAddress from "effect/net/NetAddress";
+import { HttpServer } from "effect/http";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
+import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import { liveThreadShell } from "../../mcp/McpToolAccess.testkit.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ProcessRunner from "../../processRunner.ts";
@@ -240,6 +245,45 @@ it.effect("refuses restricted callers and missing exec before sending anything",
       .pipe(Effect.flip);
     expect(error.message).toContain("does not allow exec");
     expect(withoutExec.requests).toEqual([]);
+  }),
+);
+
+it.effect("a restricted thread's shell is refused with its own thread credential (MM-1920)", () =>
+  Effect.gen(function* () {
+    const registry = yield* McpSessionRegistry.__testing.make({}).pipe(
+      Effect.provideService(
+        HttpServer.HttpServer,
+        HttpServer.HttpServer.of({
+          address: NetAddress.inetAddressFromIpStringUnsafe("127.0.0.1", 43123),
+          serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
+        }),
+      ),
+      Effect.provideService(
+        ServerEnvironment.ServerEnvironment,
+        ServerEnvironment.ServerEnvironment.of({
+          getEnvironmentId: Effect.succeed(localThread.environmentId),
+          getDescriptor: Effect.die("unused"),
+        }),
+      ),
+      Effect.provide(NodeServices.layer),
+    );
+    const issued = yield* registry.issue({
+      threadId,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+    });
+    // What `t3 tool call` in the agent's shell presents to `/mcp`.
+    const shell = withThreadCredential({}, issued.config);
+    const presented = shell.T3_ACP_MCP_AUTHORIZATION?.slice("Bearer ".length) ?? "";
+    const scope = yield* registry.resolve(presented);
+    if (scope === undefined) return yield* Effect.die("The shell credential does not resolve.");
+    expect(scope.thread.threadId).toBe(threadId);
+
+    const allowed = yield* harness({ desired: desiredState({ arrowsOut: [execArrowOut] }) });
+    const error = yield* allowed
+      .exec(scope, { machine: "VPS", command: "true" }, { runtimeMode: "auto" })
+      .pipe(Effect.flip);
+    expect(error.message).toContain("full-access/default");
+    expect(allowed.requests).toEqual([]);
   }),
 );
 

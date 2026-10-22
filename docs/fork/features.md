@@ -637,7 +637,9 @@ The fork desktop app, its notifications and the bundled web page use the Tick3d 
 `t3 tool list`, `t3 tool describe <name>` and `t3 tool call <name> --input '<json>'` run T3 MCP tools from the command line. In a checkout, use `node apps/server/src/bin.ts` instead of `t3`.
 
 - **Works on:** server.
-- In an agent terminal, the command uses the credential of the thread. Otherwise it calls the running server of its T3 home.
+- In an agent's shell, the command uses the credential of the agent's thread, so the limits of that thread apply. See [MM-1920](../../apps/machine-map/SPEC.md#19-cross-machine-work).
+- Elsewhere, also in a T3 terminal, it calls the running server of its T3 home with a short full-access session. Machine map History names that caller "CLI (local user)".
+- **Limits:** the shells of Cursor and OpenCode 2 agents get no thread credential, so they use the full-access session.
 
 ### Open workspace with a checkout
 
