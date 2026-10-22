@@ -439,6 +439,7 @@ export const makeSweep = (guards: {
                   ? "removed"
                   : previous.outcome,
             reason: `${previous.reason}; ${entry.reason}`,
+            projectPath: entry.projectPath ?? previous.projectPath,
             bytes:
               previous.bytes === null && entry.bytes === null
                 ? null
@@ -458,11 +459,18 @@ export const makeSweep = (guards: {
           const thread = yield* projections.getThreadShell(
             group[0]!.threadId as OrchestrationV2ThreadShell["id"],
           );
+          const project =
+            thread === null
+              ? Option.none()
+              : yield* projects
+                  .get(thread.projectId)
+                  .pipe(Effect.orElseSucceed(() => Option.none()));
           const entry: StorageCleanupReportEntry = {
             kind: "worktree",
             outcome: "kept",
             reason: "",
             path: cwd,
+            projectPath: Option.isSome(project) ? project.value.workspaceRoot : null,
             threadId: thread?.id ?? null,
             threadTitle: thread?.title ?? null,
             bytes: null,
@@ -651,6 +659,7 @@ export const makeSweep = (guards: {
               outcome: "failed",
               reason: "Artifact cleanup could not inspect thread ownership",
               path: null,
+              projectPath: null,
               threadId: null,
               threadTitle: null,
               bytes: null,

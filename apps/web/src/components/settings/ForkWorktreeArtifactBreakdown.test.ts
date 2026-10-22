@@ -22,6 +22,7 @@ describe("artifact reclamation summary", () => {
           outcome: "removed",
           reason: "Artifacts removed",
           path: "/checkout",
+          projectPath: null,
           threadId: null,
           threadTitle: null,
           bytes: null,

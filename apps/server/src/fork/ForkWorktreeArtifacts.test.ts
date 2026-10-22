@@ -764,6 +764,7 @@ it.effect(
           outcome: "kept",
           reason: "No whole-worktree rules apply",
           path: f.cwd,
+          projectPath: null,
           threadId: base.id,
           threadTitle: base.title,
           bytes: null,

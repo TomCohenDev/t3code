@@ -23,6 +23,7 @@ describe("fork storage cleanup reports", () => {
   it("preserves per-folder logical byte counts across the wire", () => {
     const entry = {
       ...legacyEntry,
+      projectPath: null,
       artifactBreakdown: [
         { folderType: "android-build" as const, logicalBytes: 7, folders: 1 },
         { folderType: "node_modules" as const, logicalBytes: 5, folders: 2 },
