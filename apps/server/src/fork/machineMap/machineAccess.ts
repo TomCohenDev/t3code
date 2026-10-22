@@ -206,6 +206,9 @@ export const isLocalDesktopSubject = (subject: string) => subject === "desktop-b
 
 const MACHINE_REQUEST_NAMESPACE_PREFIX = "machine-session:";
 
+/** MM-1902: forwarding must not grant a capability absent from the source credential. */
+export const MACHINE_MCP_CAPABILITIES = ["orchestration", "worktree", "pull-requests"] as const;
+
 /**
  * The MCP request namespace of a machine session. The machine map tools refuse such callers, so
  * an agent on another machine cannot borrow the map role or the arrows of this machine.

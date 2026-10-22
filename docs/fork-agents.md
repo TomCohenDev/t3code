@@ -38,7 +38,8 @@ Mobile testers: read [Android emulator on the Mac](fork/operations.md#android-em
 The portal is `https://t3.yarden-zamir.com`. Each machine is one T3 server, for example Mac, VPS and Windows. Call `machines_read` first: it gives the machine ids, the map roles, the arrows and the supported commands of each machine.
 
 - Take machine ids, revision numbers and command ids from that result. Never guess them.
-- The map role of the machine that runs the agent decides what the agent can do: `read` reads, `propose` sends changes to the owner Inbox, `edit` applies changes. `machines_command` and `machines_queue_cancel` need `edit`.
+- The map role limits what the machine can do: `read` reads, `propose` sends changes to the owner Inbox, `edit` applies changes. It never raises the calling thread's limits. Map writes need a live full-access/default caller. `machines_command` and `machines_queue_cancel` also need `edit`.
+- Cross-machine work uses the arrow and the target's own T3 server, not SSH or a shared database. `machine_tool_call` needs a live full-access/default caller with orchestration, worktree and pull-requests tool capabilities. It refuses restricted callers, even for reads, until the target can enforce narrower limits (MM-1902 to MM-1904). A target never lends its map role or onward arrows.
 - A change that raises access of the agent's own machine always waits for the owner.
 - While the owner's emergency pause is on, the portal refuses every agent call. Each machine also locks T3 Code for every client except its own desktop app (MM-718). Only the owner can resume, in the portal.
 - The owner HTTP API (`apps/machine-map/src/worker.ts`, `/api/*`) needs the owner's Cloudflare Access login. Agents do not use it. Use the MCP tools.
@@ -65,7 +66,7 @@ The portal is `https://t3.yarden-zamir.com`. Each machine is one T3 server, for 
 | Stop everything                         | Ask the owner to press the emergency pause in the portal. It stops all agents and sets all access to none. Agents cannot press it.                                                                    |
 | Revert a map change                     | `machines_undo` with the revision number from `history`. Commands cannot be undone.                                                                                                                   |
 | Cancel a queued command                 | `machines_queue_cancel` with the command id.                                                                                                                                                          |
-| Join a new machine                      | Ask the owner for a join code from Add machine. Then call `machines_join`, or run `t3 machine-map join <code>` on that machine.                                                                       |
+| Join a new machine                      | The owner uses a code from Add machine in Settings > Machines on desktop, or runs `t3 machine-map join <code>` on the headless machine. Agents cannot call `machines_join` (MM-919).                  |
 | Install the fork on a new machine       | Run the step 0 command of the join dialog there: `install.sh --join <code>` or `install.ps1 -Join <code>` from `scripts/fork-install`. See [Install the fork](fork/operations.md#install-the-fork).   |
 
 ## Updates and deploys

@@ -283,6 +283,27 @@ Requirements have stable numbers. Do not renumber them. Mark a removed requireme
 - **MM-1808** The portal sends a push when a health alert starts (MM-1505), when a new proposal waits in the Inbox, when a new sign-in waits for approval (MM-906), and on the emergency pause. The pause push skips the device that pressed the button. The DOWN alert is the push for a machine that went offline, after the offline threshold of MM-1504. Alert ends and Resume send no push. A tap on a notification opens its view.
 - **MM-1809** The Clients view has "Notifications on this device" with "Turn on", "Turn off" and "Send a test". On iOS, push works only in the app on the Home Screen, and the section says so in Safari. A blocked permission and a missing `VAPID_JWK` show why push is off. A new VAPID key turns the old subscription of the device off.
 
+## 19. Cross-machine work
+
+- **MM-1901** The arrow from A to B is the only machine-to-machine grant. Each cross-machine feature uses B's T3 server. It uses neither SSH nor a shared database.
+- **MM-1902** Each cross-machine call stays within the source thread's runtime mode, interaction mode and tool capabilities, and the arrow's grant. The narrower limit wins.
+- **MM-1903** A machine's map role never raises a thread's limits. A restricted thread cannot use `edit` to change settings, send commands or raise access.
+- **MM-1904** When B cannot enforce a source limit, A refuses the call before it sends work. A checks the live caller again after pairing, after the MCP handshake and before a retry. B never lends its map role or onward arrows to the caller.
+- **MM-1905** One server-side thread reader serves `t3_thread_read` and thread attachments. It reads local threads from the local database and other threads through the same arrow and checks as `machine_tool_call`.
+- **MM-1906** A thread attachment keeps its `environmentId`. The composer send check accepts a reachable thread on another machine and reports a refused or unavailable read without sending incomplete context.
+- **MM-1907** The `@` thread menu on web, desktop and mobile lists reachable threads across machines and names the machine of each item. Thread chips and message links still open the correct thread and message.
+- **MM-1908** An arrow has an explicit `exec` capability. `machine_exec` runs a command through B's T3 server, returns its output and exit status, and records the actor, target and result in portal history.
+- **MM-1909** The arrow and the caller's credentials control command execution. No shell command blocklist or command-pattern block grants or refuses execution.
+- **MM-1910** `delegate_task` accepts a target machine. The child runs on B. `task_status` and `task_cancel` reach that child through the arrow. Completion wakes the parent on A.
+- **MM-1911** `orchestrator_capabilities` lists the providers and models of reachable machines with their machine and environment ids. A delegation stores both ids with the parent and child thread ids, so a later cross-machine parent link needs no local-only thread reference.
+- **MM-1912** Watches use one server-owned record with a watcher kind, a target, a wake rule, a change cursor and the parent machine, environment and thread ids. `watch_pull_request` uses a pull-request kind. CI runs, threads and tasks can add kinds without a separate wake system.
+- **MM-1913** A watch and its pending wakes survive a server restart and a disconnected machine. Each wake has a stable id; the parent's server records it once and acknowledges it, so a retry cannot wake the parent twice. Cancel stops later wakes; status shows waiting, delivered, cancelled or refused.
+- **MM-1914** Cross-machine watch reads, cancellation and wake delivery use the arrow and the source limits. A removed grant stops work and delivery; restoring it rechecks permission before resuming.
+- **MM-1915** Each arrow shows an explicit capability list: read threads, launch or delegate, exec, copy secrets, and settings. The portal reads it as "what can A do on B", also on a phone.
+- **MM-1916** Arrow removal and emergency pause stop every cross-machine capability, including queued work and watch delivery. Resume does not restart cancelled work.
+- **MM-1917** The service that copies `.env` files or secrets to another machine, including "add project to another machine", needs the arrow's copy-secrets capability. Neither launch permission nor `exec` alone permits that service.
+- **MM-1918** Each cross-machine UI feature works on web, desktop and mobile, through local, remote, relay and tunnel connections. UI, MCP tools and scheduled work call the same server services and checks. Unsupported provider operations report that limit without using broader credentials.
+
 ## Later
 
 These ideas are not in scope yet:

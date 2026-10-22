@@ -52,18 +52,24 @@ export const layer = McpToolAccess.toLayer(MachineMapToolkit, {
   machines_resources: McpToolAccess.reads((input) =>
     callThroughPortal("machines_resources", input),
   ),
-  machines_set_access: McpToolAccess.writes((input) =>
+  machines_set_access: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_set_access", input),
   ),
-  machines_set_setting: McpToolAccess.writes((input) =>
+  machines_set_setting: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_set_setting", input),
   ),
-  machines_command: McpToolAccess.writes((input) => callThroughPortal("machines_command", input)),
-  machines_queue_cancel: McpToolAccess.writes((input) =>
+  machines_command: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_command", input),
+  ),
+  machines_queue_cancel: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_queue_cancel", input),
   ),
-  machines_undo: McpToolAccess.writes((input) => callThroughPortal("machines_undo", input)),
-  machines_preset: McpToolAccess.writes((input) => callThroughPortal("machines_preset", input)),
+  machines_undo: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_undo", input),
+  ),
+  machines_preset: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_preset", input),
+  ),
   // Joining changes the settings and the auth of this server, like an environment setting.
   machines_join: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {

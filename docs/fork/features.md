@@ -68,6 +68,10 @@ Use the machine map name as the server environment name. A name change in the po
 
 The portal has the views Map, Table, Health, Settings, Queue, Tasks, History, Inbox and Clients (MM-1102). Each view and each selected item has its own link. Agents use the `machines_*` and `machine_tool_call` tools for machine operations. Client approvals, invites and the resume after an emergency pause stay with the owner.
 
+The map role never raises a thread's limits. Map writes need a live full-access/default caller, even with `edit`. `machine_tool_call` also needs all tool capabilities that the target grants: orchestration, worktree and pull requests. It refuses restricted callers, including reads, until the target can enforce narrower limits. An allowed call still needs the arrow with agent tools and stays within its level. These checks run on the server for agents started from web, desktop and mobile.
+
+Cross-machine thread mentions, command execution, delegation with wake-up, explicit arrow capabilities and secret copy are specified in MM-1905 to MM-1918. They are not available through these tools yet.
+
 ### Join and install
 
 In the portal, "Add machine" shows a one-time join code and one install command per system. The command installs the fork and joins the map, see [Install the fork](operations.md#install-the-fork). On a machine that runs the fork, enter the code in Settings > Machines, or run `t3 machine-map join <code>`. The portal makes the tunnel of the machine when it can (MM-213).

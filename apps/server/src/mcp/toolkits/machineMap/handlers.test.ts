@@ -10,6 +10,8 @@ import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { liveThreadsLayer } from "../../McpToolAccess.testkit.ts";
+import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
+import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as MachineMapHandlers from "./handlers.ts";
 import { MachineMapToolkit } from "./tools.ts";
 
@@ -64,35 +66,38 @@ const callTool = (
 const resultText = (result: { readonly content: ReadonlyArray<unknown> }) =>
   JSON.stringify(result.content);
 
-const layerTools = McpHttpServer.toolkitRegistration(
-  MachineMapToolkit,
-  MachineMapHandlers.layer,
-).pipe(
-  Layer.provideMerge(McpServer.McpServer.layer),
-  Layer.provide(liveThreadsLayer),
-  Layer.provide(
-    Layer.mock(MachineMap.MachineMap)({
-      callMapTool: () =>
-        Effect.fail(
-          new MachineMap.MachineMapToolError({
-            reason: "not-connected",
-            detail: "This machine has no portal connection now.",
-          }),
-        ),
-    }),
-  ),
-  Layer.provide(
-    Layer.mock(MachinePeers.MachinePeers)({
-      callTool: () =>
-        Effect.fail(
-          new MachinePeers.MachinePeerError({
-            reason: "no-agent-tools",
-            detail: "The arrow from this machine to VPS does not allow agent tools.",
-          }),
-        ),
-    }),
-  ),
-);
+const toolsWith = (
+  threads: Layer.Layer<ThreadManagement.ThreadManagementService>,
+  callMapTool: MachineMap.MachineMap["Service"]["callMapTool"] = () =>
+    Effect.fail(
+      new MachineMap.MachineMapToolError({
+        reason: "not-connected",
+        detail: "This machine has no portal connection now.",
+      }),
+    ),
+) =>
+  McpHttpServer.toolkitRegistration(MachineMapToolkit, MachineMapHandlers.layer).pipe(
+    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provide(threads),
+    Layer.provide(
+      Layer.mock(MachineMap.MachineMap)({
+        callMapTool,
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(MachinePeers.MachinePeers)({
+        callTool: () =>
+          Effect.fail(
+            new MachinePeers.MachinePeerError({
+              reason: "no-agent-tools",
+              detail: "The arrow from this machine to VPS does not allow agent tools.",
+            }),
+          ),
+      }),
+    ),
+  );
+
+const layerTools = toolsWith(liveThreadsLayer);
 
 it.effect("a map tool without a portal connection says so", () =>
   Effect.gen(function* () {
@@ -124,4 +129,42 @@ it.effect("another machine cannot use the map tools of this machine", () =>
       expect(resultText(result)).toContain("not available to another machine");
     }
   }).pipe(Effect.provide(layerTools)),
+);
+
+it.effect("the machine's edit role does not let a plan thread change the map", () =>
+  Effect.gen(function* () {
+    const portalCalls: Array<string> = [];
+    const editPortal: MachineMap.MachineMap["Service"]["callMapTool"] = ({ tool }) =>
+      Effect.sync(() => {
+        portalCalls.push(tool);
+        return { _tag: "applied", revision: 2 };
+      });
+    const restrictedTools = toolsWith(
+      Layer.mock(ThreadManagement.ThreadManagementService)({
+        getThreadShell: (id) => Effect.succeed(liveThreadShell(id, { interactionMode: "plan" })),
+      }),
+      editPortal,
+    );
+    for (const [tool, input] of [
+      ["machines_set_access", { from: "mac", to: "vps", level: "admin" }],
+      ["machines_set_setting", { scope: "server", key: "forkAutoUpdate", value: true }],
+      ["machines_command", { machineId: "vps", command: { _tag: "restartServer" } }],
+      ["machines_queue_cancel", { commandId: "command:queued" }],
+      ["machines_undo", { revision: 1 }],
+      ["machines_preset", { action: "apply", name: "full-access" }],
+    ] as const) {
+      const result = yield* callTool(threadCaller, tool, input).pipe(
+        Effect.provide(restrictedTools),
+      );
+      expect(result.isError).toBe(true);
+      expect(resultText(result)).toContain("full-access/default");
+    }
+    expect(portalCalls).toEqual([]);
+    const allowed = yield* callTool(threadCaller, "machines_command", {
+      machineId: "vps",
+      command: { _tag: "restartServer" },
+    }).pipe(Effect.provide(toolsWith(liveThreadsLayer, editPortal)));
+    expect(allowed.isError).not.toBe(true);
+    expect(portalCalls).toEqual(["machines_command"]);
+  }),
 );

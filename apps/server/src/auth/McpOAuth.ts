@@ -31,7 +31,10 @@ import type * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as MachineMapState from "../fork/machineMap/MachineMapState.ts";
-import { machineRequestNamespace } from "../fork/machineMap/machineAccess.ts";
+import {
+  machineRequestNamespace,
+  MACHINE_MCP_CAPABILITIES,
+} from "../fork/machineMap/machineAccess.ts";
 import {
   base64UrlDecodeUtf8,
   base64UrlEncode,
@@ -572,11 +575,7 @@ export const layerMcpClientAuthenticator = Layer.effect(
                   label: client.label,
                   access: client.access,
                 },
-                capabilities: new Set<McpInvocationContext.McpCapability>([
-                  "orchestration",
-                  "worktree",
-                  "pull-requests",
-                ]),
+                capabilities: new Set<McpInvocationContext.McpCapability>(MACHINE_MCP_CAPABILITIES),
                 issuedAt,
               })),
             ),
