@@ -38,65 +38,69 @@ export interface ThreadContinuation {
 
 const BACKUP_REQUEST_TIMEOUT = "5 seconds";
 
-const loadCachedTranscript = (environmentId: EnvironmentId, threadId: ThreadId) =>
-  Effect.gen(function* () {
-    const cache = yield* Effect.serviceOption(Persistence.EnvironmentCacheStore);
-    if (Option.isNone(cache)) return null;
-    const cached = yield* cache.value
-      .loadThread(environmentId, threadId)
-      .pipe(Effect.orElseSucceed(() => Option.none()));
-    if (Option.isNone(cached)) return null;
-    const { projection } = cached.value;
-    const fitted = newestTranscriptItems(
-      projection.visibleTurnItems,
-      PROVIDER_SEND_TURN_MAX_FILE_BYTES,
-    );
-    return {
-      transcript: {
-        threadId: projection.thread.id,
-        title: projection.thread.title,
-        updatedAt: projection.updatedAt,
-        items: fitted.items,
-      },
-      source: { _tag: "cache" },
-      omittedItems: fitted.omittedItems,
-    } satisfies ThreadContinuation;
-  });
+const loadCachedTranscript = Effect.fn("threadContinuation.loadCachedTranscript")(function* (
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+) {
+  const cache = yield* Effect.serviceOption(Persistence.EnvironmentCacheStore);
+  if (Option.isNone(cache)) return null;
+  const cached = yield* cache.value
+    .loadThread(environmentId, threadId)
+    .pipe(Effect.orElseSucceed(() => Option.none()));
+  if (Option.isNone(cached)) return null;
+  const { projection } = cached.value;
+  const fitted = newestTranscriptItems(
+    projection.visibleTurnItems,
+    PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  );
+  return {
+    transcript: {
+      threadId: projection.thread.id,
+      title: projection.thread.title,
+      updatedAt: projection.updatedAt,
+      items: fitted.items,
+    },
+    source: { _tag: "cache" },
+    omittedItems: fitted.omittedItems,
+  } satisfies ThreadContinuation;
+});
 
 /** Asks every other registered environment for its backup. One that cannot answer counts as none. */
-const loadBackupTranscript = (environmentId: EnvironmentId, threadId: ThreadId) =>
-  Effect.gen(function* () {
-    const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-    const entries = yield* SubscriptionRef.get(registry.entries);
-    const holders = [...entries.keys()].filter((candidate) => candidate !== environmentId);
-    const backups = yield* Effect.forEach(
-      holders,
-      (heldBy) =>
-        registry
-          .run(heldBy, request(WS_METHODS.forkThreadBackupGet, { environmentId, threadId }))
-          .pipe(
-            Effect.timeout(BACKUP_REQUEST_TIMEOUT),
-            Effect.map((backup) => (backup === null ? null : { heldBy, backup })),
-            Effect.orElseSucceed(() => null),
-          ),
-      { concurrency: "unbounded" },
-    );
-    let newest: ThreadContinuation | null = null;
-    for (const found of backups) {
-      if (found === null) continue;
-      if (
-        newest === null ||
-        DateTime.isGreaterThan(found.backup.transcript.updatedAt, newest.transcript.updatedAt)
-      ) {
-        newest = {
-          transcript: found.backup.transcript,
-          source: { _tag: "backup", heldBy: found.heldBy, backup: found.backup },
-          omittedItems: found.backup.omittedItems,
-        };
-      }
+const loadBackupTranscript = Effect.fn("threadContinuation.loadBackupTranscript")(function* (
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+) {
+  const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+  const entries = yield* SubscriptionRef.get(registry.entries);
+  const holders = [...entries.keys()].filter((candidate) => candidate !== environmentId);
+  const backups = yield* Effect.forEach(
+    holders,
+    (heldBy) =>
+      registry
+        .run(heldBy, request(WS_METHODS.forkThreadBackupGet, { environmentId, threadId }))
+        .pipe(
+          Effect.timeout(BACKUP_REQUEST_TIMEOUT),
+          Effect.map((backup) => (backup === null ? null : { heldBy, backup })),
+          Effect.orElseSucceed(() => null),
+        ),
+    { concurrency: "unbounded" },
+  );
+  let newest: ThreadContinuation | null = null;
+  for (const found of backups) {
+    if (found === null) continue;
+    if (
+      newest === null ||
+      DateTime.isGreaterThan(found.backup.transcript.updatedAt, newest.transcript.updatedAt)
+    ) {
+      newest = {
+        transcript: found.backup.transcript,
+        source: { _tag: "backup", heldBy: found.heldBy, backup: found.backup },
+        omittedItems: found.backup.omittedItems,
+      };
     }
-    return newest;
-  });
+  }
+  return newest;
+});
 
 /** The newest copy of a thread that this client can read without its source environment. */
 export const loadOfflineThreadContinuation = Effect.fn(

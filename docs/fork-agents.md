@@ -5,12 +5,13 @@ This guide maps owner tasks to the fork tools. It is for agents that operate the
 ## Rules
 
 - Before a plan or status report, list recent merged fork PRs for that area. See [Change the fork](fork/operations.md#change-the-fork).
+- Before you delegate with `isolation: worktree`, run `git fetch origin && git merge --ff-only origin/main` in your checkout. The child worktree starts from your local commit, not from `origin/main`.
 - Prefer upstream code and generic solutions. Isolate fork code with one-line upstream hooks; see [Change the fork](fork/operations.md#change-the-fork).
 - Never open or suggest PRs or issues on `pingdotgg/t3code`. Fork fixes stay in `TomCohenDev/t3code`.
 - Never kill a process that you found by a name, a path or a pattern. Kill only a PID that you started.
 - Never write to `~/.t3/userdata` on a machine. It is the live install. Read it or copy from it only.
 - Stage files by path only. Never use `git add -A` or `git add .`. Worktrees hold links to private files from `_shared/`.
-- Before every push, run `vp run fork:check` and fix each failed step. See [Check a change before you push](fork/operations.md#check-a-change-before-you-push).
+- Before every push, run `vp run fork:check` and fix each failed step. On a branch with an upstream merge not yet in `origin/main`, it exits without checks; run typecheck and the fork tests instead, then wait for Fork CI. See [Check a change before you push](fork/operations.md#check-a-change-before-you-push).
 - Put every fork behaviour behind a setting. A setting that only adds something without noticeable cost starts on. A setting that changes existing behavior or layout, installs or restarts anything, changes access or needs setup starts off.
 - Set the values of the owner's machines through the machine map, not through the code default.
 - Enable requested features for the owner unless told otherwise. Report this; keep code defaults separate.
@@ -37,7 +38,9 @@ Mobile testers: read [Android emulator on the Mac](fork/operations.md#android-em
 The portal is `https://map.tomcohen.dev`. Each machine is one T3 server, for example Mac, VPS and Windows. Call `machines_read` first: it gives the machine ids, the map roles, the arrows and the supported commands of each machine.
 
 - Take machine ids, revision numbers and command ids from that result. Never guess them.
-- The map role of the machine that runs the agent decides what the agent can do: `read` reads, `propose` sends changes to the owner Inbox, `edit` applies changes. `machines_command` and `machines_queue_cancel` need `edit`.
+- The map role limits what the machine can do: `read` reads, `propose` sends changes to the owner Inbox, `edit` applies changes. It never raises the calling thread's limits. Map writes need a live full-access/default caller. `machines_command` and `machines_queue_cancel` also need `edit`.
+- Cross-machine work uses the arrow and the target's own T3 server, not SSH or a shared database. `machine_tool_call` needs a live full-access/default caller with orchestration, worktree and pull-requests tool capabilities. It refuses restricted callers, even for reads (MM-1902 to MM-1904). A target never lends its map role or onward arrows.
+- To read a thread on another machine, call `t3_thread_read` with `threadId` and the `environmentId` of the thread, as a thread attachment gives it. It works in every mode, with a read-only session on the other machine (MM-1902, MM-1905).
 - A change that raises access of the agent's own machine always waits for the owner.
 - While the owner's emergency pause is on, the portal refuses every agent call. Each machine also locks T3 Code for every client except its own desktop app (MM-718). Only the owner can resume, in the portal.
 - The owner HTTP API (`apps/machine-map/src/worker.ts`, `/api/*`) needs the owner's Cloudflare Access login. Agents do not use it. Use the MCP tools.
@@ -51,6 +54,7 @@ The portal is `https://map.tomcohen.dev`. Each machine is one T3 server, for exa
 | See the resource history of a machine   | `machines_resources` with `machineId` and `range` (`hour`, `day` or `month`).                                                                                                                         |
 | Give machine X access to machine Y      | `machines_set_access` with `from` X, `to` Y, a `level`, and `agentTools: true` if agents on X must call tools on Y. Add `expiresInMinutes` for temporary access.                                      |
 | Remove access                           | `machines_set_access` with `level: "none"`. The sessions of X on Y end at once.                                                                                                                       |
+| Read a thread on another machine        | `t3_thread_read` with `threadId` and `environmentId`. It needs an arrow with agent tools from this machine to that machine.                                                                           |
 | Run a tool on another machine           | `machine_tool_call` with `machine`, `tool` and `input`. It needs an arrow with agent tools from this machine to that machine.                                                                         |
 | Start work on another machine           | `machine_tool_call` with `t3_thread_launch`, or `machines_command` with `{"_tag":"startThread",...}`.                                                                                                 |
 | Change a setting on every machine       | `machines_set_setting` without `machineId`. Any key works except the machine-local ones (MM-406).                                                                                                     |
@@ -64,7 +68,7 @@ The portal is `https://map.tomcohen.dev`. Each machine is one T3 server, for exa
 | Stop everything                         | Ask the owner to press the emergency pause in the portal. It stops all agents and sets all access to none. Agents cannot press it.                                                                    |
 | Revert a map change                     | `machines_undo` with the revision number from `history`. Commands cannot be undone.                                                                                                                   |
 | Cancel a queued command                 | `machines_queue_cancel` with the command id.                                                                                                                                                          |
-| Join a new machine                      | Ask the owner for a join code from Add machine. Then call `machines_join`, or run `t3 machine-map join <code>` on that machine.                                                                       |
+| Join a new machine                      | The owner uses a code from Add machine in Settings > Machines on desktop, or runs `t3 machine-map join <code>` on the headless machine. Agents cannot call `machines_join` (MM-919).                  |
 | Install the fork on a new machine       | Run the step 0 command of the join dialog there: `install.sh --join <code>` or `install.ps1 -Join <code>` from `scripts/fork-install`. See [Install the fork](fork/operations.md#install-the-fork).   |
 
 ## Updates and deploys
@@ -116,5 +120,5 @@ When Fork CI, Fork Sync or Fork Release fails, `scripts/fork-notify-agent.sh` po
 - For a Fork Sync conflict, the agent merges `Yarden-zamir/t3code` main on a `fork-sync/<date>` branch, keeps the fork features and Yarden's changes, and opens a pull request. It merges the pull request when Fork CI passes, and leaves it open with a comment when it does not.
 - GitHub can start a Fork Sync hours after its schedule (minute 17 of every third hour, UTC). Before you merge upstream by hand, check `gh run list --workflow fork-sync.yml` and the VPS for a running "Fork repair" thread. If the scheduled run did not start yet, run the workflow instead of a manual merge. If a repair agent already merges upstream, send it your notes instead of a second merge.
 - On a retry, run the workflow with `notify_agent=false`, so that a second failure does not start another agent.
-- A failure right after a failure of the same workflow does not post, when the notify job of the first failure succeeded and the first failure started less than 6 hours before.
+- A failure right after a failure of the same workflow does not post, when the notify job of the first failure succeeded and the first failure started less than 2 hours before.
 - To stop the repair agent, disable the "Fork repair" task on the VPS (`machines_command` with `{"_tag":"setScheduledTaskEnabled","taskId":...,"enabled":false}`). To stop all calls, delete the GitHub secret `T3_AGENT_WEBHOOK_URL`.

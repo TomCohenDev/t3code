@@ -37,6 +37,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 **Updates and releases**
 
 - **[Fork releases](docs/fork/features.md#fork-releases):** nightly desktop builds and Linux server archives from fork main.
+- **[Daily release](docs/fork/operations.md#daily-release):** each morning a VPS task promotes the newest nightly to a release with highlighted notes.
 - **[Android APK](docs/fork/features.md#android-apk):** a signed APK of fork main that installs next to the store app.
 - **[Fork installers](docs/fork/features.md#fork-installers):** one command installs the fork and joins the machine map.
 - **[Install when idle](docs/fork/features.md#install-when-idle):** while agents run, the update offers "Install when idle".
@@ -45,6 +46,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Changelog](docs/fork/features.md#changelog):** a timeline of fork releases, upstream commits and Fork Sync runs.
 - **[Local deploy](docs/fork/operations.md#deploy-a-local-build):** `scripts/fork-deploy-local.sh <ssh-host>` deploys this checkout to a headless Linux server.
 - **[Local Mac build](docs/fork/operations.md#local-mac-build):** `scripts/fork-desktop-mac.sh` builds and signs the Mac app from this checkout.
+- **[Central build caches](docs/fork/features.md#central-build-caches):** opt-in Vite caches and Android app outputs outside checkouts, with central-only pruning.
 - **[Fork Sync](docs/fork/operations.md#fork-sync):** a workflow merges Yarden's fork main into fork main every 3 hours.
 - **[Fork CI](docs/fork/operations.md#fork-ci):** runs on each push and pull request to main; branch protection requires "Fork CI result".
 - **[Repair agent](docs/fork/operations.md#repair-agent):** a failed Fork Sync, Fork Release or Fork CI run on main calls an agent on the VPS.
@@ -64,9 +66,12 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Snooze quick options](docs/fork/features.md#snooze-quick-options):** edit the choices of the snooze menus.
 - **[Worktree path template](docs/fork/features.md#worktree-path-template):** a template decides where new worktrees go.
 - **[Thread link chips](docs/fork/features.md#thread-link-chips):** every thread link in chat shows as an attached-thread chip.
+- **[Message links](docs/fork/features.md#message-links):** copy a link from each message to open the thread at that message.
 - **[Thread addresses open the desktop app](docs/fork/features.md#thread-addresses-open-the-desktop-app):** a thread address from Slack or GitHub opens the desktop app.
 - **[New thread on mobile](docs/fork/features.md#new-thread-on-mobile):** New thread in the mobile app opens the project list, the last project, or no project.
 - **[Camera in the mobile composer](docs/fork/features.md#camera-in-the-mobile-composer):** the plus button of the mobile composer can take a photo.
+- **[Android assistant panel](docs/fork/features.md#android-assistant-panel):** the Android assistant button starts a thread with the screen.
+- **[Read aloud on mobile](docs/fork/features.md#read-aloud-on-mobile):** hear a reply, or every new reply of a thread.
 
 **Filters**
 
@@ -75,7 +80,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Scripts and terminal**
 
-- **[Global scripts](docs/fork/features.md#global-scripts):** scripts for every project, pinned buttons, floating previews and app overlays.
+- **[Global scripts](docs/fork/features.md#global-scripts):** scripts for every project, pinned buttons, desktop global shortcuts, floating previews and app overlays.
 - **[App toggle shortcuts](docs/fork/features.md#app-toggle-shortcuts):** global keys that show and hide the desktop app.
 - **[Keyboard focus levels](docs/fork/features.md#keyboard-focus-levels):** Escape moves focus between composer, timeline and sidebar; arrow keys move a cursor.
 - **[Shortcuts in tooltips](docs/fork/features.md#shortcuts-in-tooltips):** control tooltips show the keys of the control as chips.
@@ -105,7 +110,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - MCP: `schedule_task`, `t3_project_create` and `t3_project_update` read and write the project model, environment mode, auto-pull and actions through project settings.
 - Desktop updates: the updater never downgrades, so a local build stays installed. The server recovers when quit-and-install does not quit.
 - Worktree launch: a worktree request in Scratch runs in a thread folder. A worktree request outside a Git repository runs in the project folder and says so in the thread. A launch refuses a new worktree branch that already exists.
-- Queue: a resumed queued turn shows after the turns that ran before it. A paused queue shows while a turn runs. Resume waits for an edit and for a usage limit.
+- Queue: a resumed queued turn shows after the turns that ran before it. A paused queue shows while a turn runs. Resume waits for an edit and for a usage limit. Send now on a stopped thread also waits for a usage limit.
 - Machine map: an expired machine arrow ends the sessions that it granted.
 - Device panel: a Homebrew Android SDK (`android-commandlinetools`) works without `ANDROID_HOME`, also when the `adb` on `PATH` has no emulator.
 

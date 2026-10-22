@@ -38,7 +38,7 @@ export const THREAD_CARD_IDLE_CLASS =
 export const THREAD_CARD_CONTENT_CLASS =
   "relative z-10 px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)";
 export const THREAD_CARD_TITLE_CLASS =
-  "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none";
+  "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none";
 /** The element that carries `data-sidebar-status`; themes draw it as a sticker. */
 export const THREAD_CARD_STATUS_LABEL_CLASS =
   "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity";

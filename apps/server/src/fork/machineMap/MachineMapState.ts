@@ -7,6 +7,7 @@
  * It depends on no auth service, because `EnvironmentAuth` reads it.
  */
 import {
+  type AuthEnvironmentScope,
   type AuthMcpClientAccess,
   ClientAccessMode,
   DEFAULT_MACHINE_MAP_PORTAL_URL,
@@ -181,6 +182,7 @@ export class MachineMapState extends Context.Service<
       readonly sessionId: string;
       readonly subject: string;
       readonly method: string;
+      readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
     }) => Effect.Effect<
       | { readonly sessionId: string; readonly label: string; readonly access: AuthMcpClientAccess }
       | undefined
@@ -338,28 +340,29 @@ const make = Effect.gen(function* () {
   const lastReported = new Map<string, number>();
   const modeOf = (local: LocalState): ClientAccessMode =>
     local.enabled ? local.clientAccess : "off";
-  const browserGrant: MachineMapState["Service"]["browserGrant"] = (input) =>
-    Effect.gen(function* () {
-      const local = yield* SubscriptionRef.get(state);
-      const mode = modeOf(local);
-      const desired = local.saved.desired;
-      // Without a readable desired state, `enforce` lets no browser in (MM-918).
-      if (mode === "off" || desired === null) return undefined;
-      const nowMs = yield* Clock.currentTimeMillis;
-      const grant = browserGrantFor(desired, input.thumbprint, nowMs, mode);
-      if (grant !== undefined) return grant;
-      if (nowMs - (lastReported.get(input.thumbprint) ?? 0) >= 60_000) {
-        if (lastReported.size >= 1000) lastReported.clear();
-        lastReported.set(input.thumbprint, nowMs);
-        yield* Queue.offer(clientSeen, {
-          _tag: "clientSeen",
-          thumbprint: input.thumbprint,
-          describedAs: input.describedAs.slice(0, 200),
-          email: input.subject,
-        });
-      }
-      return undefined;
-    });
+  const browserGrant: MachineMapState["Service"]["browserGrant"] = Effect.fn(
+    "MachineMapState.browserGrant",
+  )(function* (input) {
+    const local = yield* SubscriptionRef.get(state);
+    const mode = modeOf(local);
+    const desired = local.saved.desired;
+    // Without a readable desired state, `enforce` lets no browser in (MM-918).
+    if (mode === "off" || desired === null) return undefined;
+    const nowMs = yield* Clock.currentTimeMillis;
+    const grant = browserGrantFor(desired, input.thumbprint, nowMs, mode);
+    if (grant !== undefined) return grant;
+    if (nowMs - (lastReported.get(input.thumbprint) ?? 0) >= 60_000) {
+      if (lastReported.size >= 1000) lastReported.clear();
+      lastReported.set(input.thumbprint, nowMs);
+      yield* Queue.offer(clientSeen, {
+        _tag: "clientSeen",
+        thumbprint: input.thumbprint,
+        describedAs: input.describedAs.slice(0, 200),
+        email: input.subject,
+      });
+    }
+    return undefined;
+  });
 
   return MachineMapState.of({
     snapshot: SubscriptionRef.get(state),
@@ -398,7 +401,7 @@ const make = Effect.gen(function* () {
         Effect.map(([desired, nowMs]) => {
           // Only a bearer token, as an MCP client presents it. Never a cookie.
           if (desired === null || session.method !== "bearer-access-token") return undefined;
-          const granted = machineMcpAccessFor(desired, session.subject, nowMs);
+          const granted = machineMcpAccessFor(desired, session, nowMs);
           return granted === undefined
             ? undefined
             : {

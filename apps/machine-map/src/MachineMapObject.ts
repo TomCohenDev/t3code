@@ -170,6 +170,7 @@ import {
   supportsCommand,
 } from "./rules/queue.ts";
 import { newJoinCode, normalizeJoinCode, seal, sha256Hex, unseal } from "./sealedSecret.ts";
+import { APPROVAL_CHANGED, approvalMatches, type ApprovalAction } from "./rules/approval.ts";
 
 /** The owner behind an API call, as the Worker saw it. */
 export interface OwnerContext {
@@ -1975,6 +1976,18 @@ export class MachineMapObject extends DurableObject<Env> {
 
   // RPC
 
+  #checkApproval(action: ApprovalAction): void {
+    if (
+      action.request.expectedState !== undefined &&
+      !approvalMatches(action, {
+        snapshot: { map: this.#map },
+        pause: this.#pauseEvent().pause,
+        pending: action._tag === "approve" ? this.#pendingClients() : [],
+      })
+    )
+      throw new PortalError(409, APPROVAL_CHANGED);
+  }
+
   async #run<T>(owner: OwnerContext | null, work: () => T | Promise<T>): Promise<Outcome<T>> {
     if (owner) this.#recordSignIn(owner);
     try {
@@ -2022,6 +2035,7 @@ export class MachineMapObject extends DurableObject<Env> {
   /** `approved`: the request came on the approval path of MM-1207, so it may change MM-919. */
   changes(owner: OwnerContext, request: ChangesRequest, approved = false) {
     return this.#run(owner, (): WriteResult => {
+      this.#checkApproval({ _tag: "changes", request });
       // MM-909: a held draft or an open panel can send an older client record. It keeps the keys.
       const changes = keepClientKeys(this.#map, request.changes);
       checkEditableChanges(this.#map, changes);
@@ -2632,6 +2646,7 @@ export class MachineMapObject extends DurableObject<Env> {
     return this.#run(owner, async (): Promise<WriteResult> => {
       const problem = await this.#approvalsProblem(host);
       if (problem) throw new PortalError(409, approvalsProblemText(problem));
+      this.#checkApproval({ _tag: "approve", request });
       const pending = this.#pendingClient(request.thumbprint);
       if (pending.state === "rejected") throw new PortalError(409, "Unblock this sign-in first.");
       const holder = clientWithKey(this.#map, pending.thumbprint);
@@ -2730,6 +2745,11 @@ export class MachineMapObject extends DurableObject<Env> {
     return this.#run(owner, async (): Promise<InviteResponse> => {
       const problem = await this.#approvalsProblem(host);
       if (problem) throw new PortalError(409, approvalsProblemText(problem));
+      // Hash before checking the saved state, so no await separates that check from the writes.
+      const code = randomHex(16);
+      const expiresAt = addMinutes(Date.now(), INVITE_MINUTES);
+      const codeHash = await sha256Hex(code);
+      this.#checkApproval({ _tag: "invite", request });
       let clientId: ClientId;
       if (request.client._tag === "existing") {
         const existing = findClient(this.#map, request.client.clientId);
@@ -2780,10 +2800,6 @@ export class MachineMapObject extends DurableObject<Env> {
         ]);
         clientId = client.id;
       }
-      // A 128-bit code: it travels in a QR or a link, never typed.
-      const code = randomHex(16);
-      const expiresAt = addMinutes(Date.now(), INVITE_MINUTES);
-      const codeHash = await sha256Hex(code);
       this.#sql("DELETE FROM client_invites WHERE client_id = ?", clientId);
       this.#sql(
         "INSERT INTO client_invites (code_hash, client_id, expires_at) VALUES (?, ?, ?)",

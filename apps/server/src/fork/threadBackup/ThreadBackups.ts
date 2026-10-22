@@ -85,28 +85,27 @@ const make = Effect.gen(function* () {
       : Option.none();
 
   /** Drops backups past `KEPT_FOR` and the oldest past `KEPT_PER_SOURCE`. */
-  const prune = (folder: string) =>
-    Effect.gen(function* () {
-      const names = yield* fileSystem.readDirectory(folder);
-      const now = yield* Clock.currentTimeMillis;
-      const entries = yield* Effect.forEach(names, (name) =>
-        fileSystem.stat(path.join(folder, name)).pipe(
-          Effect.map((info) => ({
-            file: path.join(folder, name),
-            modifiedMs: Option.match(info.mtime, { onNone: () => 0, onSome: (at) => at.getTime() }),
-          })),
-        ),
-      );
-      const newestFirst = entries.toSorted((a, b) => b.modifiedMs - a.modifiedMs);
-      const stale = newestFirst.filter(
-        (entry, index) =>
-          index >= KEPT_PER_SOURCE || now - entry.modifiedMs > Duration.toMillis(KEPT_FOR),
-      );
-      yield* Effect.forEach(stale, (entry) => fileSystem.remove(entry.file), { discard: true });
-    });
+  const prune = Effect.fn("ThreadBackups.prune")(function* (folder: string) {
+    const names = yield* fileSystem.readDirectory(folder);
+    const now = yield* Clock.currentTimeMillis;
+    const entries = yield* Effect.forEach(names, (name) =>
+      fileSystem.stat(path.join(folder, name)).pipe(
+        Effect.map((info) => ({
+          file: path.join(folder, name),
+          modifiedMs: Option.match(info.mtime, { onNone: () => 0, onSome: (at) => at.getTime() }),
+        })),
+      ),
+    );
+    const newestFirst = entries.toSorted((a, b) => b.modifiedMs - a.modifiedMs);
+    const stale = newestFirst.filter(
+      (entry, index) =>
+        index >= KEPT_PER_SOURCE || now - entry.modifiedMs > Duration.toMillis(KEPT_FOR),
+    );
+    yield* Effect.forEach(stale, (entry) => fileSystem.remove(entry.file), { discard: true });
+  });
 
-  const store: ThreadBackups["Service"]["store"] = (backup) =>
-    Effect.gen(function* () {
+  const store: ThreadBackups["Service"]["store"] = Effect.fn("ThreadBackups.store")(
+    function* (backup) {
       const file = fileOf(backup.sourceEnvironmentId, backup.transcript.threadId);
       if (Option.isNone(file)) return;
       yield* fileSystem.makeDirectory(path.dirname(file.value), { recursive: true });
@@ -116,58 +115,60 @@ const make = Effect.gen(function* () {
         Effect.provideService(Path.Path, path),
       );
       yield* prune(path.dirname(file.value));
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Could not keep a thread backup", { cause: String(cause) }),
-      ),
-    );
+    },
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not keep a thread backup", { cause: String(cause) }),
+    ),
+  );
 
-  const get: ThreadBackups["Service"]["get"] = (input) =>
-    Effect.gen(function* () {
+  const get: ThreadBackups["Service"]["get"] = Effect.fn("ThreadBackups.get")(
+    function* (input) {
       const file = fileOf(input.environmentId, input.threadId);
       if (Option.isNone(file)) return null;
       if (!(yield* fileSystem.exists(file.value))) return null;
       return yield* fileSystem.readFileString(file.value).pipe(Effect.flatMap(decodeBackup));
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Could not read a thread backup", { cause: String(cause) }).pipe(
-          Effect.as(null),
-        ),
+    },
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not read a thread backup", { cause: String(cause) }).pipe(
+        Effect.as(null),
       ),
-    );
+    ),
+  );
 
-  const buildBackup = (threadId: ThreadId, sourceEnvironmentId: EnvironmentId) =>
-    Effect.gen(function* () {
-      const shell = yield* threads.getThreadShell(threadId);
-      if (shell === null || shell.archivedAt !== null || shell.deletedAt !== null) return null;
-      const { projection } = yield* threads.getThreadSnapshot(threadId);
-      const project = yield* projects.getShell(shell.projectId);
-      const descriptor = yield* serverEnvironment.getDescriptor;
-      const fitted = newestTranscriptItems(projection.visibleTurnItems, THREAD_BACKUP_MAX_BYTES);
-      return {
-        sourceEnvironmentId,
-        sourceLabel: descriptor.label,
-        project: Option.match(project, {
-          onNone: () => null,
-          onSome: (shellProject) => ({
-            title: shellProject.title,
-            workspaceRoot: shellProject.workspaceRoot,
-            repositoryKey: shellProject.repositoryIdentity
-              ? repositoryGroupingKeyOf(shellProject.repositoryIdentity)
-              : null,
-          }),
+  const buildBackup = Effect.fn("ThreadBackups.buildBackup")(function* (
+    threadId: ThreadId,
+    sourceEnvironmentId: EnvironmentId,
+  ) {
+    const shell = yield* threads.getThreadShell(threadId);
+    if (shell === null || shell.archivedAt !== null || shell.deletedAt !== null) return null;
+    const { projection } = yield* threads.getThreadSnapshot(threadId);
+    const project = yield* projects.getShell(shell.projectId);
+    const descriptor = yield* serverEnvironment.getDescriptor;
+    const fitted = newestTranscriptItems(projection.visibleTurnItems, THREAD_BACKUP_MAX_BYTES);
+    return {
+      sourceEnvironmentId,
+      sourceLabel: descriptor.label,
+      project: Option.match(project, {
+        onNone: () => null,
+        onSome: (shellProject) => ({
+          title: shellProject.title,
+          workspaceRoot: shellProject.workspaceRoot,
+          repositoryKey: shellProject.repositoryIdentity
+            ? repositoryGroupingKeyOf(shellProject.repositoryIdentity)
+            : null,
         }),
-        branch: shell.branch,
-        worktreePath: shell.worktreePath,
-        transcript: {
-          threadId: projection.thread.id,
-          title: projection.thread.title,
-          updatedAt: projection.updatedAt,
-          items: fitted.items,
-        },
-        omittedItems: fitted.omittedItems,
-      } satisfies ForkThreadBackup;
-    });
+      }),
+      branch: shell.branch,
+      worktreePath: shell.worktreePath,
+      transcript: {
+        threadId: projection.thread.id,
+        title: projection.thread.title,
+        updatedAt: projection.updatedAt,
+        items: fitted.items,
+      },
+      omittedItems: fitted.omittedItems,
+    } satisfies ForkThreadBackup;
+  });
 
   // Threads changed since their last push. A failed push puts its thread back.
   const dirty = new Set<ThreadId>();

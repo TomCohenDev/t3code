@@ -13,6 +13,8 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { hasUnmergedSync } from "./lib/fork-check-sync.ts";
+
 /** Fork CI checks that this command does not run. Keep in sync with .github/workflows/fork-ci.yml. */
 const NOT_COVERED = [
   "the full test suites of the Test, Test Web and Test Server jobs (only the tests below run)",
@@ -70,6 +72,13 @@ try {
 } catch {
   console.error("No merge base with origin/main. Run `git fetch origin main` and try again.");
   process.exit(2);
+}
+
+if (hasUnmergedSync(repoRoot)) {
+  console.log(
+    "Fork CI checks sync branches. Locally, run `vp run typecheck` and the fork tests in docs/fork/operations.md (Fork Sync).",
+  );
+  process.exit(0);
 }
 
 const changed = [

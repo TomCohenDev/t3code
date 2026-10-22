@@ -15,6 +15,7 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
+- For a local sync repair, run `vp run typecheck` and those fork tests with `vp test run <files>`. Run apps/web tests from `apps/web` with `vp test run --project unit --project browser <files>`; install Playwright Chromium first if needed. Do not run the changed-file checks over all upstream changes; wait for Fork CI on the repair pull request.
 - The apps/web fork tests run from `apps/web`, in its unit and browser projects. A browser test needs Playwright Chromium, so the job installs it first.
 - A conflict only in `README.md` resolves by itself. The fork section stays on top, and Yarden's README below its own fork section follows. See [Change the fork](#change-the-fork).
 - If the merge conflicts, the typecheck fails or a fork test fails, the sync comments on the issue "Fork sync: upstream merge failed" and stops.
@@ -37,6 +38,22 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 The builds use the `nightly` update channel, the app id `com.t3tools.t3code` and the data directory `~/.t3`. They replace the upstream Nightly app and keep its data.
 
+### Daily release
+
+Each day at 09:00 Israel time, the VPS task "Fork daily release" promotes a nightly to a release. It builds nothing.
+
+- `node scripts/fork-daily-release-data.ts` picks the newest nightly on main that has `SHA256SUMS`. It prints JSON with the changes since the previous release: fork changes, upstream changes and integration. If no new nightly exists, it prints `skip`.
+- Integration is a merge that brings upstream commits: a Fork Sync merge or a sync pull request. Its fork commits are the conflict resolutions and fixes.
+- Without a previous release, the range starts where the fork began, and the upstream group holds only the last upstream merge.
+- An agent writes a notes plan from the JSON. The plan groups related changes into clusters, with a name and one sentence each, and orders clusters and changes by importance and cool factor. `--notes <plan.json>` prints the notes from it. The script fails and names each change that is missing, repeated or unknown.
+- The notes start with the top 5 clusters of each section, the highlights. The full changelog lists every cluster on one line, with its changes in a collapsed block below it. Then the agent runs `gh release edit <tag> --prerelease=false --latest --title "T3 Code Fork <Israel date> (<first 12 characters of the commit>)" --notes-file <file>`. The tag and the assets stay.
+- The title keeps the commit in brackets, because Fork Release and Fork Android find the release of a commit by its name.
+- Each pull request item carries the images of its body, without badges and videos. The notes show up to 4 of them in a collapsed "Screenshots" block under the change, and the highlights show the screenshots of the first change in the cluster that has any. The script reads the bodies with one GraphQL call per 100 pull requests, for the fork and for upstream.
+- A release body holds at most 125000 characters. Over the budget of 120000 characters, the full changelog leaves out the screenshots of its last clusters first.
+- `--release <tag>` writes the data of a given release again, for example to rewrite its notes.
+- Every updater picks a release by its tag, not by the prerelease flag. The tag keeps `-nightly.`, so nightly users get the next nightlies as before.
+- The desktop update popover shows the last 8 lines of the notes before "Full changelog". So the highlights come before that heading, and the full lists come after it. The popover leaves out `<details>` blocks. Desktop builds from before this change show a "Screenshots" line for each block in those 8 lines.
+
 ### Fork CI
 
 `.github/workflows/fork-ci.yml` runs the `ci.yml` commands on GitHub-hosted runners, for each push to main and each pull request to main. `ci.yml` needs upstream's Blacksmith runners, so it is disabled.
@@ -52,7 +69,7 @@ A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` 
 
 - The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (vienna), project "t3code fork".
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
-- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 6 hours before.
+- A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 90 minutes before. This window is shorter than the 2-hour sync interval, so the next scheduled failure can call again.
 - The repair agent ignores a cancelled run.
 - How the agent works, and how to stop it: [Repair agent](../fork-agents.md#repair-agent).
 
@@ -115,6 +132,7 @@ vp run fork:check
 ```
 
 - It runs the quick Fork CI checks on the files that changed since the merge base with `origin/main`. Uncommitted and untracked files count.
+- On a branch with a merge whose second parent is not in `origin/main`, it prints one line and exits 0 without checks. This keeps sync repairs from checking every upstream change locally. Run `vp run typecheck` and the fork tests described in [Fork Sync](#fork-sync), then wait for Fork CI on the pull request.
 - The steps are format and lint of the changed files, knip, typecheck of the changed packages, the tests of the changed files, and the doc link check. The tests are the changed test files, the tests next to changed source files, `forkSettingsRegistration.test.ts`, the React Compiler coverage test of a changed web or mobile app, and the import cycle test (`dependency-graph.test.ts`) of a changed mobile app.
 - It prints one line per step: pass, fail or skipped with the reason. It exits with an error when a step fails.
 - Without Playwright Chromium, it skips the browser tests and prints the install command.
@@ -277,6 +295,25 @@ Use these steps only when the join dialog says "No tunnel", for example when the
    systemctl --user daemon-reload && systemctl --user restart t3code.service
    ```
 
+## Central build caches
+
+Set `T3_FORK_CENTRAL_BUILD_CACHE=1` before running Vite tools or Expo prebuild. It defaults off. Set `XDG_CACHE_HOME` to choose a base outside the checkout; otherwise the base is `~/.cache`.
+
+- Vite uses `t3-vite/<SHA-256 of canonical checkout path>/<app>`. All six owned Vite configs and Astro's embedded Vite config use the same helper; vendored reference configs are unchanged.
+- The Expo plugin links only `apps/mobile/android/app/build` to `t3-gradle/workspaces/<hash>/app/<generation>`. A clean prebuild removes the link and creates a fresh generation. It does not reuse the previous app outputs. Gradle's build cache can restore tasks (`org.gradle.caching=true` in `~/.gradle/gradle.properties`). Root `android/build`, dependency codegen and `.cxx` keep their original locations.
+- Existing physical `app/build` folders are refused, not migrated. Run `expo prebuild --clean --platform android` when opting in. Turning the variable off leaves existing links alone; a clean prebuild restores local outputs.
+
+```sh
+node scripts/fork-build-cache-prune.ts --dry-run
+node scripts/fork-build-cache-prune.ts --days 14
+```
+
+Prune removes whole central workspace folders for missing checkouts or expired last-use records, and Android generations that the current link no longer names. Current generations are kept until the workspace expires. A later Gradle build recreates an expired link target. The script reports allocated bytes removed (or planned); filesystem clones and compression can change the actual free-space gain. It never removes anything in a checkout, follows payload links, or removes unknown/unregistered folders. It does not clean legacy local outputs.
+
+Vite holds a PID lock for the tool process. Gradle holds one from app configuration through build completion. Live or unrecognized locks block removal; dead-PID locks do not. Builds and pruning share a short `.gate` directory lock. A concurrent setup fails safely: retry it. If a process dies inside that critical section, first confirm no cache operation is running, then remove only the central root's empty `.gate` directory. No background cleanup is installed.
+
+A later T3 storage-cleanup hook can spawn `node scripts/fork-build-cache-prune.ts --days 14` from the checkout, with the build user's `HOME` and `XDG_CACHE_HOME`. Pass `--dry-run` for its preview. Do not add checkout deletion to that hook.
+
 ## Android APK build
 
 `.github/workflows/fork-android.yml` ("Fork Android") adds `t3code-<version>-android.apk` to the release after each successful Fork Release of main. It is a local Gradle build with `scripts/fork-android-apk.sh`, so the fork needs no Expo or Google Play account. How users install it: [Android APK](features.md#android-apk).
@@ -342,3 +379,4 @@ Use these raw-emulator steps only after the owner approves a workaround:
 | `T3_AGENT_WEBHOOK_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`                | secret, optional   | Webhook URL of the repair agent task, and the Cloudflare Access service token that the call needs. Without the URL, no agent is notified.                                                 |
 | `CLOUDFLARE_DEPLOY_TOKEN`                                                               | secret             | Deploy of the machine map portal. See [apps/machine-map/README.md](../../apps/machine-map/README.md#deploy).                                                                              |
 | `CLERK_PUBLISHABLE_KEY`, `CLERK_JWT_TEMPLATE`, `CLERK_CLI_OAUTH_CLIENT_ID`, `RELAY_URL` | variable, optional | T3 Connect config. Without them, the build has no T3 Connect.                                                                                                                             |
+| `T3_FORK_CENTRAL_BUILD_CACHE`, `XDG_CACHE_HOME`                                         | variable, optional | Opt in to [central build caches](#central-build-caches), and choose their base directory.                                                                                                 |

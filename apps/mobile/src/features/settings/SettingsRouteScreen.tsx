@@ -135,6 +135,7 @@ function LocalSettingsRouteScreen() {
 }
 
 function SettingsIndexSections() {
+  const navigation = useNavigation();
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
   const noServerTargets = selectedTargets.length === 0;
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
@@ -154,7 +155,18 @@ function SettingsIndexSections() {
   return (
     <>
       <SettingsSection title="Interface">
-        <SettingsRow icon="gearshape" label="General" target="SettingsGeneral" />
+        {/* Fork: a literal screen, because SettingsSheetTarget is at TypeScript's 25-member limit for
+            checking `{ screen: SettingsSheetTarget }` against the navigator's params. */}
+        <SettingsRow
+          icon="gearshape"
+          label="General"
+          onPress={() =>
+            navigation.navigate("SettingsSheet", {
+              screen: "SettingsContent",
+              params: { screen: "SettingsGeneral" },
+            })
+          }
+        />
         <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         {Platform.OS === "ios" ? (
           <>
@@ -223,6 +235,7 @@ function SettingsIndexSections() {
           target="SettingsFork"
           disabled={noServerTargets}
         />
+        <SettingsRow icon="mic" label="Voice" target="SettingsVoice" />
       </SettingsSection>
 
       <SettingsSection title="App">

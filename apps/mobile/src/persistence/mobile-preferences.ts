@@ -24,6 +24,7 @@ import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../l
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
 import { MobileStorageDecodeError, MobileStorageEncodeError } from "./mobile-storage";
+import { sanitizeVoicePreferences, type VoicePreferences } from "./forkVoicePreferences";
 
 const PREFERENCES_KEY = "t3code.preferences";
 const PREFERENCES_FALLBACK_KEY = "t3code.preferences.fallback";
@@ -86,6 +87,7 @@ export interface Preferences {
   readonly markdownFontSize?: number;
   readonly codeFontSize?: number | null;
   readonly codeWordBreak?: boolean;
+  readonly mathRenderingEnabled?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
   readonly collapsedProjectGroups?: readonly string[];
   /** Environments whose "reclaim database space" notice was dismissed. */
@@ -125,6 +127,8 @@ export interface Preferences {
   readonly appTokenDisabledEnvironmentIds?: ReadonlyArray<string>;
   /** Fork: the app token client of this phone (MM-913) and its machine list (MM-914). */
   readonly appTokenClient?: AppTokenClient;
+  /** Fork: the Android assistant panel and read aloud. */
+  readonly voice?: VoicePreferences;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -178,6 +182,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     markdownFontSize?: number;
     codeFontSize?: number | null;
     codeWordBreak?: boolean;
+    mathRenderingEnabled?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
     dismissedDatabaseStorageNotices?: readonly string[];
@@ -203,6 +208,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     sidebarGroupTabId?: string;
     appTokenDisabledEnvironmentIds?: ReadonlyArray<string>;
     appTokenClient?: AppTokenClient;
+    voice?: VoicePreferences;
   } = {};
 
   if (typeof parsed.pullRequestHideTestFiles === "boolean") {
@@ -259,6 +265,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.codeFontSize = parsed.codeFontSize;
   }
   if (typeof parsed.codeWordBreak === "boolean") preferences.codeWordBreak = parsed.codeWordBreak;
+  if (typeof parsed.mathRenderingEnabled === "boolean")
+    preferences.mathRenderingEnabled = parsed.mathRenderingEnabled;
   if (Array.isArray(parsed.connectOnboardingOptOutAccounts)) {
     preferences.connectOnboardingOptOutAccounts = parsed.connectOnboardingOptOutAccounts.filter(
       (account): account is string => typeof account === "string",
@@ -361,6 +369,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (isAppTokenClient(parsed.appTokenClient)) {
     preferences.appTokenClient = parsed.appTokenClient;
   }
+  const voice = sanitizeVoicePreferences(parsed.voice);
+  if (voice) preferences.voice = voice;
   return preferences;
 }
 

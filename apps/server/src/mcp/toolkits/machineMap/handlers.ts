@@ -30,38 +30,46 @@ const toFailure = (error: { readonly message: string }) =>
   new OrchestratorMcpFailure({ code: "capability_denied", message: error.message });
 
 /** MM-806: the portal records the calling thread and its title with each change. */
-const callThroughPortal = (tool: MapToolName, input: unknown) =>
-  Effect.gen(function* () {
-    const scope = yield* refuseMachineCaller;
-    const threads = yield* ThreadManagementService.ThreadManagementService;
-    const machineMap = yield* MachineMap.MachineMap;
-    const threadId = scope.thread?.threadId ?? null;
-    const shell =
-      threadId === null
-        ? null
-        : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
-    return yield* machineMap
-      .callMapTool({ tool, input, threadId, threadTitle: shell?.title ?? null })
-      .pipe(Effect.mapError(toFailure));
-  });
+const callThroughPortal = Effect.fn("MachineMapMcp.callThroughPortal")(function* (
+  tool: MapToolName,
+  input: unknown,
+) {
+  const scope = yield* refuseMachineCaller;
+  const threads = yield* ThreadManagementService.ThreadManagementService;
+  const machineMap = yield* MachineMap.MachineMap;
+  const threadId = scope.thread?.threadId ?? null;
+  const shell =
+    threadId === null
+      ? null
+      : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+  return yield* machineMap
+    .callMapTool({ tool, input, threadId, threadTitle: shell?.title ?? null })
+    .pipe(Effect.mapError(toFailure));
+});
 
 export const layer = McpToolAccess.toLayer(MachineMapToolkit, {
   machines_read: McpToolAccess.reads(() => callThroughPortal("machines_read", {})),
   machines_resources: McpToolAccess.reads((input) =>
     callThroughPortal("machines_resources", input),
   ),
-  machines_set_access: McpToolAccess.writes((input) =>
+  machines_set_access: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_set_access", input),
   ),
-  machines_set_setting: McpToolAccess.writes((input) =>
+  machines_set_setting: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_set_setting", input),
   ),
-  machines_command: McpToolAccess.writes((input) => callThroughPortal("machines_command", input)),
-  machines_queue_cancel: McpToolAccess.writes((input) =>
+  machines_command: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_command", input),
+  ),
+  machines_queue_cancel: McpToolAccess.writesEnvironment((input) =>
     callThroughPortal("machines_queue_cancel", input),
   ),
-  machines_undo: McpToolAccess.writes((input) => callThroughPortal("machines_undo", input)),
-  machines_preset: McpToolAccess.writes((input) => callThroughPortal("machines_preset", input)),
+  machines_undo: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_undo", input),
+  ),
+  machines_preset: McpToolAccess.writesEnvironment((input) =>
+    callThroughPortal("machines_preset", input),
+  ),
   // Joining changes the settings and the auth of this server, like an environment setting.
   machines_join: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {

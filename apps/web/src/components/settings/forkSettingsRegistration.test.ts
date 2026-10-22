@@ -50,6 +50,7 @@ const FORK_PAGE_ROWS: Record<
   preferOriginRemote: "prefer-origin-remote",
   threadLinkChips: "thread-link-chips",
   threadLinksOpenDesktopApp: "thread-links-open-desktop-app",
+  messageLinks: "message-links",
   machineMap: "machine-map",
   clientAccess: {
     notListed: "The portal sets it. Settings > Machines holds the way back in (MM-919).",

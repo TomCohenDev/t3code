@@ -22,6 +22,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
@@ -39,6 +40,10 @@ it.effect("rejects a stale form save after deletion while preserving explicit-id
       NodeCrypto.layer,
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest(),
       Layer.mock(SecretRequests.SecretRequests)({}),
@@ -83,6 +88,10 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
       NodeCrypto.layer,
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest(),
       Layer.mock(SecretRequests.SecretRequests)({}),
@@ -133,6 +142,10 @@ it.effect("keeps a custom provider instance and the project default through a sa
       NodeCrypto.layer,
       Scheduler.layer,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest(),
       Layer.mock(SecretRequests.SecretRequests)({}),
@@ -207,6 +220,10 @@ it.effect("resolves a project default task at run time: the project, then the ap
           return Effect.die(new Error("launch recorded"));
         },
       }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       ServerSettings.layerTest({
         defaultModelSelection: appDefault,
@@ -242,6 +259,58 @@ it.effect("resolves a project default task at run time: the project, then the ap
         yield* service.runNow({ id: task.id });
       }
       expect(launched).toEqual([projectDefault, appDefault]);
+    }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect("keeps the task list order when a toggle or edit rewrites updated_at", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2026-07-01T09:00:00.000Z"));
+    const layerDependencies = Layer.mergeAll(
+      NodeCrypto.layer,
+      Scheduler.layer,
+      Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
+      }),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      ServerSettings.layerTest(),
+      Layer.mock(SecretRequests.SecretRequests)({}),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* ScheduledTaskService.ScheduledTaskService;
+      const input = (id: string) => ({
+        id,
+        title: id,
+        prompt: "Review the open pull requests.",
+        enabled: true,
+        schedule: { type: "interval", everyMs: 60_000 },
+        projectId: "project-stable-order",
+        workspaceStrategy: { type: "root" },
+        modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      });
+      const listedIds = service
+        .list()
+        .pipe(Effect.map(({ tasks }) => tasks.map((task) => String(task.id))));
+
+      const older = yield* service.upsert(yield* decodeUpsertInput(input("scheduled-task:older")));
+      yield* TestClock.adjust("1 second");
+      yield* service.upsert(yield* decodeUpsertInput(input("scheduled-task:newer")));
+      const order = ["scheduled-task:newer", "scheduled-task:older"];
+      expect(yield* listedIds).toEqual(order);
+
+      yield* TestClock.adjust("1 second");
+      const toggled = yield* service.setEnabled({ id: older.task.id, enabled: false });
+      expect(toggled.task.updatedAt > older.task.updatedAt).toBe(true);
+      expect(yield* listedIds).toEqual(order);
+
+      yield* TestClock.adjust("1 second");
+      const edit = { ...input(older.task.id), requireExisting: true, title: "Edited" };
+      yield* service.upsert(yield* decodeUpsertInput({ ...edit, enabled: false }));
+      expect(yield* listedIds).toEqual(order);
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );
