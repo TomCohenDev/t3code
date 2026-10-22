@@ -330,7 +330,7 @@ The model applies to runs that launch a new thread. A run that posts into a boun
 Thread groups show as tabs under the sidebar search. A thread lives in one group, so the groups act like folders.
 
 - **Setting:** client settings `sidebarGroupsEnabled` (off by default) and `sidebarGroupSingleThreadOpens` (off by default). Settings > General > "Sidebar groups" and "Single-thread tabs". The groups are the server setting `sidebarGroups` of the primary server. The machine map syncs them to every machine (MM-411). The mobile app shows the tabs while the server setting `mobileSidebarGroups` is on (off by default): Settings > Appearance > Mobile app, or Fork in the mobile Settings.
-- **Works on:** web, desktop, mobile. On mobile the tabs show above the thread list. Tap a tab to show its threads. Long-press a tab to edit, move or delete it, and tap + to make a group. Long-press a thread and pick "Move to group". Settings > Fork > Sidebar groups lists the groups too.
+- **Works on:** web, desktop, mobile. On mobile the tabs show above the thread list. Tap a tab to show its threads. Long-press a tab to edit, move or delete it, and tap + to make a group. Long-press a thread and pick "Move to tab". Settings > Fork > Sidebar groups lists the groups too.
 - **Use it:**
   - The first tab, "Threads", holds every thread that is in no group. It can be renamed, and it can show all threads.
   - Drag a thread onto a tab to move it into that group. During a drag, a + shows at the end of the bar. A drop on it makes a new group.
@@ -348,6 +348,7 @@ Thread groups show as tabs under the sidebar search. A thread lives in one group
   - The hosted app at app.t3.codes has no primary server to keep the groups, so it shows no tabs. Revisit if hosted clients get a place for shared settings.
   - When two devices change groups at the same moment, the last change wins. Revisit if groups get lost in practice.
   - A machine without the map role `edit`, or off the map, keeps a change on its own server only.
+  - Applies only after upstream thread groups merge ([pingdotgg/t3code#15988](https://github.com/pingdotgg/t3code/pull/15988) "feat: related threads stay together as a group"): a nested thread always shows in the tab of its top thread, so a nested group never splits across tabs. This holds for views too. A drag or "Move to tab" on a nested thread moves its top thread. Fork Sync resolves that merge with this rule.
 
 ### Snooze quick options
 

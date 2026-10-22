@@ -1,5 +1,5 @@
 /**
- * Fork: "Move to group" in the long-press menu of a thread row, the touch way to what a drag onto
+ * Fork: "Move to tab" in the long-press menu of a thread row, the touch way to what a drag onto
  * a tab does on web. It shows while a connected server has `mobileSidebarGroups` on.
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -35,7 +35,7 @@ function moveMenuItems(settings: SidebarGroups): MenuAction[] {
   return [
     {
       id: "fork-group",
-      title: "Move to group",
+      title: "Move to tab",
       image: "folder",
       subactions: [
         { id: `${MOVE_PREFIX}${DEFAULT_SIDEBAR_GROUP_ID}`, title: sidebarDefaultTabName(settings) },

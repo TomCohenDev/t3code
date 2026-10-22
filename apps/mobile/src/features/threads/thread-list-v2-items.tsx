@@ -799,7 +799,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         : [],
     [props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
   );
-  // Fork: "Move to group" while sidebar group tabs are on (forkThreadGroupMenu.ts).
+  // Fork: "Move to tab" while sidebar group tabs are on (forkThreadGroupMenu.ts).
   const { items: groupMenuItems, handle: handleGroupMenu } = useThreadGroupMenu(thread);
   const titleMenuItems = useMemo<MenuAction[]>(
     () => [
