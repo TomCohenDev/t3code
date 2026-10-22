@@ -685,9 +685,9 @@ function MachineOverview({ machine }: { machine: MachineRecord }) {
           <dd>{Math.round(status.uptimeSeconds / 3600)} h</dd>
           <dt>Load</dt>
           <dd>
-            {status.cpuPercent === null ? "CPU —" : `CPU ${Math.round(status.cpuPercent)}%`} ·{" "}
+            {status.cpuPercent === null ? "CPU -" : `CPU ${Math.round(status.cpuPercent)}%`} ·{" "}
             {status.memoryPercent === null
-              ? "memory —"
+              ? "memory -"
               : `memory ${Math.round(status.memoryPercent)}%`}
           </dd>
           <dt>Tasks</dt>

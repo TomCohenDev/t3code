@@ -225,11 +225,11 @@ export function TableView() {
                     )}
                   </td>
                   <td>
-                    {presence?.status ? <BuildLabel status={presence.status} /> : "—"}{" "}
+                    {presence?.status ? <BuildLabel status={presence.status} /> : "-"}{" "}
                     <BuildSticker standing={standings.get(machine.id)} />
                   </td>
                   <td className="mono">
-                    {applied === null ? "—" : `${applied} of ${map.revision}`}
+                    {applied === null ? "-" : `${applied} of ${map.revision}`}
                   </td>
                   <td>
                     <select
@@ -345,7 +345,7 @@ export function SettingsView() {
                           <span className="small muted">{scope}</span>
                         </button>
                       </td>
-                      <td>{hasShared ? valueText(shared[key]) : "—"}</td>
+                      <td>{hasShared ? valueText(shared[key]) : "-"}</td>
                       {map.machines.map((machine) => {
                         const own = map.settings.overrides[machine.id]?.[scope];
                         const hasOwn = own !== undefined && Object.hasOwn(own, key);
@@ -382,7 +382,7 @@ export function SettingsView() {
             </table>
           </div>
           <p className="legend small muted">
-            <span>— no shared value: each machine keeps its own</span>
+            <span>(no shared value: each machine keeps its own)</span>
             <span>
               <span className="sticker warn flat">own</span> the machine keeps its own value
             </span>
@@ -636,7 +636,7 @@ export function TasksView() {
                       <b>{task.title}</b>
                       <span className="sub">
                         {task.schedule} · next{" "}
-                        {task.enabled && task.nextRunAt ? timeUntil(task.nextRunAt, now) : "—"} ·
+                        {task.enabled && task.nextRunAt ? timeUntil(task.nextRunAt, now) : "-"} ·
                         last {timeAgo(task.lastRunAt, now)}
                         {task.lastRunError && ` · ${task.lastRunError}`}
                       </span>
@@ -1396,10 +1396,10 @@ export function ClientsView() {
                 {devices.access.sessions.map((session) => (
                   <tr key={`${session.name}:${session.signedInAt}:${session.ip}`}>
                     <td className="left">{session.name}</td>
-                    <td>{session.country ?? "—"}</td>
-                    <td className="mono">{session.ip ?? "—"}</td>
-                    <td>{session.signedInAt ? timeAgo(session.signedInAt, now) : "—"}</td>
-                    <td>{session.expiresAt ? shortTime(session.expiresAt) : "—"}</td>
+                    <td>{session.country ?? "-"}</td>
+                    <td className="mono">{session.ip ?? "-"}</td>
+                    <td>{session.signedInAt ? timeAgo(session.signedInAt, now) : "-"}</td>
+                    <td>{session.expiresAt ? shortTime(session.expiresAt) : "-"}</td>
                   </tr>
                 ))}
               </tbody>
