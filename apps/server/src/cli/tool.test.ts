@@ -1,10 +1,17 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { withThreadCredential } from "@t3tools/provider-core/server/forkThreadCredential";
+import * as NetService from "@t3tools/shared/Net";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { Tool } from "effect/ai";
+import { GlobalFlag } from "effect/cli";
 
 import { McpToolkits } from "../mcp/toolkits/registry.ts";
-import { applyCallerThread, findMcpTool } from "./tool.ts";
+import { applyCallerThread, callOnServer, findMcpTool } from "./tool.ts";
 
 const registryToolNames = () =>
   Object.values(McpToolkits)
@@ -76,4 +83,34 @@ it.effect("lets a thread credential omit the thread", () =>
     });
     expect(result.threadId).toBeUndefined();
   }),
+);
+
+it.effect("an agent shell calls as its thread, not with the full-access fallback (MM-1920)", () =>
+  Effect.gen(function* () {
+    // A T3 home with no running server, so the full-access fallback would fail here.
+    const baseDir = Option.some(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped());
+    const record = (env: NodeJS.ProcessEnv) => {
+      const connections: Array<unknown> = [];
+      return callOnServer({ baseDir }, (connection) =>
+        Effect.sync(() => void connections.push(connection)),
+      ).pipe(
+        Effect.as(connections),
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
+        Effect.provideService(GlobalFlag.LogLevel, Option.none()),
+      );
+    };
+    const shell = withThreadCredential(
+      {},
+      { endpoint: "http://127.0.0.1:43123/mcp", authorizationHeader: "Bearer thread-a" },
+    );
+    expect(yield* record(shell)).toEqual([
+      {
+        endpoint: "http://127.0.0.1:43123/mcp",
+        authorization: "Bearer thread-a",
+        hasThreadCredential: true,
+      },
+    ]);
+    const fallback = yield* Effect.flip(record({}));
+    expect(fallback.message).toContain("server is not running");
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NetService.layer))),
 );

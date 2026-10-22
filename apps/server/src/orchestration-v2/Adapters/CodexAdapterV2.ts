@@ -119,6 +119,7 @@ import { codexAppServerArgs, resolveCodexLaunchArgs } from "../../provider/codex
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { threadCredentialEnvironment } from "@t3tools/provider-core/server/forkThreadCredential";
 import {
   MCP_APP_EXTENSION_ID,
   MCP_APP_MIME_TYPE,
@@ -1373,6 +1374,13 @@ function codexThreadRuntimeParams(input: {
               },
             },
           }),
+      // Fork (MM-1920): next to the thread's MCP config, so its shells carry the same token.
+      ...Object.fromEntries(
+        Object.entries(threadCredentialEnvironment(mcpSession)).map(([name, value]) => [
+          `shell_environment_policy.set.${name}`,
+          value,
+        ]),
+      ),
     },
   };
 }

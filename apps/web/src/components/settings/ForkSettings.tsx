@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 
 import { Button } from "../ui/button";
+import { RestoreWorktreesSettingsRow, WorktreeArtifactSettingsRows } from "./ForkWorktreeSettings";
 import { EnvironmentLabelSettingsRow } from "./EnvironmentLabelSettingsRow";
 import { AppToggleShortcutsSettingsRow } from "./AppToggleShortcutsSettingsRow";
 import {
@@ -66,6 +67,8 @@ import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchIte
  * link-only.
  */
 const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>> = {
+  "restore-worktrees-on-resume": RestoreWorktreesSettingsRow,
+  "worktree-artifact-eviction": WorktreeArtifactSettingsRows,
   "environment-label-from-machine-map": EnvironmentLabelSettingsRow,
   "tunnel-pairing": TunnelPairingSettingsRow,
   "installed-app": InstalledAppSettingsRow,

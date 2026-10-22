@@ -36,7 +36,11 @@ import { mcpToolSession } from "../../mcp/AcpMcpStdioBridge.ts";
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import { arrowAllowsExec, effectiveLevel, reachablePeers } from "./machineAccess.ts";
-import { requireMachineThreadReader, requireMachineToolCaller } from "./machineCallerAccess.ts";
+import {
+  historyCaller,
+  requireMachineThreadReader,
+  requireMachineToolCaller,
+} from "./machineCallerAccess.ts";
 import * as MachineMapState from "./MachineMapState.ts";
 
 const REQUEST_TIMEOUT = Duration.seconds(15);
@@ -507,13 +511,7 @@ const make = Effect.gen(function* () {
       });
     }
     // MM-806: the portal names the calling thread. An agent cannot set it through this path.
-    const scope = yield* McpInvocationContext.McpInvocationContext;
-    const threadId = scope.thread?.threadId ?? null;
-    const threads = yield* ThreadManagement.ThreadManagementService;
-    const shell =
-      threadId === null
-        ? null
-        : yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+    const caller = yield* historyCaller();
     const { caller: _ignored, ...command } = input;
     const raw = yield* callPeer({
       resolved,
@@ -523,7 +521,7 @@ const make = Effect.gen(function* () {
       input: {
         ...command,
         machine: resolved.peer.id,
-        caller: { threadId, threadTitle: shell?.title ?? null },
+        caller,
       },
     });
     return yield* decodePeerResult(raw, MachineExecResult, "machine_exec", resolved.peer.name);
