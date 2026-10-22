@@ -29,6 +29,7 @@ import * as ProviderSessions from "../orchestration-v2/ProviderSessionManager.ts
 import { looksGenerated, makeArtifactCandidates } from "./forkArtifactPolicy.ts";
 import * as Schema from "effect/Schema";
 import * as Clock from "effect/Clock";
+import * as SetupTracker from "../project/WorktreeSetupTracker.ts";
 
 const DAY_MS = 86_400_000;
 export const sameSettings = (left: ServerSettings, right: ServerSettings) =>
@@ -142,6 +143,7 @@ const make = Effect.gen(function* () {
             const resolved = yield* fs.realPath(cwd).pipe(Effect.option);
             if (Option.isNone(resolved)) return "A process working directory could not be read";
             const real = resolved.value;
+            // Protects process cwds and T3-known active work; a clean scan is not proof of no external activity.
             // The immediate parent is the container holding this checkout and its siblings.
             // Stop ancestor protection there: a process above it can still use absolute paths.
             // Revisit this bound if a real tool does that; never guess roles from command names.
@@ -282,7 +284,7 @@ const make = Effect.gen(function* () {
                       folderType === "node_modules",
                     )
                   )
-                    rejection = "unrecognized non-generated link";
+                    rejection = `unrecognized file type; example: ${path.relative(target, entry).split(path.sep).join("/")}`;
                   continue;
                 }
                 if ((yield* fs.realPath(entry)) !== entry) {
@@ -308,7 +310,7 @@ const make = Effect.gen(function* () {
                       (/^@(?:ECHO|SETLOCAL)/i.test(shim) && shim.includes("%~dp0"));
                   }
                   if (!looksGenerated(folderType, child, payload)) {
-                    rejection = "unrecognized non-generated file";
+                    rejection = `unrecognized file type; example: ${child}`;
                     break;
                   }
                   size += Number(stat.size);
@@ -318,7 +320,7 @@ const make = Effect.gen(function* () {
             });
           const first = yield* inspect();
           if (first.rejection !== null) {
-            refusals.add(`${relative}: ${first.rejection}`);
+            refusals.add(`kept ${relative}: ${first.rejection}`);
             continue;
           }
           const reason = (yield* blocked) ?? (yield* processBlock);
@@ -326,7 +328,7 @@ const make = Effect.gen(function* () {
           if (!(yield* check())) return kept("Artifact eligibility changed during inspection");
           const final = yield* inspect();
           if (final.rejection !== null) {
-            refusals.add(`${relative}: ${final.rejection}`);
+            refusals.add(`kept ${relative}: ${final.rejection}`);
             continue;
           }
           if (folderType === "node_modules") yield* marker.mark;
@@ -408,6 +410,7 @@ export const makeSweep = (guards: {
     const settingsService = yield* Settings.ServerSettingsService;
     const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
     const git = yield* Git.GitVcsDriver;
+    const setups = yield* SetupTracker.WorktreeSetupTracker;
     const canonical = (cwd: string) =>
       fs.realPath(cwd).pipe(
         Effect.catchIf(
@@ -538,9 +541,16 @@ export const makeSweep = (guards: {
               return "thread workspace changed";
             if (!guards.idle(current, checkNow))
               return "thread is running or has queued or pending work";
+            if ((yield* setups.get(current.id))?.phase === "running")
+              return "T3-known setup is running for this worktree";
             if (guards.hasTerminal(cwd) || guards.hasTerminal(canonicalCwd)) return "open terminal";
             for (const terminal of guards.terminals?.() ?? []) {
               if (terminal.status !== "running" && terminal.status !== "starting") continue;
+              if (
+                terminal.worktreePath !== null &&
+                (yield* canonical(terminal.worktreePath)) === canonicalCwd
+              )
+                return "T3 terminal metadata names this worktree";
               const resolved = yield* fs.realPath(terminal.cwd).pipe(Effect.option);
               if (Option.isNone(resolved)) return "terminal working directory could not be read";
               const relative = path.relative(canonicalCwd, resolved.value);
@@ -581,10 +591,21 @@ export const makeSweep = (guards: {
             const live = yield* sql<{
               id: string;
               cwd: string;
-            }>`SELECT provider_session_id AS "id", json_extract(payload_json, '$.cwd') AS "cwd" FROM orchestration_v2_projection_provider_sessions WHERE status != 'stopped'`;
+              worktreePath: string | null;
+            }>`SELECT s.provider_session_id AS "id", json_extract(s.payload_json, '$.cwd') AS "cwd",
+                json_extract(t.payload_json, '$.worktreePath') AS "worktreePath"
+              FROM orchestration_v2_projection_provider_sessions s
+              LEFT JOIN orchestration_v2_projection_provider_threads p ON p.provider_session_id = s.provider_session_id
+              LEFT JOIN orchestration_v2_projection_threads t ON t.thread_id = COALESCE(p.thread_id, s.thread_id)
+              WHERE s.status != 'stopped'`;
             for (const session of live) {
               if (!(yield* sessions.isLive(session.id as Parameters<typeof sessions.isLive>[0])))
                 continue;
+              if (
+                session.worktreePath != null &&
+                (yield* canonical(session.worktreePath)) === canonicalCwd
+              )
+                return "T3 provider metadata names this worktree";
               const resolved = yield* fs.realPath(session.cwd).pipe(Effect.option);
               if (Option.isNone(resolved)) return "provider working directory could not be read";
               const relative = path.relative(canonicalCwd, resolved.value);

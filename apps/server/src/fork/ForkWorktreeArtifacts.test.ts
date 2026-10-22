@@ -25,8 +25,11 @@ import { storageCleanupActivityAt, storageCleanupThreadIdle } from "../storageCl
 import * as Artifacts from "./ForkWorktreeArtifacts.ts";
 import * as Processes from "./ForkProcessCwds.ts";
 import { makeSetupMarker } from "./forkWorktreeSetup.ts";
+import { kotlinCacheInventory } from "./fixtures/kotlinCacheInventory.ts";
+import * as SetupTracker from "../project/WorktreeSetupTracker.ts";
 
 const layerGit = Git.layer.pipe(
+  Layer.provideMerge(SetupTracker.layer),
   Layer.provide(VcsProcess.layer),
   Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "fork-worktree-artifacts-" })),
   Layer.provideMerge(NodeServices.layer),
@@ -268,7 +271,7 @@ it.effect("unknown source, notes and shared links keep the entire allowlisted fo
     const build = "apps/mobile/android/app/build";
     yield* f.file(`${build}/outputs/app.apk`);
     yield* f.file(`${build}/notes.md`, "keep my notes");
-    assert.include((yield* f.evict()).reason, "non-generated");
+    assert.include((yield* f.evict()).reason, "unrecognized file type");
     assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, build, "outputs/app.apk")));
     yield* f.fs.remove(f.path.join(f.cwd, build, "notes.md"));
     yield* f.file(`${build}/source.ts`, "keep source");
@@ -446,13 +449,60 @@ it.effect(
 );
 
 const now = Date.parse("2026-10-19T00:00:00Z");
+it.effect("a process cwd alias resolving to the canonical checkout still blocks", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.file("node_modules/.modules.yaml");
+    const alias = f.path.join(f.root, "process-cwd-alias");
+    yield* f.fs.symlink(f.cwd, alias);
+    f.processes([alias]);
+    assert.strictEqual((yield* f.evict()).directories, 0);
+    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/.modules.yaml")));
+  }).pipe(Effect.provide(layerGit)),
+);
+it.effect("accepts the real-shaped Kotlin cache inventory without protected content", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const build = "apps/mobile/android/app/build";
+    for (const relative of kotlinCacheInventory)
+      yield* f.file(`${build}/${relative}`, "compiler cache");
+    yield* f.file(`${build}/outputs/apk/debug/app-debug.apk`, "generated APK");
+    const result = yield* f.evict();
+    assert.strictEqual(result.failed, false);
+    assert.strictEqual(result.directories, 1, result.reason);
+    assert.isFalse(yield* f.fs.exists(f.path.join(f.cwd, build)));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("visible unknown-file skips name the kept folder, reason and example path", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const build = "apps/mobile/android/app/build";
+    yield* f.file(`${build}/outputs/app.apk`);
+    yield* f.file(`${build}/outputs/notes.txt`, "keep notes");
+    const kept = yield* f.evict();
+    assert.strictEqual(kept.directories, 0);
+    assert.include(kept.reason, `kept ${build}`);
+    assert.include(kept.reason, "unrecognized file type");
+    assert.include(kept.reason, "outputs/notes.txt");
+    assert.notInclude(kept.reason, "Artifacts removed");
+    yield* f.file(".turbo/cache.json");
+    const partial = yield* f.evict();
+    assert.strictEqual(partial.directories, 1);
+    assert.include(partial.reason, `kept ${build}`);
+    assert.isFalse(partial.artifactBreakdown.some((entry) => entry.folderType === "android-build"));
+    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, build, "outputs/app.apk")));
+  }).pipe(Effect.provide(layerGit)),
+);
 it.effect("recognizes compiler output names but keeps a neighboring unknown text file", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     const build = "apps/mobile/android/app/build";
     yield* f.file(`${build}/outputs/app.apk`);
     yield* f.file(`${build}/outputs/logs/manifest-merger-debug-report.txt`);
-    yield* f.file(`${build}/kotlin/cacheable/classes.tab.len`);
+    yield* f.file(
+      `${build}/kotlin/compileDebugKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.len`,
+    );
     assert.strictEqual((yield* f.evict()).directories, 1);
     yield* f.file(`${build}/outputs/app.apk`);
     yield* f.file(`${build}/outputs/logs/notes.txt`, "not compiler output");
@@ -505,7 +555,7 @@ it.effect("a source project in node_modules is not mistaken for an installed pac
     yield* f.file("node_modules/local-work/source.ts", "keep original source");
     const result = yield* f.evict();
     assert.strictEqual(result.directories, 0);
-    assert.include(result.reason, "non-generated");
+    assert.include(result.reason, "unrecognized file type");
     assert.strictEqual(
       yield* f.fs.readFileString(f.path.join(f.cwd, "node_modules/local-work/source.ts")),
       "keep original source",
@@ -540,9 +590,12 @@ it.effect(
       let thread = base;
       let terminal = false;
       let terminalCwd: string | null = null;
+      let terminalWorktree: string | null = null;
       let pending = false;
       let shared = false;
       let sessionLive = false;
+      let sessionCwd = f.cwd;
+      let sessionWorktree: string | null = null;
       let setupConfigured = true;
       let hasThread = true;
       let settings = { ...DEFAULT_SERVER_SETTINGS, worktreeArtifactEviction: false };
@@ -556,7 +609,9 @@ it.effect(
         const query = strings.join("");
         if (query.includes("effect_outbox")) return Effect.succeed(pending ? [{}] : []);
         if (query.includes("projection_provider_sessions"))
-          return Effect.succeed(sessionLive ? [{ id: "session", cwd: f.cwd }] : []);
+          return Effect.succeed(
+            sessionLive ? [{ id: "session", cwd: sessionCwd, worktreePath: sessionWorktree }] : [],
+          );
         if (!hasThread) return Effect.succeed([]);
         return Effect.succeed([
           { threadId: base.id, worktreePath: f.cwd },
@@ -573,7 +628,7 @@ it.effect(
                   threadId: "other",
                   terminalId: "other",
                   cwd: terminalCwd,
-                  worktreePath: null,
+                  worktreePath: terminalWorktree,
                   status: "running",
                   pid: 1,
                   exitCode: null,
@@ -627,6 +682,24 @@ it.effect(
       terminalCwd = f.root;
       assert.include((yield* run())[0]!.reason, "container");
       terminalCwd = null;
+      const alias = f.path.join(f.root, "checkout-alias");
+      yield* f.fs.symlink(f.cwd, alias);
+      terminalCwd = f.home;
+      terminalWorktree = alias;
+      assert.include((yield* run())[0]!.reason, "T3 terminal metadata");
+      terminalCwd = null;
+      terminalWorktree = null;
+      const setups = yield* SetupTracker.WorktreeSetupTracker;
+      yield* setups.begin({
+        threadId: base.id,
+        branch: base.branch,
+        baseRef: "main",
+        stages: ["setup-script"],
+        fiber: null,
+      });
+      yield* setups.update(base.id, (snapshot) => ({ ...snapshot, worktreePath: alias }));
+      assert.include((yield* run())[0]!.reason, "T3-known setup");
+      yield* setups.finish(base.id, "done");
       shared = true;
       assert.include((yield* run())[0]!.reason, "shared by 2");
       shared = false;
@@ -635,7 +708,12 @@ it.effect(
       pending = false;
       sessionLive = true;
       assert.include((yield* run())[0]!.reason, "provider session");
+      sessionCwd = f.home;
+      sessionWorktree = alias;
+      assert.include((yield* run())[0]!.reason, "T3 provider metadata");
       sessionLive = false;
+      sessionCwd = f.cwd;
+      sessionWorktree = null;
       setupConfigured = false;
       assert.include((yield* run())[0]!.reason, "no project setup");
       setupConfigured = true;
@@ -666,6 +744,19 @@ it.effect(
       assert.include((yield* run())[0]!.reason, "running");
       assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/.modules.yaml")));
       thread = base;
+      f.processes([]);
+      terminalCwd = f.home;
+      processChecks = 0;
+      f.processRead(
+        Effect.sync(() => {
+          if (++processChecks === 3) terminalWorktree = alias;
+          return [];
+        }),
+      );
+      assert.include((yield* run())[0]!.reason, "T3 terminal metadata");
+      assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/.modules.yaml")));
+      terminalCwd = null;
+      terminalWorktree = null;
       f.processes([]);
       const entries = yield* run([
         {

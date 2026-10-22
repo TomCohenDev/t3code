@@ -181,6 +181,15 @@ const textOutputs = new Set([
   ".ninja_log",
 ]);
 
+// Kotlin incremental tables can have source-like names. Only this compiler cache
+// location admits their multipart suffixes; it is not a general .tab/.len rule.
+const kotlinIncrementalTable =
+  /^kotlin\/[A-Za-z0-9_-]+\/cacheable\/caches-jvm\/(?:inputs\/source-to-output|jvm\/kotlin\/(?:class-attributes|class-fq-name-to-source|internal-name-to-source|proto|source-to-classes|subtypes|supertypes)|lookups\/(?:file-to-id|id-to-file|lookups))\.tab(?:_i(?:\.len)?|(?:\.keystream(?:\.len)?|\.len|\.values\.at)?)$/;
+const kotlinCounterTable =
+  /^kotlin\/[A-Za-z0-9_-]+\/cacheable\/caches-jvm\/lookups\/counters\.tab$/;
+
+// Extension and path rules classify conservatively; they do not prove provenance
+// or distinguish every hand-written ignored .js/.json file from generated output.
 export function looksGenerated(
   folderType: ForkArtifactFolderType,
   relative: string,
@@ -201,6 +210,11 @@ export function looksGenerated(
       ].includes(relative) || relative === ".pnpm/lock.yaml"
     );
   }
+  if (
+    folderType === "android-build" &&
+    (kotlinIncrementalTable.test(relative) || kotlinCounterTable.test(relative))
+  )
+    return true;
   if (/^(?:notes?|draft|todo|readme|important|private|source|src)(?:[._-]|$)/.test(name))
     return false;
   if (name.endsWith(".d.ts")) return true;
@@ -208,7 +222,6 @@ export function looksGenerated(
     (folderType === "android-build" || folderType === "gradle-cache") &&
     (/^manifest-merger-[\w-]+-report\.txt$/.test(name) ||
       /^lint-results-[\w-]+\.txt$/.test(name) ||
-      /\.tab(?:_[a-z]+)?(?:\.(?:len|keystream|values\.at))?$/.test(name) ||
       name.endsWith(".apk.idsig"))
   )
     return true;
