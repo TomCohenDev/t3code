@@ -14,7 +14,7 @@ import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 /** The GitHub repositories (`owner/name`) that the fork changelog reads. */
 export const FORK_CHANGELOG_REPOSITORIES = {
   fork: "TomCohenDev/t3code",
-  upstream: "pingdotgg/t3code",
+  upstream: "Yarden-zamir/t3code",
 } as const;
 
 export const ForkCommit = Schema.Struct({

@@ -13,9 +13,16 @@
 import * as NodeChildProcess from "node:child_process";
 
 const FORK_REPOSITORY = "TomCohenDev/t3code";
-const UPSTREAM_REPOSITORY = "pingdotgg/t3code";
-/** The subject of a Fork Sync merge. See .github/workflows/fork-sync.yml. */
-const UPSTREAM_SYNC_SUBJECT = `chore(sync): merge ${UPSTREAM_REPOSITORY} main`;
+const UPSTREAM_REPOSITORY = "Yarden-zamir/t3code";
+/**
+ * The subjects of a Fork Sync merge. See .github/workflows/fork-sync.yml. Fork Sync merged
+ * pingdotgg/t3code before it merged Yarden-zamir/t3code, and older release ranges hold those merges.
+ */
+const UPSTREAM_SYNC_SUBJECTS = new Set(
+  [UPSTREAM_REPOSITORY, "pingdotgg/t3code"].map(
+    (repository) => `chore(sync): merge ${repository} main`,
+  ),
+);
 const PULL_REQUEST_MERGE_PREFIX = "Merge pull request #";
 const UPSTREAM_SHOWN = 10;
 const FEATURE_AND_FIX_TYPES = ["feat", "fix", "perf"] as const;
@@ -52,7 +59,7 @@ export function classifyFirstParentCommit(
       return { _tag: "PullRequest", number, title: title?.trim() ?? branch };
     }
   }
-  if (secondParent !== undefined && commit.subject === UPSTREAM_SYNC_SUBJECT) {
+  if (secondParent !== undefined && UPSTREAM_SYNC_SUBJECTS.has(commit.subject)) {
     return { _tag: "UpstreamSync", upstreamHead: secondParent };
   }
   // Limit: "chore(sync): merge main" (Fork Sync when main moved during its run) lands here
