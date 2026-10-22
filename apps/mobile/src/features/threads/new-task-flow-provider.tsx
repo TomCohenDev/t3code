@@ -25,7 +25,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { sanitizeNewRefName } from "@t3tools/shared/git";
-import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
+import { unreadableThreadContexts } from "@t3tools/shared/composerContextReferences";
 import { resolveNewThreadEnvMode, resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import * as Arr from "effect/Array";
@@ -111,6 +111,7 @@ import {
   type HomeProjectScope,
 } from "../home/homeThreadList";
 import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
+import { useReadableThreadEnvironmentIds } from "../../state/readableThreadEnvironments";
 import {
   resolvePendingTaskInteractionMode,
   resolveProviderInteractionMode,
@@ -358,6 +359,9 @@ export function NewTaskFlowProvider(
       : (projectsForEnvironment[0] ?? null));
 
   const selectedEnvironmentServerConfig = useEnvironmentServerConfig(
+    selectedProject?.environmentId ?? null,
+  );
+  const readableThreadEnvironmentIds = useReadableThreadEnvironmentIds(
     selectedProject?.environmentId ?? null,
   );
   const isScratchDraft =
@@ -1005,10 +1009,10 @@ export function NewTaskFlowProvider(
       return null;
     }
     if (
-      threadContextsOutsideEnvironment({
+      unreadableThreadContexts({
         text: draft.text,
         records: draft.context?.records ?? [],
-        environmentId: selectedProject.environmentId,
+        readableEnvironmentIds: readableThreadEnvironmentIds,
       }).length > 0
     ) {
       return null;

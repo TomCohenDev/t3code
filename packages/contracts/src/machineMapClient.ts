@@ -9,7 +9,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   MachineCommand,
   MachineDesiredState,
@@ -89,6 +89,17 @@ export const MachineMapClientState = Schema.Struct({
   desktopCommands: Schema.Array(MachineCommand),
 });
 export type MachineMapClientState = typeof MachineMapClientState.Type;
+
+/**
+ * MM-1907: an environment whose threads the agents of this server can read: the server itself,
+ * then each machine that an arrow with agent tools from it reaches now.
+ */
+export const MachineMapReadableEnvironment = Schema.Struct({
+  environmentId: EnvironmentId,
+  /** The machine name, or the environment label of a server that is not on the map. */
+  name: TrimmedNonEmptyString,
+});
+export type MachineMapReadableEnvironment = typeof MachineMapReadableEnvironment.Type;
 
 export const MachineMapJoinInput = Schema.Struct({
   code: TrimmedNonEmptyString.annotate({

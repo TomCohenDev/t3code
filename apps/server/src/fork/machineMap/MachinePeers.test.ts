@@ -43,33 +43,36 @@ const decodeMessage = Schema.decodeUnknownSync(
   ),
 );
 
-const layerState = Layer.unwrap(
-  Effect.gen(function* () {
-    return Layer.mock(MachineMapState.MachineMapState)({
-      clientSeen: yield* Queue.unbounded<never>(),
-      trustsPeerOrigin: () => false,
-      peerOrigins: () => [],
-      snapshot: Effect.succeed({
-        enabled: true,
-        clientAccess: "off",
-        portalUrl: "https://portal.example.com",
-        token: { clientId: "source-token", secret: "test-secret" },
-        saved: {
-          desired: {
-            ...desiredState({ arrowsOut: [arrow(SELF, PEER, "admin", { agentTools: true })] }),
-            self: { ...desiredState({}).self, mapRole: "edit" },
+const layerStateWith = (arrowsOut: ReadonlyArray<ReturnType<typeof arrow>>) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      return Layer.mock(MachineMapState.MachineMapState)({
+        clientSeen: yield* Queue.unbounded<never>(),
+        trustsPeerOrigin: () => false,
+        peerOrigins: () => [],
+        snapshot: Effect.succeed({
+          enabled: true,
+          clientAccess: "off",
+          portalUrl: "https://portal.example.com",
+          token: { clientId: "source-token", secret: "test-secret" },
+          saved: {
+            desired: {
+              ...desiredState({ arrowsOut }),
+              self: { ...desiredState({}).self, mapRole: "edit" },
+            },
+            desiredAtMs: 0,
+            handledCommandIds: [],
+            pausedTaskIds: [],
+            desktopCommands: [],
+            pendingRevokes: [],
+            pendingClientAccess: null,
           },
-          desiredAtMs: 0,
-          handledCommandIds: [],
-          pausedTaskIds: [],
-          desktopCommands: [],
-          pendingRevokes: [],
-          pendingClientAccess: null,
-        },
-      }),
-    });
-  }),
-);
+        }),
+      });
+    }),
+  );
+
+const layerState = layerStateWith([arrow(SELF, PEER, "admin", { agentTools: true })]);
 
 it.effect("restricted callers cannot borrow an admin arrow or the machine's edit role", () =>
   Effect.gen(function* () {
@@ -273,5 +276,205 @@ it.effect("a caller lowered during the MCP handshake cannot send work with a cac
       ),
     );
     expect(fetch).toHaveBeenCalledTimes(7);
+  }),
+);
+
+const PEER_ENVIRONMENT = EnvironmentId.make("environment:vps");
+const remoteThread = {
+  thread: {
+    threadId: ThreadId.make("thread:on-vps"),
+    projectId: "project:vps",
+    title: "Deploy fix",
+    createdBy: "user",
+    creationSource: "web",
+    status: "idle",
+    latestRunId: null,
+    activeRunId: null,
+    providerInstanceId: "codex",
+    model: "gpt-5",
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    linkedPullRequest: null,
+    titleRegeneration: null,
+    branch: null,
+    worktreePath: null,
+    parentThreadId: null,
+    relationshipToParent: null,
+    runCount: 0,
+    itemCount: 0,
+    pendingRequestCount: 0,
+    archived: false,
+    settled: false,
+    settledAt: null,
+    snoozed: false,
+    snoozedUntil: null,
+    createdAt: "2026-10-22T00:00:00.000Z",
+    updatedAt: "2026-10-22T00:00:00.000Z",
+  },
+  recentRuns: [],
+  items: [],
+  nextPosition: null,
+  hasMore: false,
+};
+
+/** B: the environment descriptor, the pairing and an MCP server that answers `t3_thread_read`. */
+const peerServer = () => {
+  const tokenBodies: Array<string> = [];
+  const toolCalls: Array<unknown> = [];
+  const http = HttpClient.make((request) =>
+    Effect.sync(() => {
+      if (request.url.endsWith("/.well-known/t3/environment")) {
+        return HttpClientResponse.fromWeb(
+          request,
+          Response.json({
+            environmentId: PEER_ENVIRONMENT,
+            label: "VPS",
+            platform: { os: "linux", arch: "x64" },
+            serverVersion: "0.0.0",
+            capabilities: { repositoryIdentity: true },
+          }),
+        );
+      }
+      if (request.url.endsWith("/oauth/token")) {
+        tokenBodies.push(
+          request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "",
+        );
+        return HttpClientResponse.fromWeb(
+          request,
+          Response.json({
+            access_token: "peer-read-session",
+            issued_token_type: AuthAccessTokenType,
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: "orchestration:read",
+          }),
+        );
+      }
+      return HttpClientResponse.fromWeb(
+        request,
+        Response.json({
+          id: "pairing",
+          credential: "test-pairing-credential",
+          expiresAt: "2026-12-01T00:00:00.000Z",
+        }),
+      );
+    }),
+  );
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    if (init?.method === "DELETE") return new Response(null, { status: 204 });
+    const body = JSON.parse(String(init?.body)) as {
+      id?: string;
+      method: string;
+      params?: unknown;
+    };
+    if (body.id === undefined) return new Response(null, { status: 202 });
+    if (body.method === "tools/call") toolCalls.push(body.params);
+    return Response.json({
+      jsonrpc: "2.0",
+      id: body.id,
+      result:
+        body.method === "tools/call"
+          ? { content: [], structuredContent: remoteThread }
+          : { protocolVersion: "2025-06-18" },
+    });
+  });
+  return { http, fetch, tokenBodies, toolCalls };
+};
+
+const withPeers = <A, E>(
+  http: HttpClient.HttpClient,
+  modes: Parameters<typeof liveThreadShell>[1],
+  effect: (
+    peers: MachinePeers.MachinePeers["Service"],
+  ) => Effect.Effect<
+    A,
+    E,
+    McpInvocationContext.McpInvocationContext | ThreadManagement.ThreadManagementService
+  >,
+  state = layerState,
+) =>
+  MachinePeers.MachinePeers.pipe(
+    Effect.flatMap(effect),
+    Effect.provide(
+      MachinePeers.layer.pipe(
+        Layer.provide(state),
+        Layer.provide(Layer.succeed(HttpClient.HttpClient, http)),
+      ),
+    ),
+    Effect.provideService(McpInvocationContext.McpInvocationContext, caller),
+    Effect.provide(
+      Layer.mock(ThreadManagement.ThreadManagementService)({
+        getThreadShell: () => Effect.succeed(liveThreadShell(threadId, modes)),
+      }),
+    ),
+  );
+
+it.effect("reads a thread on another machine through the arrow, read-only there (MM-1905)", () =>
+  Effect.gen(function* () {
+    const peer = peerServer();
+    using _fetch = peer.fetch;
+    const result = yield* withPeers(peer.http, {}, (peers) =>
+      peers.readThread({
+        threadId: ThreadId.make("thread:on-vps"),
+        environmentId: PEER_ENVIRONMENT,
+      }),
+    );
+    expect(result.thread.title).toBe("Deploy fix");
+    // The read session asks B for orchestration:read only, so B caps it at read-only.
+    expect(peer.tokenBodies).toHaveLength(1);
+    expect(new URLSearchParams(peer.tokenBodies[0]).get("scope")).toBe("orchestration:read");
+    // B reads its own thread, so it gets no environment id.
+    expect(peer.toolCalls).toEqual([
+      { name: "t3_thread_read", arguments: { threadId: "thread:on-vps" } },
+    ]);
+  }),
+);
+
+it.effect("a restricted caller reads another machine but cannot call its tools (MM-1902)", () =>
+  Effect.gen(function* () {
+    const peer = peerServer();
+    using _fetch = peer.fetch;
+    const plan = { interactionMode: "plan" } as const;
+    const read = yield* withPeers(peer.http, plan, (peers) =>
+      peers.readThread({
+        threadId: ThreadId.make("thread:on-vps"),
+        environmentId: PEER_ENVIRONMENT,
+      }),
+    );
+    expect(read.thread.threadId).toBe("thread:on-vps");
+    const write = yield* withPeers(peer.http, plan, (peers) =>
+      peers
+        .callTool({ machine: "VPS", tool: "t3_thread_send", input: {} })
+        .pipe(Effect.asVoid, Effect.flip),
+    );
+    expect(write.message).toContain("full-access/default");
+    expect(peer.toolCalls).toHaveLength(1);
+  }),
+);
+
+it.effect("refuses a thread read without an arrow with agent tools, with no request", () =>
+  Effect.gen(function* () {
+    const peer = peerServer();
+    using _fetch = peer.fetch;
+    const requests: Array<string> = [];
+    const http = HttpClient.make((request) =>
+      Effect.sync(() => requests.push(request.url)).pipe(
+        Effect.andThen(peer.http.execute(request)),
+      ),
+    );
+    const noAgentTools = layerStateWith([arrow(SELF, PEER, "admin")]);
+    const error = yield* withPeers(
+      http,
+      {},
+      (peers) =>
+        peers
+          .readThread({ threadId: ThreadId.make("thread:on-vps"), environmentId: PEER_ENVIRONMENT })
+          .pipe(Effect.flip),
+      noAgentTools,
+    );
+    expect(error._tag).toBe("MachinePeerError");
+    expect(error.message).toContain("No arrow with agent tools");
+    expect(requests).toEqual([]);
+    expect(peer.toolCalls).toEqual([]);
   }),
 );

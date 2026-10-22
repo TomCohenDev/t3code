@@ -4,6 +4,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
   ContextTransferId,
+  EnvironmentId,
   IsoDateTime,
   MessageId,
   NodeId,
@@ -380,6 +381,11 @@ const clampedPositiveInt = (maximum: number) =>
 
 export const OrchestratorMcpThreadReadInput = Schema.Struct({
   threadId: ThreadId,
+  /** Fork: MM-1905. A thread of another machine, read through the machine map arrow. */
+  environmentId: Schema.optional(EnvironmentId).annotate({
+    description:
+      "Environment id of the thread, as a thread attachment names it. Omit it, or pass this environment's id, for a thread here. Another id reads the thread on the machine with that environment, through this machine's arrow with agent tools.",
+  }),
   itemId: Schema.optional(TurnItemId),
   textOffset: Schema.optional(NonNegativeInt),
   view: Schema.optional(Schema.Literals(["messages", "activity"])),

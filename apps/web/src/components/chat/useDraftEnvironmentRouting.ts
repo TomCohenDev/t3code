@@ -19,9 +19,12 @@ import {
 import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { type EnvironmentPresentation, useEnvironmentProviders } from "../../state/environments";
 import { useProjects } from "../../state/entities";
+import { useReadableEnvironmentIdsByEnvironment } from "../../state/machineMap";
+import { canReadThreadContexts } from "./composerSend.logic";
 import type { DraftSessionState } from "../../composerDraftStore";
 
 interface DraftEnvironmentRoutingInput {
+  readonly environmentId: EnvironmentId;
   readonly draftId: DraftId | null;
   readonly draftThread: DraftSessionState | null;
   readonly envLocked: boolean;
@@ -49,6 +52,7 @@ interface DraftEnvironmentRoutingInput {
  */
 export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) {
   const {
+    environmentId,
     draftId,
     draftThread,
     envLocked,
@@ -74,6 +78,14 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
   const allProjects = useProjects();
   const { openScratchProject } = useScratchProject();
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
+  // Fork: MM-1906. Only a draft with attached threads asks the machines what they can read.
+  const readableByEnvironment = useReadableEnvironmentIdsByEnvironment(
+    referencedThreadContexts.length > 0
+      ? [environmentId, ...logicalProjectEnvironments.map((candidate) => candidate.environmentId)]
+      : [],
+  );
+  const readableThreadEnvironmentIds = (target: EnvironmentId) =>
+    readableByEnvironment.get(target) ?? [target];
   const loadBalancingCandidates = needsLoadBalancing
     ? logicalProjectEnvironments
         .filter((candidate) => {
@@ -81,8 +93,9 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
           return (
             environment?.connection.phase === "connected" &&
             (loadBalancingSettings.loadBalancingWeights[candidate.environmentId] ?? 50) > 0 &&
-            referencedThreadContexts.every(
-              (record) => record.environmentId === candidate.environmentId,
+            canReadThreadContexts(
+              referencedThreadContexts,
+              readableThreadEnvironmentIds(candidate.environmentId),
             ) &&
             providersByEnvironment
               .get(candidate.environmentId)
@@ -264,5 +277,6 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
     isEnvironmentChanging,
     readPendingEnvironmentChange,
     onEnvironmentChangeStable,
+    readableThreadEnvironmentIds,
   };
 }

@@ -7,6 +7,7 @@
  * It depends on no auth service, because `EnvironmentAuth` reads it.
  */
 import {
+  type AuthEnvironmentScope,
   type AuthMcpClientAccess,
   ClientAccessMode,
   DEFAULT_MACHINE_MAP_PORTAL_URL,
@@ -181,6 +182,7 @@ export class MachineMapState extends Context.Service<
       readonly sessionId: string;
       readonly subject: string;
       readonly method: string;
+      readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
     }) => Effect.Effect<
       | { readonly sessionId: string; readonly label: string; readonly access: AuthMcpClientAccess }
       | undefined
@@ -399,7 +401,7 @@ const make = Effect.gen(function* () {
         Effect.map(([desired, nowMs]) => {
           // Only a bearer token, as an MCP client presents it. Never a cookie.
           if (desired === null || session.method !== "bearer-access-token") return undefined;
-          const granted = machineMcpAccessFor(desired, session.subject, nowMs);
+          const granted = machineMcpAccessFor(desired, session, nowMs);
           return granted === undefined
             ? undefined
             : {

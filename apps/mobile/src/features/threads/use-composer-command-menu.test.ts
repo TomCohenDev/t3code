@@ -8,6 +8,9 @@ vi.mock("../../state/queries", () => ({
   useComposerPathSearch: () => ({ entries: [], isPending: false }),
   useComposerPullRequestSearch: () => ({ entries: [], isPending: false, error: null }),
 }));
+vi.mock("../../state/readableThreadEnvironments", () => ({
+  useReadableThreadEnvironments: () => [],
+}));
 vi.mock("../../state/use-composer-drafts", () => ({
   getComposerDraftSnapshot: vi.fn(),
   readComposerDraftSelection: vi.fn(),

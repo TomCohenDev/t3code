@@ -107,7 +107,7 @@ import { readEnvironmentScope } from "../../state/session";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import {
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-  threadContextsOutsideEnvironment,
+  unreadableThreadContexts,
 } from "@t3tools/shared/composerContextReferences";
 import {
   draftSendState,
@@ -209,6 +209,7 @@ interface ComposerSendInput {
   readonly needsLoadBalancing: boolean;
   readonly loadBalancing: DraftEnvironmentRouting["loadBalancing"];
   readonly readPendingEnvironmentChange: DraftEnvironmentRouting["readPendingEnvironmentChange"];
+  readonly readableThreadEnvironmentIds: DraftEnvironmentRouting["readableThreadEnvironmentIds"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
   readonly activePendingProgress: PendingThreadRequests["activePendingProgress"];
@@ -296,6 +297,7 @@ export function useComposerSend(input: ComposerSendInput) {
     needsLoadBalancing,
     loadBalancing,
     readPendingEnvironmentChange,
+    readableThreadEnvironmentIds,
     pendingApprovals,
     respondingRequestIds,
     activePendingProgress,
@@ -440,8 +442,8 @@ export function useComposerSend(input: ComposerSendInput) {
         ...loadBalancingSendWarning({
           pending: loadBalancing.pending,
           threadContexts: draft ? referencedThreadContexts(draft) : [],
-          candidateEnvironmentIds: logicalProjectEnvironments.map(
-            (candidate) => candidate.environmentId,
+          candidateReadableEnvironmentIds: logicalProjectEnvironments.map((candidate) =>
+            readableThreadEnvironmentIds(candidate.environmentId),
           ),
         }),
       });
@@ -531,10 +533,10 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
-    const strandedThread = threadContextsOutsideEnvironment({
+    const strandedThread = unreadableThreadContexts({
       text: promptForSend,
       records: composerThreadContexts,
-      environmentId,
+      readableEnvironmentIds: readableThreadEnvironmentIds(environmentId),
     })[0];
     if (strandedThread) {
       const owner =
@@ -544,7 +546,7 @@ export function useComposerSend(input: ComposerSendInput) {
         stackedThreadToast({
           type: "warning",
           title: "Attached thread is on another machine",
-          description: `This machine's agent can't read "${strandedThread.title}". Remove it, or switch back to ${owner} to send.`,
+          description: `This machine's agent can't read "${strandedThread.title}": it needs an arrow with agent tools to ${owner} in the machine map. Remove the thread, or switch back to ${owner} to send.`,
         }),
       );
       return;

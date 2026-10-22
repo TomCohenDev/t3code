@@ -51,6 +51,7 @@ import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useComposerPathSearch, useComposerPullRequestSearch } from "../../state/queries";
+import { useReadableThreadEnvironments } from "../../state/readableThreadEnvironments";
 import type { ComposerCommandItem } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
 
@@ -343,6 +344,10 @@ export function useComposerCommandMenu({
     cwd: trigger?.kind === "path" ? projectCwd : null,
     query: trigger?.kind === "path" ? trigger.query : null,
   });
+  // Fork: MM-1907. Threads of the machines that this machine's agent reads, named per machine.
+  const readableThreadEnvironments = useReadableThreadEnvironments(
+    trigger?.kind === "path" ? environmentId : null,
+  );
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -494,14 +499,12 @@ export function useComposerCommandMenu({
     }
 
     if (trigger.kind === "path") {
-      const threadItems = environmentId
-        ? matchComposerThreadItems({
-            shells: threadShells,
-            environmentId,
-            excludeThreadId: currentThreadId,
-            query: trigger.query,
-          })
-        : [];
+      const threadItems = matchComposerThreadItems({
+        shells: threadShells,
+        readable: readableThreadEnvironments,
+        excludeThreadId: currentThreadId,
+        query: trigger.query,
+      });
       return [
         ...threadItems,
         ...pathSearch.entries.map((entry) => {

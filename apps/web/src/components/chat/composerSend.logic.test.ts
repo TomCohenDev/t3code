@@ -30,7 +30,7 @@ describe("loadBalancingSendWarning", () => {
       loadBalancingSendWarning({
         pending: true,
         threadContexts: [localThread, remoteThread],
-        candidateEnvironmentIds: [],
+        candidateReadableEnvironmentIds: [],
       }).title,
     ).toBe("Checking machine resources");
   });
@@ -40,9 +40,19 @@ describe("loadBalancingSendWarning", () => {
       loadBalancingSendWarning({
         pending: false,
         threadContexts: [localThread, remoteThread],
-        candidateEnvironmentIds: [local, remote],
+        candidateReadableEnvironmentIds: [[local], [remote]],
       }).description,
     ).toMatch(/No machine can read every attached thread/);
+  });
+
+  it("accepts a machine that reads the other machine through the machine map (MM-1906)", () => {
+    expect(
+      loadBalancingSendWarning({
+        pending: false,
+        threadContexts: [localThread, remoteThread],
+        candidateReadableEnvironmentIds: [[remote], [local, remote]],
+      }).description,
+    ).toMatch(/No eligible machine has available resources/);
   });
 
   it("blames resources when one machine can read every attached thread", () => {
@@ -50,7 +60,7 @@ describe("loadBalancingSendWarning", () => {
       loadBalancingSendWarning({
         pending: false,
         threadContexts: [localThread],
-        candidateEnvironmentIds: [remote, local],
+        candidateReadableEnvironmentIds: [[remote], [local]],
       }).description,
     ).toMatch(/No eligible machine has available resources/);
   });

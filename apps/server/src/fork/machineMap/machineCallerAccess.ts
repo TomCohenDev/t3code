@@ -28,3 +28,20 @@ export const requireMachineToolCaller = Effect.fn("MachinePeers.requireMachineTo
     }
   },
 );
+
+/**
+ * MM-1902: a thread in any mode may read threads on another machine. `MachinePeers.readThread`
+ * reads with a session that the peer caps at read-only, so the peer refuses every write.
+ */
+export const requireMachineThreadReader = Effect.fn("MachinePeers.requireMachineThreadReader")(
+  function* () {
+    const caller = yield* readCaller();
+    yield* assertLiveCaller(caller);
+    if (isMachineRequestNamespace(caller.scope.requestNamespace)) {
+      return yield* new OrchestratorMcpFailure({
+        code: "capability_denied",
+        message: "Cross-machine reads cannot use another machine's arrows.",
+      });
+    }
+  },
+);

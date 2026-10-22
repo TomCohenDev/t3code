@@ -1,7 +1,9 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
+import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -111,6 +113,26 @@ const handlers = {
   t3_thread_read: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
+      // Fork: MM-1905. A thread of another machine is read through the machine map arrow.
+      const environmentId = input.environmentId;
+      if (environmentId !== undefined && environmentId !== scope.environmentId) {
+        // The server provides the machine map services; a bare toolkit, as in tests, has none.
+        const peers = yield* Effect.serviceOption(MachinePeers.MachinePeers);
+        if (Option.isNone(peers)) {
+          return yield* new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message: "This server cannot read threads of other machines.",
+          });
+        }
+        return yield* peers.value.readThread({ ...input, environmentId }).pipe(
+          Effect.catchTags({
+            MachinePeerError: (error) =>
+              Effect.fail(
+                new OrchestratorMcpFailure({ code: "capability_denied", message: error.detail }),
+              ),
+          }),
+        );
+      }
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.readThread(scope, input);
     }),

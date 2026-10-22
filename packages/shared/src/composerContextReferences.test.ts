@@ -12,7 +12,7 @@ import {
   isImageReferencesOnly,
   parseComposerContextHref,
   projectComposerContextForProvider,
-  threadContextsOutsideEnvironment,
+  unreadableThreadContexts,
   toComposerContextId,
   toKindScopedComposerContextId,
 } from "./composerContextReferences.ts";
@@ -266,8 +266,8 @@ describe("provider projection", () => {
   });
 });
 
-describe("threadContextsOutsideEnvironment", () => {
-  it("returns only referenced foreign threads, ignoring local and removed references", () => {
+describe("unreadableThreadContexts", () => {
+  it("returns referenced threads outside the readable machines, ignoring removed references", () => {
     const local = {
       version: 1 as const,
       kind: "thread" as const,
@@ -276,6 +276,12 @@ describe("threadContextsOutsideEnvironment", () => {
       environmentId: EnvironmentId.make("env-local"),
       threadId: ThreadId.make("local"),
       title: "Local thread",
+    };
+    const peer = {
+      ...local,
+      contextId: ctx("thread_peer"),
+      environmentId: EnvironmentId.make("env-peer"),
+      threadId: ThreadId.make("peer"),
     };
     const foreign = {
       ...local,
@@ -288,23 +294,20 @@ describe("threadContextsOutsideEnvironment", () => {
       contextId: ctx("thread_removed"),
       threadId: ThreadId.make("removed"),
     };
-    const records = [local, foreign, removed];
-    const localReference = "[Local](t3-context://v1/thread/thread_local)";
+    const records = [local, peer, foreign, removed];
+    const text =
+      "[Local](t3-context://v1/thread/thread_local) [Peer](t3-context://v1/thread/thread_peer) [Foreign](t3-context://v1/thread/thread_foreign)";
 
     expect(
-      threadContextsOutsideEnvironment({
-        text: `${localReference} [Foreign](t3-context://v1/thread/thread_foreign)`,
+      unreadableThreadContexts({
+        text,
         records,
-        environmentId: local.environmentId,
+        readableEnvironmentIds: [local.environmentId, peer.environmentId],
       }),
     ).toEqual([foreign]);
     expect(
-      threadContextsOutsideEnvironment({
-        text: localReference,
-        records,
-        environmentId: local.environmentId,
-      }),
-    ).toEqual([]);
+      unreadableThreadContexts({ text, records, readableEnvironmentIds: [local.environmentId] }),
+    ).toEqual([peer, foreign]);
   });
 });
 
