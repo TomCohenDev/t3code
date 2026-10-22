@@ -51,7 +51,10 @@ export class ProjectEnrichmentService extends Context.Service<
   {
     readonly peek: (workspaceRoot: string) => Effect.Effect<ProjectEnrichment>;
     readonly request: (workspaceRoot: string) => Effect.Effect<void>;
-    readonly getAvailable: (workspaceRoot: string) => Effect.Effect<ProjectEnrichment>;
+    readonly getAvailable: (
+      workspaceRoot: string,
+      options?: { readonly awaitRepositoryIdentity?: boolean },
+    ) => Effect.Effect<ProjectEnrichment>;
     readonly invalidate: (workspaceRoots: Iterable<string>) => Effect.Effect<void>;
     readonly subscribeChanges: Effect.Effect<
       PubSub.Subscription<ProjectEnrichmentChange>,
@@ -267,7 +270,12 @@ export const make = Effect.fn("ProjectEnrichmentService.make")(function* (
 
   const getAvailable: ProjectEnrichmentService["Service"]["getAvailable"] = Effect.fn(
     "ProjectEnrichmentService.getAvailable",
-  )(function* (workspaceRoot) {
+  )(function* (workspaceRoot, options) {
+    // Agent tools read once and never see the pushed change, so a cold cache
+    // would read as "no repository". The favicon stays best-effort: its scan can hang.
+    if (options?.awaitRepositoryIdentity === true) {
+      yield* Cache.get(repositoryIdentityCache, workspaceRoot);
+    }
     const available = yield* peek(workspaceRoot);
     yield* request(workspaceRoot);
     return available;

@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import type { RepositoryIdentity } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -117,6 +118,41 @@ it.effect("keeps repository workers available when every favicon worker is hung"
         }),
       ),
     );
+  }),
+);
+
+it.effect("getAvailable waits for repository identity when asked", () =>
+  Effect.gen(function* () {
+    const repositoryStarted = yield* Deferred.make<void>();
+    const releaseRepository = yield* Deferred.make<void>();
+    const layerMetadata = Layer.merge(
+      Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolve: (workspaceRoot) =>
+          Deferred.succeed(repositoryStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(releaseRepository)),
+            Effect.as(identity(workspaceRoot)),
+          ),
+      }),
+      Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
+        resolvePath: () => Effect.never,
+        invalidate: () => Effect.void,
+      }),
+    );
+
+    yield* Effect.gen(function* () {
+      const service = yield* ProjectEnrichment.ProjectEnrichmentService;
+
+      const read = yield* service
+        .getAvailable("/cold-identity", { awaitRepositoryIdentity: true })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(repositoryStarted);
+      yield* Deferred.succeed(releaseRepository, undefined);
+
+      const resolved = yield* Fiber.join(read);
+      assert.equal(resolved.repositoryIdentity?.canonicalKey, "example.test/v1/cold-identity");
+      assert.isTrue(resolved.repositoryIdentityResolved);
+      assert.isNull(resolved.faviconPath);
+    }).pipe(Effect.provide(layer(layerMetadata)));
   }),
 );
 
