@@ -19,6 +19,7 @@ import * as Stream from "effect/Stream";
 
 import { createCdpRelayConnection, type CdpRelayConnection } from "./CdpRelay.ts";
 import { sendPageCommand } from "./GuestInput.ts";
+import { makeForkBrowserCapture } from "./ForkBrowserCapture.ts";
 
 const encodeEvent = Schema.encodeSync(Schema.fromJsonString(DesktopBrowserEvent));
 const decodeCommand = Schema.decodeUnknownOption(Schema.fromJsonString(DesktopBrowserCommand));
@@ -58,6 +59,7 @@ export class DesktopBrowserHost extends Context.Service<
   DesktopBrowserHost,
   {
     readonly events: Stream.Stream<Uint8Array>;
+    readonly forkCapture: ReturnType<typeof makeForkBrowserCapture>; // Fork: native surface reports.
     readonly handleCommandLine: (line: string) => Effect.Effect<void>;
     readonly attach: (key: DesktopBrowserTabKey, debuggee: DesktopBrowserTabDebugger) => void;
     readonly detach: (key: DesktopBrowserTabKey) => void;
@@ -83,6 +85,7 @@ export const make = Effect.gen(function* () {
   const runFork = Effect.runForkWith(yield* Effect.context<never>());
   const tabs = new Map<string, AttachedTab>();
   const emit = (event: DesktopBrowserEventType) => runFork(PubSub.publish(outbox, event));
+  const forkCapture = makeForkBrowserCapture(emit, (key) => tabs.get(keyOf(key))?.debuggee); // Fork: native rendering leases.
 
   const relayFor = (tab: AttachedTab) => {
     if (tab.relay) return tab.relay;
@@ -133,6 +136,7 @@ export const make = Effect.gen(function* () {
     const tab = tabs.get(id);
     if (!tab) return;
     tabs.delete(id);
+    forkCapture.detach(key); // Fork: a replacement guest starts with no native presentation.
     tab.debuggee.debugger.off("message", tab.onMessage);
     emit({ type: "detached", ...key });
   };
@@ -167,6 +171,7 @@ export const make = Effect.gen(function* () {
       if (Option.isNone(command)) return;
       const tab = tabs.get(keyOf(command.value));
       if (!tab) return;
+      if (command.value.type === "capture") return forkCapture.command(command.value); // Fork: place the guest before CDP capture.
       if (command.value.type === "pointer") {
         const { threadId, tabId, phase, x, y } = command.value;
         runFork(PubSub.publish(pointers, { key: { threadId, tabId }, phase, x, y }));
@@ -190,6 +195,7 @@ export const make = Effect.gen(function* () {
       [...tabs.values()],
       (tab) => {
         tab.relay = null;
+        forkCapture.announce(tab.key); // Fork: replay native presentation after a server restart.
         return PubSub.publish(outbox, { type: "attached", ...tab.key });
       },
       { discard: true },
@@ -197,6 +203,7 @@ export const make = Effect.gen(function* () {
   );
 
   return DesktopBrowserHost.of({
+    forkCapture, // Fork: renderer IPC reports presentation and capture readiness.
     pointers: Stream.fromPubSub(pointers),
     // Subscribes before announcing, so no attach falls between the two.
     events: Stream.unwrap(

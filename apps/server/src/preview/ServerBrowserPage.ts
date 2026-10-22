@@ -21,6 +21,7 @@ import { constVoid } from "effect/Function";
 import type { CDPSession, ConsoleMessage, Frame, Locator, Page } from "playwright-core";
 import * as NodeCrypto from "node:crypto";
 import { BrowserControlInterrupted } from "./SessionControl.ts";
+import { makeForkSnapshotProgress } from "./ForkSnapshotProgress.ts";
 
 const MAX_EVALUATION_BYTES = 64_000;
 const MAX_VISIBLE_TEXT_LENGTH = 20_000;
@@ -226,12 +227,6 @@ const pageChanged = () =>
   new ServerBrowserOperationError(
     "PreviewAutomationExecutionError",
     "The page changed while capturing its snapshot. Take another snapshot.",
-  );
-
-const tooBusy = () =>
-  new ServerBrowserOperationError(
-    "PreviewAutomationTimeoutError",
-    "The page was too busy to capture a snapshot in time. Wait for it to settle and take another snapshot.",
   );
 
 const VALUE_TOO_LONG = "A password field holds a value too long to hide, so no snapshot was taken.";
@@ -535,10 +530,13 @@ const renderingOf = async (input: SnapshotInput) => {
 const capture = async (
   input: SnapshotInput,
   deadline: number,
+  progress: ReturnType<typeof makeForkSnapshotProgress>, // Fork: identify a stalled capture stage.
 ): Promise<PreviewAutomationSnapshot> => {
-  const { renderScale, viewport, offset } = await renderingOf(input);
+  const { renderScale, viewport, offset } = await progress.track("metrics", () =>
+    renderingOf(input),
+  ); // Fork: native metrics can stall independently of capture.
   // A late metrics reply must not begin a capture after viewers have resumed.
-  if (Date.now() >= deadline) throw tooBusy();
+  if (Date.now() >= deadline) throw progress.timeout("metrics"); // Fork: retain the inner deadline even when metrics reply late.
   const scale = Math.min(1, MAX_SCREENSHOT_WIDTH / (viewport.width * renderScale));
   const state = refsFor(input.page);
   invalidateRefs(input.page);
@@ -548,21 +546,30 @@ const capture = async (
   // Taken between the reads, so a value that changes during either fails the comparison.
   // Awaited after the tree: a capture that fails has finished its tree before a retry starts.
   const pageAndScreenshot = Promise.all([
-    input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
-      Pick<
-        PreviewAutomationSnapshot,
-        "url" | "title" | "loading" | "visibleText" | "interactiveElements"
-      >
-    >,
-    captureViewport(input.page, input.cdp, { format: "png", scale, viewport, offset }),
+    progress.track(
+      "page text",
+      () =>
+        input.page.evaluate(SNAPSHOT_SCRIPT) as Promise<
+          Pick<
+            PreviewAutomationSnapshot,
+            "url" | "title" | "loading" | "visibleText" | "interactiveElements"
+          >
+        >,
+    ),
+    progress.track("screenshot", () =>
+      captureViewport(input.page, input.cdp, { format: "png", scale, viewport, offset }),
+    ), // Fork: retain the failed capture stage.
   ]);
   void pageAndScreenshot.catch(constVoid);
   // Leaves time for the second read; a frame that never loads holds the tree until then.
-  const tree = await input.page.ariaSnapshot({
-    mode: "ai",
-    boxes: true,
-    timeout: Math.max(1, deadline - Date.now() - 2_000),
-  });
+  const tree = await progress.track("accessibility tree", () =>
+    input.page.ariaSnapshot({
+      // Fork: tree collection has its own deadline.
+      mode: "ai",
+      boxes: true,
+      timeout: Math.max(1, deadline - Date.now() - 2_000),
+    }),
+  );
   const after = await read(before);
   // A value that changed meanwhile may be in the tree under neither reading.
   if (after.some((values, i) => values && JSON.stringify(values) !== JSON.stringify(before[i])))
@@ -577,7 +584,7 @@ const capture = async (
     if (!iframe) throw pageChanged();
     const frame = await iframe.contentFrame();
     void iframe.dispose().catch(constVoid);
-    if (frame && unread.includes(frame)) throw tooBusy();
+    if (frame && unread.includes(frame)) throw progress.timeout("password fields"); // Fork: identify unread password fields rather than the broker deadline.
   }
   const [page, data] = await pageAndScreenshot;
   if (state.generation !== generation) throw pageChanged();
@@ -613,27 +620,28 @@ const capture = async (
 const snapshotTurns = new WeakMap<Page, number>();
 
 export const snapshot = async (input: SnapshotInput): Promise<PreviewAutomationSnapshot> => {
+  const progress = makeForkSnapshotProgress(SNAPSHOT_TIMEOUT_MS, ServerBrowserOperationError); // Fork: preserve the inner deadline and stage.
   const deadline = Date.now() + SNAPSHOT_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(tooBusy()), SNAPSHOT_TIMEOUT_MS);
+    timer = setTimeout(() => reject(progress.timeout()), SNAPSHOT_TIMEOUT_MS); // Fork: report pending metrics, pixels, or tree.
   });
   const turn = (snapshotTurns.get(input.page) ?? 0) + 1;
   snapshotTurns.set(input.page, turn);
   // A page that changed mid-capture, like one rotating ads, has usually settled by a second
   // try. None starts late or after another snapshot began, since it would revoke the refs of
   // whichever snapshot came next.
-  const captured = capture(input, deadline).catch((cause: unknown) =>
+  const captured = capture(input, deadline, progress).catch((cause: unknown) =>
     Date.now() < deadline &&
     snapshotTurns.get(input.page) === turn &&
     !(cause instanceof Error && cause.message === VALUE_TOO_LONG)
-      ? capture(input, deadline)
+      ? capture(input, deadline, progress)
       : Promise.reject(cause),
   );
   try {
     return await Promise.race([captured, expired]);
   } catch (cause) {
-    throw cause instanceof Error && cause.name === "TimeoutError" ? tooBusy() : cause;
+    throw cause instanceof Error && cause.name === "TimeoutError" ? progress.timeout() : cause; // Fork: do not replace an inner timeout with the outer budget.
   } finally {
     clearTimeout(timer);
   }

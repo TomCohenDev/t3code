@@ -44,6 +44,7 @@ import {
   setUpdateChannel,
 } from "./methods/updates.ts";
 import { checkBeforeUpdateInstall } from "./methods/forkUpdates.ts";
+import { reportBrowserCapture } from "./methods/forkBrowserCapture.ts";
 import {
   getAppBranding,
   getLocalEnvironmentBootstraps,
@@ -171,6 +172,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(installUpdate);
   yield* ipc.handle(checkForUpdate);
   yield* ipc.handle(checkBeforeUpdateInstall);
+  yield* ipc.handle(reportBrowserCapture); // Fork: native presentation and capture placement acknowledgements.
   yield* ipc.handle(getCliCommandState);
   yield* ipc.handle(installCliCommand);
   yield* ipc.handle(uninstallCliCommand);

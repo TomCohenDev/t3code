@@ -24,6 +24,7 @@ import { acquireDesktopTab, type AcquiredDesktopTab, withDesktopTab } from "./de
 import { resolveHostedBrowserWebviewWrapperStyle } from "./hostedBrowserWebviewStyle";
 import { usePreviewWebviewConfig } from "./previewWebviewConfigState";
 import { useBrowserLayoutZoomFactor } from "./useBrowserLayoutZoomFactor";
+import { useForkBrowserCapture } from "./useForkBrowserCapture";
 import { useBrowserViewportResize } from "./useBrowserViewportResize";
 import {
   INITIAL_WEBVIEW_CRASH_RECOVERY_STATE,
@@ -102,6 +103,14 @@ export function HostedBrowserWebview(props: {
   const backgroundActivity = useBrowserSurfaceStore(
     (state) => (state.activityByTabId[runtimeTabId] ?? 0) > 0,
   );
+  const reportPresentation = useForkBrowserCapture(
+    threadRef.threadId,
+    tabId,
+    runtimeTabId,
+    serverDriven,
+    presentation.visible && presentation.rect !== null,
+    wrapperRef,
+  ); // Fork: native visibility and paintable capture leases.
   const recordingActive = useActiveBrowserRecordingTabIds().has(runtimeTabId);
   usePreviewBridge({ threadRef, tabId, runtimeTabId, serverDriven });
 
@@ -163,6 +172,7 @@ export function HostedBrowserWebview(props: {
           const webContentsId = webview.getWebContentsId();
           if (Number.isInteger(webContentsId) && webContentsId > 0) {
             await bridge.registerWebview(runtimeTabId, webContentsId);
+            if (!disposed && serverDriven) await reportPresentation(); // Fork: registration may finish after the visibility effect.
           }
         } catch {}
       })();
@@ -202,6 +212,8 @@ export function HostedBrowserWebview(props: {
     clientSettingsHydrated,
     config,
     runtimeTabId,
+    serverDriven,
+    reportPresentation,
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A crash recovery remounts the webview under a new key, so the listeners attach to the new element.
     webviewGeneration,
   ]);

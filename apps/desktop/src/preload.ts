@@ -1,3 +1,4 @@
+import { forkCapture } from "./forkBrowserCapturePreload.ts";
 import type {
   DesktopBridge,
   DesktopPreviewOpenLinkEvent,
@@ -326,6 +327,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     },
   },
   preview: {
+    forkCapture, // Fork: native snapshot rendering activity and presentation.
     setForwardedShortcuts: (shortcuts) =>
       ipcRenderer.invoke(IpcChannels.PREVIEW_SET_FORWARDED_SHORTCUTS_CHANNEL, shortcuts),
     createTab: (tabId, defaults) =>

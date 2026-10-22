@@ -7,6 +7,10 @@
   ],
   "type": "module",
   "exports": {
+    "./forkBrowserCapture": {
+      "types": "./src/forkBrowserCapture.ts",
+      "import": "./src/forkBrowserCapture.ts"
+    },
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"

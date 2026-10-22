@@ -29,6 +29,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as Broker from "../mcp/PreviewAutomationBroker.ts";
 import * as DesktopChannel from "./DesktopBrowserChannel.ts";
+import { makeForkBrowserCapture } from "./ForkBrowserCapture.ts";
 import * as Manager from "./Manager.ts";
 import * as ServerBrowser from "./ServerBrowser.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
@@ -262,6 +263,8 @@ const dependencies = Layer.mergeAll(
   }),
   Layer.succeed(DesktopChannel.DesktopBrowserChannel, {
     available: true,
+    capture: makeForkBrowserCapture(() => Effect.void),
+    presentationChanged: Stream.empty,
     awaitAttached: (key) => Effect.sync(() => desktopRenders(key.tabId)),
     detached: Stream.callback<{ threadId: string; tabId: string }>((queue) =>
       Effect.acquireRelease(
@@ -332,6 +335,38 @@ beforeEach(() => {
   releasedDesktopTabs.length = 0;
   desktopConnections.length = 0;
 });
+
+it.live("reports a presented native tab without a streamed viewer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      desktopRendersNext = true;
+      const { broker, tabId } = yield* ready;
+      const channel = yield* DesktopChannel.DesktopBrowserChannel;
+      const key = { threadId: scope.thread.threadId, tabId };
+      try {
+        channel.capture.report({ type: "presentation", ...key, visible: true });
+        const status = yield* broker.invoke<PreviewAutomationStatus>({
+          scope,
+          tabId,
+          operation: "status",
+          input: {},
+        });
+        expect(status.visible).toBe(true);
+        expect(status.tabs).toContainEqual(expect.objectContaining({ tabId, visible: true }));
+        channel.capture.report({ type: "presentation", ...key, visible: false });
+        const hidden = yield* broker.invoke<PreviewAutomationStatus>({
+          scope,
+          tabId,
+          operation: "status",
+          input: {},
+        });
+        expect(hidden.visible).toBe(false);
+      } finally {
+        channel.capture.detach(key);
+      }
+    }),
+  ).pipe(Effect.provide(layer)),
+);
 
 it.live.each(["desktop" as const, undefined])(
   "explicit desktop targets ($0 runtime) fail without creating a server tab",
