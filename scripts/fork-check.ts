@@ -233,6 +233,11 @@ function steps(): ReadonlyArray<Step> {
       detail: "fork docs",
       command: ["node", NodePath.join(import.meta.dirname, "fork-check-doc-links.ts")],
     },
+    {
+      name: "migrations",
+      detail: "registry against upstream/main",
+      command: ["node", NodePath.join(import.meta.dirname, "fork-check-migrations.ts")],
+    },
   ];
 }
 
