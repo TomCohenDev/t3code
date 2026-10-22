@@ -76,11 +76,11 @@ const FORK_SETTING_GROUPS = [
     entries: [
       { ids: ["restore-worktrees-on-resume"] },
       { ids: ["worktree-artifact-eviction", "worktree-artifact-eviction-days"] },
-      { ids: ["sidebar-groups", "sidebar-group-single-thread"] },
+      { ids: ["sidebar-tabs", "sidebar-tab-single-thread"] },
       { ids: ["snooze-quick-options"] },
       { ids: ["mobile-new-thread-project"] },
       { ids: ["mobile-composer-camera"] },
-      { ids: ["mobile-sidebar-groups"] },
+      { ids: ["mobile-sidebar-tabs"] },
       { ids: ["storage-worktree-path-template"] },
       {
         ids: ["storage-worktrees-location"],

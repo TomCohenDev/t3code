@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 import { ProjectId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { ProjectScript } from "./project.ts";
 import { PullRequestAuthorAssociation } from "./pullRequest.ts";
-import { SidebarGroups } from "./sidebarGroups.ts";
+import { SidebarTabs } from "./sidebarTabs.ts";
 import { StoredThreadCardLayout, ThreadCardLayouts } from "./slotLayout.ts";
 
 /** Fork: the value of the `sidebarOwnerFilter` client setting. */
@@ -188,13 +188,13 @@ export const ForkClientSettingsFields = {
    */
   sidebarOwnerFilter: SidebarOwnerFilter.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
-   * Fork: thread groups as tabs above the sidebar list, on this device. A thread lives in the
-   * group that the user dragged it into, else in the first group whose rules match it, else in the
-   * default tab. The groups are the server setting `sidebarGroups`.
+   * Fork: sidebar tabs above the sidebar list, on this device. A thread lives in the tab that the
+   * user assigned it to, else in the first tab whose rules match it, else in the default tab. The
+   * tabs are the server setting `sidebarTabs`.
    */
-  sidebarGroupsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Fork: a click on the tab of a group with one thread opens that thread. */
-  sidebarGroupSingleThreadOpens: Schema.Boolean.pipe(
+  sidebarTabsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: a click on a tab with one thread opens that thread. */
+  sidebarTabSingleThreadOpens: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   /**
@@ -228,8 +228,8 @@ export const ForkClientSettingsPatchFields = {
   repositoryOwnerFilters: Schema.optionalKey(Schema.Boolean),
   pullRequestFilterChips: Schema.optionalKey(Schema.Boolean),
   sidebarOwnerFilter: Schema.optionalKey(SidebarOwnerFilter),
-  sidebarGroupsEnabled: Schema.optionalKey(Schema.Boolean),
-  sidebarGroupSingleThreadOpens: Schema.optionalKey(Schema.Boolean),
+  sidebarTabsEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarTabSingleThreadOpens: Schema.optionalKey(Schema.Boolean),
   snoozeQuickOptions: Schema.optionalKey(SnoozeQuickOptions),
   keyboardFocusLevels: Schema.optionalKey(Schema.Boolean),
   focusLevelHighlight: Schema.optionalKey(Schema.Boolean),
@@ -335,11 +335,11 @@ export const ForkServerSettingsFields = {
   /** Fork: user-built thread card layouts. See `ThreadCardLayouts`. */
   threadCardLayouts: ThreadCardLayouts.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
-   * Fork: sidebar thread groups and their drag assignments. The machine map syncs the value: a
-   * change from the sidebar becomes its shared value (MM-411). Clients show the groups while the
-   * client setting `sidebarGroupsEnabled` is on.
+   * Fork: sidebar tabs and their thread assignments. The machine map syncs the value: a
+   * change from the sidebar becomes its shared value (MM-411). Clients show the tabs while the
+   * client setting `sidebarTabsEnabled` is on.
    */
-  sidebarGroups: SidebarGroups.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  sidebarTabs: SidebarTabs.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
    * Fork: the machine map reports and applies the rules of `keybindings.json` as the server
    * setting `keybindings` (`KEYBINDINGS_SETTING_KEY`). See apps/machine-map/README.md "Keybinding sync".
@@ -366,8 +366,8 @@ export const ForkServerSettingsFields = {
    * turns the plus button into a menu on a server without file attachments.
    */
   mobileComposerCamera: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Fork: the home thread list of the mobile app shows the `sidebarGroups` tabs. */
-  mobileSidebarGroups: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: the home thread list of the mobile app shows the `sidebarTabs` tabs. */
+  mobileSidebarTabs: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 };
 
 export const ForkServerSettingsPatchFields = {
@@ -399,9 +399,9 @@ export const ForkServerSettingsPatchFields = {
   mobilePublishedThemes: Schema.optionalKey(Schema.Boolean),
   mobileNewThreadProject: Schema.optionalKey(MobileNewThreadProject),
   mobileComposerCamera: Schema.optionalKey(Schema.Boolean),
-  mobileSidebarGroups: Schema.optionalKey(Schema.Boolean),
-  /** Replaces the saved groups whole: a merge would keep deleted groups and assignments. */
-  sidebarGroups: Schema.optionalKey(SidebarGroups),
+  mobileSidebarTabs: Schema.optionalKey(Schema.Boolean),
+  /** Replaces the saved tabs whole: a merge would keep deleted tabs and assignments. */
+  sidebarTabs: Schema.optionalKey(SidebarTabs),
   /** Per surface: a patched layout replaces the saved one, and `null` restores the built-in card. */
   threadCardLayouts: Schema.optionalKey(
     Schema.Struct({
