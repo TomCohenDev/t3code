@@ -476,8 +476,8 @@ const make = Effect.gen(function* () {
     false,
   ).pipe(Effect.withSpan("MachinePeers.readableEnvironments"));
 
-  const postJson: MachinePeers["Service"]["postJson"] = (input) =>
-    Effect.gen(function* () {
+  const postJson: MachinePeers["Service"]["postJson"] = Effect.fn("MachinePeers.postJson")(
+    function* (input) {
       const resolved = yield* resolvePeer(input.machine);
       const nowMs = yield* Clock.currentTimeMillis;
       if (resolved.arrow === undefined || effectiveLevel(resolved.arrow, nowMs) === "none") {
@@ -529,7 +529,8 @@ const make = Effect.gen(function* () {
               }),
         ),
       );
-    });
+    },
+  );
 
   return MachinePeers.of({ testArrow, callTool, postJson, readThread, readableEnvironments });
 });
