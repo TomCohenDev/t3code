@@ -50,6 +50,8 @@ export class ForkWorktreeResume extends Context.Service<
   }
 >()("t3/fork/ForkWorktreeResume") {}
 
+const isWorktreeResumeError = Schema.is(WorktreeResumeError);
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -345,7 +347,7 @@ const make = Effect.gen(function* () {
         Effect.tapError((error) =>
           activity(
             "failed",
-            Schema.is(WorktreeResumeError)(error)
+            isWorktreeResumeError(error)
               ? error.reason
               : "Project setup failed. The checkout and branch were kept.",
           ),
@@ -353,7 +355,7 @@ const make = Effect.gen(function* () {
       );
     }).pipe(
       Effect.mapError((cause) =>
-        Schema.is(WorktreeResumeError)(cause)
+        isWorktreeResumeError(cause)
           ? cause
           : new WorktreeResumeError({
               cwd: input.thread.worktreePath ?? "",
