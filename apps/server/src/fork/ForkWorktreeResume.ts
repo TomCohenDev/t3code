@@ -79,6 +79,9 @@ const make = Effect.gen(function* () {
         !pendingSetup
       )
         return;
+      // With restoration off, upstream's recovery after this hook handles a missing checkout.
+      if (!currentSettings.restoreWorktreesOnResume && !pendingSetup && !(yield* fs.exists(cwd)))
+        return;
       const fail = (reason: string) => new WorktreeResumeError({ cwd, reason });
       // A new launch can release its first turn while its async setup is still running.
       // Wait for that setup rather than typing a second install into its terminal.
@@ -123,10 +126,6 @@ const make = Effect.gen(function* () {
       if (Option.isSome(link))
         return yield* fail("The saved path is a symbolic link; it was left untouched.");
       const exists = yield* fs.exists(cwd);
-      if (!exists && !currentSettings.restoreWorktreesOnResume && !pendingSetup)
-        return yield* fail(
-          "Missing worktree restoration is off; the saved branch was left untouched.",
-        );
       if (exists && (yield* fs.stat(cwd)).type !== "Directory")
         return yield* fail("The saved path exists but is not a directory; it was left untouched.");
       let missingDependencies = false;

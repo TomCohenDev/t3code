@@ -74,12 +74,17 @@ const fixture = Effect.gen(function* () {
   };
   const activities: unknown[] = [];
   let setups = 0;
-  const layer = (enabled = true, exitCode = 0, trackerLayer = Tracker.layer) =>
+  const layer = (
+    enabled = true,
+    exitCode = 0,
+    trackerLayer = Tracker.layer,
+    worktreeArtifactEviction = false,
+  ) =>
     Resume.layer.pipe(
       Layer.provide(trackerLayer),
       Layer.provide(
         Layer.mergeAll(
-          Settings.layerTest({ restoreWorktreesOnResume: enabled }),
+          Settings.layerTest({ restoreWorktreesOnResume: enabled, worktreeArtifactEviction }),
           IdAllocator.layer,
           Layer.mock(Projects.ProjectService)({
             getById: () =>
@@ -126,10 +131,15 @@ const fixture = Effect.gen(function* () {
         ),
       ),
     );
-  const prepare = (enabled = true, exitCode = 0, trackerLayer = Tracker.layer) =>
+  const prepare = (
+    enabled = true,
+    exitCode = 0,
+    trackerLayer = Tracker.layer,
+    worktreeArtifactEviction = false,
+  ) =>
     Effect.gen(function* () {
       yield* (yield* Resume.ForkWorktreeResume).prepare(input);
-    }).pipe(Effect.provide(layer(enabled, exitCode, trackerLayer)));
+    }).pipe(Effect.provide(layer(enabled, exitCode, trackerLayer, worktreeArtifactEviction)));
   return { fs, path, exec, cwd, repository, input, activities, prepare, setups: () => setups };
 });
 
@@ -229,6 +239,16 @@ it.effect("does nothing while off", () =>
     yield* f.prepare(false);
     assert.isFalse(yield* f.fs.exists(f.cwd));
     assert.strictEqual(f.setups(), 0);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("leaves a missing checkout to upstream recovery while off, even with eviction on", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.prepare(false, 0, Tracker.layer, true);
+    assert.isFalse(yield* f.fs.exists(f.cwd));
+    assert.strictEqual(f.setups(), 0);
+    assert.deepStrictEqual(f.activities, []);
   }).pipe(Effect.provide(layerGit)),
 );
 
