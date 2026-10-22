@@ -193,9 +193,7 @@ function testSteps(): ReadonlyArray<Step> {
 
 function steps(): ReadonlyArray<Step> {
   const scripts = changed.filter((file) => SCRIPT_EXTENSIONS.has(NodePath.extname(file)));
-  const codeChanged = changed.some(
-    (file) => !isDocFile(file) && !file.startsWith("apps/machine-map/"),
-  );
+  const codeChanged = changed.some((file) => !isDocFile(file));
   const typecheckPackages = [...new Set(changed.flatMap((file) => packageOf(file) ?? []))].filter(
     (workspace) => workspace.scripts.typecheck !== undefined,
   );
@@ -216,7 +214,7 @@ function steps(): ReadonlyArray<Step> {
         },
     codeChanged
       ? { name: "knip", detail: "whole repository", command: ["vp", "run", "knip:check"] }
-      : { name: "knip", skipped: "only docs, markdown or apps/machine-map changed, as in Fork CI" },
+      : { name: "knip", skipped: "only docs or markdown changed, as in Fork CI" },
     typecheckPackages.length === 0
       ? { name: "typecheck", skipped: "no changed package" }
       : {
