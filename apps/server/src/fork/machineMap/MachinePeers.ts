@@ -11,6 +11,7 @@ import {
   AuthTokenExchangeGrantType,
   type MachineId,
   type PeerMachine,
+  type OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -24,8 +25,11 @@ import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { callAcpMcpTool } from "../../mcp/AcpMcpStdioBridge.ts";
+import { mcpToolSession } from "../../mcp/AcpMcpStdioBridge.ts";
+import type * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import type * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import { effectiveLevel } from "./machineAccess.ts";
+import { requireMachineToolCaller } from "./machineCallerAccess.ts";
 import * as MachineMapState from "./MachineMapState.ts";
 
 const REQUEST_TIMEOUT = Duration.seconds(15);
@@ -73,7 +77,11 @@ export class MachinePeers extends Context.Service<
       readonly machine: string;
       readonly tool: string;
       readonly input: Readonly<Record<string, unknown>>;
-    }) => Effect.Effect<unknown, MachinePeerError>;
+    }) => Effect.Effect<
+      unknown,
+      MachinePeerError | OrchestratorMcpFailure,
+      McpInvocationContext.McpInvocationContext | ThreadManagement.ThreadManagementService
+    >;
   }
 >()("t3/fork/machineMap/MachinePeers") {}
 
@@ -220,6 +228,7 @@ const make = Effect.gen(function* () {
 
   const callTool: MachinePeers["Service"]["callTool"] = Effect.fn("MachinePeers.callTool")(
     function* (input) {
+      yield* requireMachineToolCaller();
       const resolved = yield* resolvePeer(input.machine);
       const nowMs = yield* Clock.currentTimeMillis;
       if (
@@ -233,24 +242,32 @@ const make = Effect.gen(function* () {
         });
       }
       const headers = MachineMapState.tokenHeaders(resolved.token);
-      const call = (session: PeerSession) =>
-        callAcpMcpTool({
+      const call = Effect.fn("MachinePeers.call")(function* (session: PeerSession) {
+        yield* requireMachineToolCaller();
+        const remote = yield* mcpToolSession({
           endpoint: `${peerOrigin(resolved.peer)}/mcp`,
           authorization: `Bearer ${session.accessToken}`,
-          tool: input.tool,
-          arguments: input.input,
+          clientName: "t3-code-machine-peer",
           // Cloudflare Access in front of the peer needs the machine token on every request.
           fetchImplementation: (url, init) =>
             // @effect-diagnostics-next-line globalFetch:off - the MCP bridge takes a fetch function; this only adds the Access headers.
             fetch(url, { ...init, headers: { ...(init?.headers as object), ...headers } }),
         });
-      const pairOrFail = pair(resolved.peer, resolved.token, resolved.selfName).pipe(
-        Effect.mapError(
-          (cause) =>
-            new MachinePeerError({
-              reason: "pairing-refused",
-              detail: `${resolved.peer.name} refused the pairing: ${describe(cause)}.`,
-            }),
+        // Initializing MCP waits on B too; a downgrade during that wait must stop tools/call.
+        yield* requireMachineToolCaller();
+        return yield* remote.call(input.tool, input.input);
+      }, Effect.scoped);
+      const pairOrFail = requireMachineToolCaller().pipe(
+        Effect.andThen(
+          pair(resolved.peer, resolved.token, resolved.selfName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new MachinePeerError({
+                  reason: "pairing-refused",
+                  detail: `${resolved.peer.name} refused the pairing: ${describe(cause)}.`,
+                }),
+            ),
+          ),
         ),
       );
       const cached = sessions.get(resolved.peer.id);
@@ -266,7 +283,7 @@ const make = Effect.gen(function* () {
             : Effect.fail(error),
         ),
         Effect.mapError((error) =>
-          error._tag === "MachinePeerError"
+          error._tag === "MachinePeerError" || error._tag === "OrchestratorMcpFailure"
             ? error
             : new MachinePeerError({
                 reason: "tool-failed",
