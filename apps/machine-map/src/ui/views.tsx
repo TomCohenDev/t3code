@@ -29,6 +29,7 @@ import {
   ALERT_TEXT,
   COMMAND_LABEL,
   COMMAND_STICKER,
+  EXEC_STICKER,
   LEVEL_LABEL,
   machineName,
   PRESENCE_STICKER,
@@ -171,6 +172,7 @@ export function TableView() {
                         {(arrow.agentTools || arrow.expiresAt) && (
                           <span className="stickers">
                             {arrow.agentTools && <span className="sticker accent flat">tools</span>}
+                            {arrow.exec && <span className="sticker accent flat">exec</span>}
                             {arrow.expiresAt && <span className="sticker warn flat">temp</span>}
                           </span>
                         )}
@@ -716,7 +718,12 @@ export function HistoryView() {
   }, [viewing]);
   const shown = past !== null && past.revision === viewing ? past : null;
 
-  const entries = historyEntries(history, portal.snapshot.commands, portal.health.alerts);
+  const entries = historyEntries(
+    history,
+    portal.snapshot.commands,
+    portal.health.alerts,
+    portal.execs,
+  );
   const actors = new Map<string, string>();
   for (const entry of entries) {
     const actor = entryActor(entry);
@@ -846,6 +853,40 @@ export function HistoryView() {
           </span>
           <span className={`sticker ${ended ? "ok" : "warn"}`}>
             {ended ? "ended" : ALERT_STICKER[alert.kind]}
+          </span>
+        </Item>
+      );
+    }
+    if (entry._tag === "exec") {
+      const { exec } = entry;
+      const title = `${machineName(map, exec.from)} ran a command on ${machineName(map, exec.to)}`;
+      return (
+        <Item
+          key={entryKey(entry)}
+          kind="exec"
+          on={false}
+          label={title}
+          open={() => portal.select({ _tag: "arrow", from: exec.from, to: exec.to })}
+          side={
+            <details className="diff">
+              <summary>Command</summary>
+              <p className="small mono">{exec.command}</p>
+              <p className="small">
+                In <span className="mono">{exec.cwd}</span> · {exec.durationMs} ms
+              </p>
+            </details>
+          }
+        >
+          {kindSticker("exec")}
+          <span className="grow">
+            <b>{title}</b>
+            <span className="sub">
+              {actorText(entryActor(entry), map)} · {when(entry.at)}
+            </span>
+          </span>
+          {agentSticker(entryActor(entry))}
+          <span className={`sticker ${EXEC_STICKER[exec.outcome]}`}>
+            {exec.outcome === "exited" ? `exit ${exec.exitCode ?? "?"}` : exec.outcome}
           </span>
         </Item>
       );

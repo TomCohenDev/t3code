@@ -14,7 +14,7 @@ import {
   type AuthMcpClientAccess,
   MACHINE_LEVEL_SCOPES,
   type MachineDesiredState,
-  type MachineId,
+  MachineId,
   type MachineLevel,
   type PeerMachine,
   machineSessionSubject,
@@ -216,13 +216,48 @@ export const MACHINE_MCP_CAPABILITIES = ["orchestration", "worktree", "pull-requ
 
 /**
  * The MCP request namespace of a machine session. The machine map tools refuse such callers, so
- * an agent on another machine cannot borrow the map role or the arrows of this machine.
+ * an agent on another machine cannot borrow the map role or the arrows of this machine. It names
+ * the source machine for `machine_exec` (MM-1908). The id is URI-encoded, so it holds no `:`.
  */
-export const machineRequestNamespace = (client: { readonly sessionId: string }) =>
-  `${MACHINE_REQUEST_NAMESPACE_PREFIX}${client.sessionId}`;
+export const machineRequestNamespace = (client: {
+  readonly machineId: MachineId;
+  readonly sessionId: string;
+}) =>
+  `${MACHINE_REQUEST_NAMESPACE_PREFIX}${encodeURIComponent(client.machineId)}:${client.sessionId}`;
 
 export const isMachineRequestNamespace = (requestNamespace: string) =>
   requestNamespace.startsWith(MACHINE_REQUEST_NAMESPACE_PREFIX);
+
+/** The source machine of a machine session namespace, or undefined for any other namespace. */
+export const machineOfRequestNamespace = (requestNamespace: string): MachineId | undefined => {
+  if (!isMachineRequestNamespace(requestNamespace)) return undefined;
+  const rest = requestNamespace.slice(MACHINE_REQUEST_NAMESPACE_PREFIX.length);
+  const end = rest.indexOf(":");
+  return end <= 0 ? undefined : MachineId.make(decodeURIComponent(rest.slice(0, end)));
+};
+
+/**
+ * MM-1908: `exec` works only with agent tools, because `machine_exec` is an MCP tool on the
+ * target, and only at `standard` or `admin`, because a command can do what the user can do.
+ */
+export const arrowAllowsExec = (arrow: ArrowRecord, nowMs: number): boolean => {
+  const level = effectiveLevel(arrow, nowMs);
+  return arrow.agentTools && arrow.exec && (level === "standard" || level === "admin");
+};
+
+/**
+ * MM-1908, MM-1916: the arrow from `from` into this machine while it allows `exec` now, else
+ * undefined. The pause refuses every run.
+ */
+export const execArrowInto = (
+  desired: MachineDesiredState,
+  from: MachineId,
+  nowMs: number,
+): ArrowRecord | undefined => {
+  if (desired.paused === true || from === desired.self.id) return undefined;
+  const arrow = arrowFrom(desired, from);
+  return arrow !== undefined && arrowAllowsExec(arrow, nowMs) ? arrow : undefined;
+};
 
 type Leveled = Pick<ArrowRecord, "level" | "expiresAt" | "revertLevel">;
 

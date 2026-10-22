@@ -33,6 +33,8 @@ export interface ArrowInput {
   readonly level: MachineLevel;
   /** Omit to keep the current value. */
   readonly agentTools?: boolean;
+  /** MM-1908: omit to keep the current value. Agent tools off turns it off too. */
+  readonly exec?: boolean;
   /** Null makes the level permanent. */
   readonly expiresAt: string | null;
 }
@@ -44,11 +46,14 @@ export interface ArrowInput {
 export function arrowChange(map: MachineMapDocument, input: ArrowInput): MapChange {
   const current = findArrow(map, input.from, input.to);
   const permanentLevel = current.revertLevel ?? current.level;
+  const agentTools = input.agentTools ?? current.agentTools;
   const arrow: ArrowRecord = {
     from: input.from,
     to: input.to,
     level: input.level,
-    agentTools: input.agentTools ?? current.agentTools,
+    agentTools,
+    // `machine_exec` is an agent tool, so exec without agent tools would do nothing.
+    exec: agentTools && (input.exec ?? current.exec),
     expiresAt: input.expiresAt,
     revertLevel: input.expiresAt === null ? null : permanentLevel,
   };
@@ -97,7 +102,9 @@ function levelRaises(previous: Leveled, next: Leveled): boolean {
 
 /** True when `next` gives the source machine more access than `previous`, now or later. */
 export const arrowRaises = (previous: ArrowRecord, next: ArrowRecord): boolean =>
-  levelRaises(previous, next) || (next.agentTools && !previous.agentTools);
+  levelRaises(previous, next) ||
+  (next.agentTools && !previous.agentTools) ||
+  (next.exec && !previous.exec);
 
 /** True when `next` gives the client more access than `previous`, now or later. */
 export const clientArrowRaises = (previous: ClientArrowRecord, next: ClientArrowRecord): boolean =>

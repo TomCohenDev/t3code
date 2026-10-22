@@ -1,5 +1,6 @@
 import type {
   CommandStatus,
+  MachineExecOutcome,
   MachineCommandInput,
   MachineLevel,
   MachineMapDocument,
@@ -121,6 +122,13 @@ export const COMMAND_STICKER: Record<CommandStatus, string> = {
   failed: "",
   expired: "none",
   cancelled: "none",
+};
+/** MM-1908: the sticker look of each exec outcome. */
+export const EXEC_STICKER: Record<MachineExecOutcome, string> = {
+  exited: "ok",
+  timedOut: "warn",
+  stopped: "none",
+  failed: "",
 };
 
 /** MM-205, MM-601: presence as plain text, with the time since the last connection. */

@@ -25,6 +25,7 @@ import {
   ClientAccessMode,
   type MachineMapShareSettingsInput,
   type MachineMapShareSettingsResult,
+  type MachineExecReport,
   MachinesReadResult,
   MachineMapRequestError,
   type MachineStatus,
@@ -201,6 +202,12 @@ export class MachineMap extends Context.Service<
     readonly shareSettings: (
       input: MachineMapShareSettingsInput,
     ) => Effect.Effect<MachineMapShareSettingsResult>;
+    /**
+     * MM-1908: tells the portal about a `machine_exec` run on this machine. The outbox keeps it
+     * while the portal is unreachable. Known limit: the outbox lives in memory, so a restart before
+     * the next connection loses it. Revisit when the History must survive that.
+     */
+    readonly reportExec: (report: MachineExecReport) => Effect.Effect<void>;
   }
 >()("t3/fork/machineMap/MachineMap") {}
 
@@ -1406,6 +1413,7 @@ const make = Effect.gen(function* () {
     callMapTool,
     readPanel,
     shareSettings,
+    reportExec: (report) => sendOrQueue({ _tag: "execRan", report }).pipe(Effect.asVoid),
   });
 });
 

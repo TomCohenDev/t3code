@@ -3,6 +3,7 @@ import type {
   ClientId,
   CommandDelivery,
   MachineCommandInput,
+  MachineExecRecord,
   MachineId,
   MachineMapDocument,
   MapChange,
@@ -90,6 +91,8 @@ export interface Portal {
   readonly pending: ReadonlyArray<PendingClient> | null;
   /** MM-913: invites of native apps that wait to be used. */
   readonly invites: ReadonlyArray<ClientInvite>;
+  /** MM-1908: the newest `machine_exec` runs, newest first. */
+  readonly execs: ReadonlyArray<MachineExecRecord>;
   readonly draft: ReadonlyArray<DraftChange> | null;
   readonly now: number;
   readonly route: Route;

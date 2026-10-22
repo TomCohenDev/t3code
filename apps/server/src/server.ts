@@ -175,6 +175,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as ForkChangelog from "./fork/ForkChangelog.ts";
 import * as ForkPreviewServerGroups from "./fork/PreviewServerGroups.ts";
 import * as ForkUpdates from "./fork/ForkUpdates.ts";
+import * as MachineExec from "./fork/machineMap/MachineExec.ts";
 import * as MachineHost from "./fork/machineMap/MachineHost.ts";
 import * as MachineMap from "./fork/machineMap/MachineMap.ts";
 import * as MachineMapState from "./fork/machineMap/MachineMapState.ts";
@@ -504,7 +505,8 @@ const layerServerEnvironment = ServerEnvironment.layer.pipe(
 // One instance for the update RPC and the fork updates, so both share the in-flight guard.
 const layerServerSelfUpdate = ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate));
 
-const layerMachineMap = MachineMap.layer.pipe(
+const layerMachineMap = MachineExec.layer.pipe(
+  Layer.provideMerge(MachineMap.layer),
   Layer.provideMerge(MachineHost.layer),
   // Fork: updates from the fork releases. It runs also when the machine map is off.
   Layer.provide(ForkUpdates.layer.pipe(Layer.provide(layerServerSelfUpdate))),

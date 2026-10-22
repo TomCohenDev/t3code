@@ -1768,7 +1768,8 @@ td .stickers,
 }
 .item.hk-move,
 .item.hk-other,
-.item.hk-command {
+.item.hk-command,
+.item.hk-exec {
   border-left-color: var(--none);
 }
 .item.hk-pause,
@@ -1837,7 +1838,8 @@ td .stickers,
   background: var(--error);
   color: #ffffff;
 }
-.sticker.hk-command {
+.sticker.hk-command,
+.sticker.hk-exec {
   background: var(--surface);
   color: var(--ink);
 }

@@ -6,6 +6,7 @@ import type {
   ArrowRecord,
   ClientArrowRecord,
   MachineCommand,
+  MachineExecRecord,
   MachineId,
   MachineMapDocument,
   MapActor,
@@ -47,7 +48,8 @@ export type HistoryKind =
   | "preset"
   | "other"
   | "command"
-  | "alert";
+  | "alert"
+  | "exec";
 
 /** Each kind: the filter label, the sticker (one or two words) and whether it is important. */
 export const HISTORY_KIND: Record<
@@ -70,6 +72,7 @@ export const HISTORY_KIND: Record<
   other: { label: "Other changes", sticker: "change", important: false },
   command: { label: "Commands", sticker: "command", important: false },
   alert: { label: "Health alerts", sticker: "alert", important: false },
+  exec: { label: "Commands run by agents", sticker: "exec", important: false },
 };
 
 export const HISTORY_KINDS = Object.keys(HISTORY_KIND).filter(
@@ -213,13 +216,21 @@ export type HistoryEntry =
       readonly kind: "alert";
       readonly alert: HealthAlert;
       readonly ended: boolean;
+    }
+  | {
+      /** MM-1908: one `machine_exec` run, a portal event and not a revision. */
+      readonly _tag: "exec";
+      readonly at: string;
+      readonly kind: "exec";
+      readonly exec: MachineExecRecord;
     };
 
-/** Revisions, commands, and alert starts and ends, newest first. */
+/** Revisions, commands, alert starts and ends, and exec runs, newest first. */
 export function historyEntries(
   revisions: ReadonlyArray<MapRevision>,
   commands: ReadonlyArray<MachineCommand>,
   alerts: ReadonlyArray<HealthAlert>,
+  execs: ReadonlyArray<MachineExecRecord>,
 ): Array<HistoryEntry> {
   return [
     ...revisions.map((revision): HistoryEntry => ({
@@ -240,6 +251,7 @@ export function historyEntries(
         ? []
         : [{ _tag: "alert", at: alert.endedAt, kind: "alert", alert, ended: true } as const]),
     ]),
+    ...execs.map((exec): HistoryEntry => ({ _tag: "exec", at: exec.at, kind: "exec", exec })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
@@ -252,6 +264,8 @@ export function entryKey(entry: HistoryEntry): string {
       return entry.command.id;
     case "alert":
       return `${entry.alert.id}:${entry.ended ? "end" : "start"}`;
+    case "exec":
+      return `exec:${entry.exec.id}`;
   }
 }
 
@@ -265,6 +279,13 @@ export function entryActor(entry: HistoryEntry): MapActor {
       return entry.command.actor;
     case "alert":
       return HEALTH_ACTOR;
+    case "exec":
+      return {
+        _tag: "agent",
+        machineId: entry.exec.from,
+        threadId: entry.exec.threadId,
+        threadTitle: entry.exec.threadTitle,
+      };
   }
 }
 
@@ -294,6 +315,7 @@ export function actorLabel(actor: MapActor, map: MachineMapDocument): string {
 /** The machines that an entry names. A shared setting names none. */
 function entryMachines(entry: HistoryEntry): ReadonlySet<string> {
   if (entry._tag === "alert") return new Set([entry.alert.machineId]);
+  if (entry._tag === "exec") return new Set([entry.exec.from, entry.exec.to]);
   if (entry._tag === "command") {
     const { input, machineId } = entry.command;
     return new Set(input._tag === "testArrow" ? [machineId, input.to] : [machineId]);
@@ -479,6 +501,7 @@ const clientLink = (map: MachineMapDocument, id: string): Pick<DiffRow, "link"> 
 function arrowText(arrow: ArrowRecord): string {
   const parts = [LEVEL_LABEL[arrow.level]];
   if (arrow.agentTools) parts.push("agent tools");
+  if (arrow.exec) parts.push("exec");
   if (arrow.expiresAt) parts.push(`until ${shortTime(arrow.expiresAt)}`);
   return parts.join(", ");
 }
