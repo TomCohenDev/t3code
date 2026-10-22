@@ -76,6 +76,7 @@ import { resolveRootCliCommand } from "../cli/invocation.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 import * as DesktopBrowserChannel from "./DesktopBrowserChannel.ts";
+import { withForkBrowserCapture } from "./ForkBrowserCapture.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
@@ -589,7 +590,7 @@ const make = Effect.gen(function* () {
             liveTabs: [...tabs.values()].map((tab) => ({
               threadId: tab.threadId,
               tabId: tab.tabId,
-              visible: tab.viewers.size > 0,
+              visible: desktopChannel.capture.visible(tab, tab.viewers.size), // Fork: native presentation also counts for host routing.
             })),
           }),
         ),
@@ -1371,7 +1372,7 @@ const make = Effect.gen(function* () {
     const viewport = tab.page.viewportSize();
     const status = {
       available: true,
-      visible: tab.viewers.size > 0,
+      visible: desktopChannel.capture.visible(tab, tab.viewers.size), // Fork: native surfaces are not streamed viewers.
       tabId: tab.tabId,
       url: url === "about:blank" ? null : url,
       title: null,
@@ -1395,7 +1396,7 @@ const make = Effect.gen(function* () {
           ...(candidate.openerTabId === undefined ? {} : { openerTabId: candidate.openerTabId }),
           owner: tabOwner(candidate),
           ownedByCaller: candidate.control.agentId === agentSessionId,
-          visible: candidate.viewers.size > 0,
+          visible: desktopChannel.capture.visible(candidate, candidate.viewers.size), // Fork: include native presentation.
           ...(candidate.profileId === undefined ? {} : { profileId: candidate.profileId }),
         })),
       ...profileStatus(),
@@ -1968,11 +1969,14 @@ const make = Effect.gen(function* () {
         return { tabId: tab.tabId, colorScheme };
       }
       case "snapshot": {
-        return withScreencastsPaused(tab, () =>
-          ServerBrowserPage.snapshot({
-            ...tab,
-            renderScale: tab.desktop ? "display" : RENDER_SCALE,
-          }),
+        return withForkBrowserCapture(desktopChannel.capture, tab, tab.desktop !== null, () =>
+          withScreencastsPaused(tab, () =>
+            // Fork: acknowledge paintable placement before capture.
+            ServerBrowserPage.snapshot({
+              ...tab,
+              renderScale: tab.desktop ? "display" : RENDER_SCALE,
+            }),
+          ),
         );
       }
       case "click": {
@@ -2461,6 +2465,10 @@ const make = Effect.gen(function* () {
     );
   }
 
+  yield* desktopChannel.presentationChanged.pipe(
+    Stream.runForEach(() => Effect.sync(reportLiveTabs)),
+    Effect.forkScoped,
+  ); // Fork: refresh the broker when a native tab is shown or hidden.
   yield* desktopChannel.detached.pipe(
     Stream.runForEach((key) =>
       Effect.sync(() => {

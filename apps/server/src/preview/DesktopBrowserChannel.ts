@@ -29,6 +29,7 @@ import * as NodeNet from "node:net";
 
 import * as ServerConfig from "../config.ts";
 import { writeAllToFileDescriptor } from "../resourceTelemetry/DesktopTelemetryReceiver.ts";
+import { makeForkBrowserCapture } from "./ForkBrowserCapture.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(DesktopBrowserEvent);
 const encodeCommand = Schema.encodeEffect(Schema.fromJsonString(DesktopBrowserCommand));
@@ -44,6 +45,8 @@ export class DesktopBrowserChannel extends Context.Service<
   DesktopBrowserChannel,
   {
     readonly available: boolean;
+    readonly capture: ReturnType<typeof makeForkBrowserCapture>; // Fork: native visibility and bounded rendering leases.
+    readonly presentationChanged: Stream.Stream<DesktopTabKey>; // Fork: keep broker tab routing current when a native panel moves.
     /**
      * Subscribes before it checks, so an attach landing in between is never
      * missed.
@@ -65,6 +68,7 @@ const make = Effect.gen(function* () {
   const inputFd = config.desktopBrowserFd;
   const controlFd = config.desktopBrowserControlFd;
   const changes = yield* PubSub.unbounded<{ key: DesktopTabKey; attached: boolean }>();
+  const presentations = yield* PubSub.unbounded<DesktopTabKey>(); // Fork: native presentation does not attach or detach the debugger.
   const attachedTabs = new Set<string>();
   const inbound = new Map<string, Queue.Queue<string>>();
   const writeLock = yield* Semaphore.make(1);
@@ -72,6 +76,8 @@ const make = Effect.gen(function* () {
   if (inputFd === undefined || controlFd === undefined) {
     return DesktopBrowserChannel.of({
       available: false,
+      capture: makeForkBrowserCapture(() => Effect.void), // Fork: no native presentation without a desktop channel.
+      presentationChanged: Stream.empty, // Fork: no native panel without a desktop channel.
       awaitAttached: () => Effect.succeed(false),
       detached: Stream.empty,
       attached: Stream.empty,
@@ -90,6 +96,7 @@ const make = Effect.gen(function* () {
         ),
       ),
     );
+  const capture = makeForkBrowserCapture(command); // Fork: share native presentation with status and snapshots.
 
   // Socket reads can be cancelled while the desktop keeps its write end open.
   // Filesystem reads on this pipe keep Node alive after scope shutdown.
@@ -110,6 +117,11 @@ const make = Effect.gen(function* () {
       const key = { threadId: event.threadId, tabId: event.tabId };
       const id = keyOf(key);
       switch (event.type) {
+        case "presentation":
+          capture.report(event); // Fork: update status before refreshing broker routing.
+          return PubSub.publish(presentations, key);
+        case "captureReady":
+          return Effect.sync(() => capture.report(event)); // Fork: native surface reports.
         case "cdp": {
           const queue = inbound.get(id);
           return queue ? Queue.offer(queue, event.message).pipe(Effect.asVoid) : Effect.void;
@@ -118,6 +130,7 @@ const make = Effect.gen(function* () {
           attachedTabs.add(id);
           return PubSub.publish(changes, { key, attached: true });
         case "detached": {
+          capture.detach(key); // Fork: stale presentation must not survive a detached guest.
           attachedTabs.delete(id);
           const queue = inbound.get(id);
           return (queue ? Queue.shutdown(queue) : Effect.void).pipe(
@@ -191,6 +204,8 @@ const make = Effect.gen(function* () {
 
   return DesktopBrowserChannel.of({
     available: true,
+    capture, // Fork: native snapshot lease.
+    presentationChanged: Stream.fromPubSub(presentations), // Fork: panel visibility changes must reach host routing.
     awaitAttached: (key, timeout) =>
       Effect.scoped(
         Effect.gen(function* () {
