@@ -5,6 +5,7 @@
 import {
   type ArrowRecord,
   AuthAccessWriteScope,
+  AuthOrchestrationOperateScope,
   AuthRelayWriteScope,
   type AuthEnvironmentScope,
   clientSessionSubject,
@@ -182,19 +183,23 @@ export const isMapSubject = (subject: string) =>
 /**
  * MM-1307: the MCP access of a machine session, or undefined when its arrow has no agent tools.
  * `read` only reads. `standard` and `admin` hold every scope that a full-access MCP client holds.
+ * MM-1902: a session that the source paired without `orchestration:operate` is read-only too, so
+ * this machine refuses the writes of a restricted source thread.
  */
 export const machineMcpAccessFor = (
   desired: MachineDesiredState,
-  subject: string,
+  session: { readonly subject: string; readonly scopes: ReadonlyArray<AuthEnvironmentScope> },
   nowMs: number,
 ): { readonly peer: PeerMachine; readonly access: AuthMcpClientAccess } | undefined => {
+  const subject = session.subject;
   const peer = peerOfSubject(desired, subject);
   if (peer === undefined) return undefined;
   const arrow = arrowFrom(desired, peer.id);
   if (arrow === undefined || !arrow.agentTools) return undefined;
   const level = effectiveLevel(arrow, nowMs);
   if (level === "none") return undefined;
-  return { peer, access: level === "read" ? "read-only" : "full-access" };
+  const operates = session.scopes.includes(AuthOrchestrationOperateScope);
+  return { peer, access: level === "read" || !operates ? "read-only" : "full-access" };
 };
 
 /**
@@ -205,6 +210,9 @@ export const machineMcpAccessFor = (
 export const isLocalDesktopSubject = (subject: string) => subject === "desktop-bootstrap";
 
 const MACHINE_REQUEST_NAMESPACE_PREFIX = "machine-session:";
+
+/** MM-1902: forwarding must not grant a capability absent from the source credential. */
+export const MACHINE_MCP_CAPABILITIES = ["orchestration", "worktree", "pull-requests"] as const;
 
 /**
  * The MCP request namespace of a machine session. The machine map tools refuse such callers, so

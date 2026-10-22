@@ -21,7 +21,13 @@ import { type AgentAwarenessPhase, projectThreadAwarenessV2 } from "@t3tools/sha
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
-import { generateVapidJwk, sendPush, type VapidKey, vapidKey } from "@t3tools/shared/webPush";
+import {
+  generateVapidJwk,
+  pushThreadNotificationTag,
+  sendPush,
+  type VapidKey,
+  vapidKey,
+} from "@t3tools/shared/webPush";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -96,7 +102,7 @@ function messageFor(
   return {
     title,
     body: thread.title,
-    tag: `${environmentId}:${thread.id}`,
+    tag: pushThreadNotificationTag(environmentId, thread.id),
     url: `/${environmentId}/${thread.id}`,
   };
 }
@@ -192,22 +198,24 @@ const make = Effect.gen(function* () {
   const removeEndpoint = (endpoint: string) =>
     updateSubscriptions((current) => current.filter((entry) => entry.endpoint !== endpoint));
 
-  const deliver = (subscription: SavedSubscription, message: WebPushMessage) =>
-    Effect.gen(function* () {
-      const vapid = yield* key;
-      const result = yield* Effect.tryPromise({
-        try: () => sendPush(subscription, message, vapid, subjectFor(subscription)),
-        catch: (cause) => new WebPushError({ operation: "send", detail: String(cause) }),
-      });
-      if (result === "gone") yield* removeEndpoint(subscription.endpoint);
-      return result;
+  const deliver = Effect.fn("WebPush.deliver")(function* (
+    subscription: SavedSubscription,
+    message: WebPushMessage,
+  ) {
+    const vapid = yield* key;
+    const result = yield* Effect.tryPromise({
+      try: () => sendPush(subscription, message, vapid, subjectFor(subscription)),
+      catch: (cause) => new WebPushError({ operation: "send", detail: String(cause) }),
     });
+    if (result === "gone") yield* removeEndpoint(subscription.endpoint);
+    return result;
+  });
 
   // The last phase of each thread since the start. Cleared while nobody subscribed.
   const phases = new Map<ThreadId, AgentAwarenessPhase | null>();
 
-  const observeThread = (threadId: ThreadId) =>
-    Effect.gen(function* () {
+  const observeThread = Effect.fn("WebPush.observeThread")(
+    function* (threadId: ThreadId) {
       const targets = yield* Ref.get(subscriptions);
       if (targets.length === 0) {
         phases.clear();
@@ -237,11 +245,14 @@ const make = Effect.gen(function* () {
           ),
         { concurrency: "unbounded", discard: true },
       );
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Web Push could not read a thread", { threadId, cause: String(cause) }),
+    },
+    (effect, threadId) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Web Push could not read a thread", { threadId, cause: String(cause) }),
+        ),
       ),
-    );
+  );
 
   const worker = yield* makeDrainableWorker(observeThread);
 
@@ -255,37 +266,35 @@ const make = Effect.gen(function* () {
 
   return WebPush.of({
     publicKey: key.pipe(Effect.map((loaded) => loaded.publicKey)),
-    subscribe: (input) =>
-      Effect.gen(function* () {
-        const entry = { ...input.subscription, origin: input.origin };
-        const current = (yield* Ref.get(subscriptions)).find(
-          (saved) => saved.endpoint === entry.endpoint,
-        );
-        // Each page load subscribes again. Write only a change.
-        if (
-          current?.p256dh === entry.p256dh &&
-          current.auth === entry.auth &&
-          current.origin === entry.origin
-        ) {
-          return;
-        }
-        yield* updateSubscriptions((saved) => [
-          ...saved.filter((other) => other.endpoint !== entry.endpoint),
-          entry,
-        ]);
-      }),
-    test: (endpoint) =>
-      Effect.gen(function* () {
-        const target = (yield* Ref.get(subscriptions)).find((entry) => entry.endpoint === endpoint);
-        if (target === undefined) return { result: "unknown-subscription" as const };
-        const result = yield* deliver(target, {
-          title: "T3 Code",
-          body: "Notifications from this server work on this device.",
-          tag: "web-push-test",
-          url: "/",
-        });
-        return { result };
-      }),
+    subscribe: Effect.fn("WebPush.subscribe")(function* (input) {
+      const entry = { ...input.subscription, origin: input.origin };
+      const current = (yield* Ref.get(subscriptions)).find(
+        (saved) => saved.endpoint === entry.endpoint,
+      );
+      // Each page load subscribes again. Write only a change.
+      if (
+        current?.p256dh === entry.p256dh &&
+        current.auth === entry.auth &&
+        current.origin === entry.origin
+      ) {
+        return;
+      }
+      yield* updateSubscriptions((saved) => [
+        ...saved.filter((other) => other.endpoint !== entry.endpoint),
+        entry,
+      ]);
+    }),
+    test: Effect.fn("WebPush.test")(function* (endpoint) {
+      const target = (yield* Ref.get(subscriptions)).find((entry) => entry.endpoint === endpoint);
+      if (target === undefined) return { result: "unknown-subscription" as const };
+      const result = yield* deliver(target, {
+        title: "T3 Code",
+        body: "Notifications from this server work on this device.",
+        tag: "web-push-test",
+        url: "/",
+      });
+      return { result };
+    }),
     start,
   });
 });

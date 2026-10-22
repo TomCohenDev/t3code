@@ -40,6 +40,7 @@ import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as McpInvocationContext from "./McpInvocationContext.ts";
+import { forkPreviewCaptureTimeout } from "./forkPreviewCaptureError.ts";
 
 const HOST_RESPONSE_GRACE_MS = 1_000;
 
@@ -257,6 +258,7 @@ const classifyResponseError = (
       return new PreviewAutomationTimeoutError({
         ...context,
         ...remoteDiagnostics,
+        ...forkPreviewCaptureTimeout(error.detail), // Fork: preserve the inner capture deadline and reason.
       });
     case "PreviewAutomationControlInterruptedError": {
       const reason = decodeControlReason(error.detail);

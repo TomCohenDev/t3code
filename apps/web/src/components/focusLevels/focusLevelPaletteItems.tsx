@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ClockIcon,
   KeyboardIcon,
+  LinkIcon,
   type LucideIcon,
   MailOpenIcon,
   MessageSquareTextIcon,
@@ -43,8 +44,27 @@ function afterPaletteCloses(run: () => void): Promise<void> {
 }
 
 /** Fork: command palette items for the focus level commands. */
-export function focusLevelPaletteItems(iconClassName: string): CommandPaletteActionItem[] {
+export function focusLevelPaletteItems(
+  iconClassName: string,
+  messageLinks = false,
+): CommandPaletteActionItem[] {
   return [
+    ...(messageLinks
+      ? [
+          {
+            kind: "action" as const,
+            value: "action:timeline.copyMessageLink",
+            searchTerms: ["copy", "message", "link", "cursor"],
+            title: "Copy message link",
+            description: "Copy the message under the timeline cursor",
+            icon: <LinkIcon className={iconClassName} />,
+            shortcutCommand: "timeline.copyMessageLink" as const,
+            run: async () => {
+              runRegisteredFocusLevelCommand("timeline.copyMessageLink");
+            },
+          },
+        ]
+      : []),
     ...FOCUS_ITEMS.map(([command, level, title, Icon]) => ({
       kind: "action" as const,
       value: `action:${command}`,

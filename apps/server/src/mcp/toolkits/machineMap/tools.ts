@@ -45,7 +45,7 @@ const mapTool = <const Name extends Exclude<MapToolName, "machines_read" | "mach
 ) =>
   Tool.make(name, {
     ...shared,
-    description: `${description} ${PORTAL_NOTE}`,
+    description: `${description} Needs a live full-access/default calling thread or a full-access client; the map role never raises a caller's limits. ${PORTAL_NOTE}`,
     parameters: MapToolInputs[name],
     success: Schema.Unknown,
   });
@@ -101,7 +101,7 @@ const MachinesPresetTool = mapTool(
 const MachinesJoinTool = Tool.make("machines_join", {
   ...shared,
   description:
-    "Join this machine to the machine map with a one-time join code, for example K7QM-2XPA, that the owner makes in the portal (Add machine). portalUrl is the portal origin, for example https://map.tomcohen.dev; omit it to keep the portal of the machineMap setting. Use it once per machine, only with a code that the owner gave you. It saves the machine token in the server secret store, turns on the machineMap setting, saves the portal URL and connects. A used, expired or wrong code fails, and nothing changes. Needs a full-access caller; it does not need a map role. To leave the map, the owner uses Settings > Machines > Leave. The result is the machine map state of this machine: enabled, joined, connection and the machines it can reach. The connection comes up a moment after the call.",
+    "Join this machine to the machine map with a one-time join code from Add machine in the portal. Agents cannot join (MM-919). On a headless machine, the owner runs t3 machine-map join <code>; on desktop, use Settings > Machines. A joined machine with the map on refuses another join. To leave, the owner uses Settings > Machines > Leave.",
   parameters: MachineMapJoinInput,
   success: MachineMapClientState,
 }).annotate(Tool.Destructive, true);
@@ -109,7 +109,7 @@ const MachinesJoinTool = Tool.make("machines_join", {
 const MachineToolCallTool = Tool.make("machine_tool_call", {
   ...shared,
   description:
-    "Call a T3 Code MCP tool on another machine of the map, as this machine. `machine` is the id or name of that machine (names ignore case); `tool` is a tool name, for example t3_thread_list or t3_thread_launch; `input` is its JSON input. The tool runs on the other machine, with its side effects there. It needs an arrow from this machine to that machine with agent tools on and a level other than none; the level limits what the tool can do there (read allows only read tools). It does not need the portal: it uses the last map that this machine saved. Thread-bound tools need the threadId of a thread on the other machine. The machines_* tools and machine_tool_call do not work through it. The result is the result of the tool on the other machine.",
+    "Call a T3 Code MCP tool on another machine of the map, as this machine. `machine` is the id or name of that machine (names ignore case); `tool` is a tool name, for example t3_thread_list or t3_thread_launch; `input` is its JSON input. The tool runs on the other machine, with its side effects there. Needs a live full-access/default caller with orchestration, worktree and pull-requests tool capabilities. Restricted callers are refused, even for reads. To read a thread on another machine in any mode, use t3_thread_read with environmentId. It also needs an arrow from this machine to that machine with agent tools on and a level other than none; the level limits what the tool can do there (read allows only read tools). It does not need the portal: it uses the last map that this machine saved. Thread-bound tools need the threadId of a thread on the other machine. The machines_* tools and machine_tool_call do not work through it. The result is the result of the tool on the other machine.",
   parameters: Schema.Struct({
     machine: TrimmedNonEmptyString.annotate({
       description: "Id or name of the other machine, as machines_read lists it. Names ignore case.",

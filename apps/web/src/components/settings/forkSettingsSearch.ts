@@ -56,6 +56,13 @@ export const APPEARANCE_ITEMS = [
     environmentOnly: true,
   },
   {
+    id: "message-links",
+    title: "Message links",
+    to: "/settings/appearance",
+    searchTerms: ["message link thread scroll jump highlight anchor fragment"],
+    environmentOnly: true,
+  },
+  {
     id: "mobile-published-themes",
     title: "Published themes on mobile",
     to: "/settings/appearance",
@@ -91,7 +98,9 @@ export const GLOBAL_SCRIPTS_ITEMS = [
     title: "Global scripts",
     to: "/settings/general",
     scope: "environment-defaults",
-    searchTerms: ["scripts commands every project pin pinned buttons background overlay preview"],
+    searchTerms: [
+      "scripts commands every project pin pinned buttons background overlay preview global hotkey shortcut accelerator navgator",
+    ],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 

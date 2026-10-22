@@ -14,7 +14,6 @@ import type { ResourcesOverview } from "@t3tools/contracts/machineMapResources";
 
 import type {
   ClientInvite,
-  InviteRequest,
   PauseView,
   PendingClient,
   PendingRotation,
@@ -22,6 +21,8 @@ import type {
   WriteResult,
 } from "../api.ts";
 import type { Route, Selection, View } from "./route.ts";
+import type { ApprovalKind } from "../rules/approval.ts";
+import type { ApprovalReturn } from "./pendingApproval.ts";
 
 /** One held change of a draft (MM-707). */
 export interface DraftChange {
@@ -41,7 +42,12 @@ export type Dialog =
   /** MM-1110: `position` is the place picked on the map. Without it the portal picks a free spot. */
   | { readonly _tag: "addMachine"; readonly position?: MapPosition }
   | { readonly _tag: "addPhone"; readonly position?: MapPosition }
-  | { readonly _tag: "resumeInvite"; readonly request: InviteRequest; readonly phone: boolean }
+  | {
+      readonly _tag: "approval";
+      readonly kind: ApprovalKind;
+      readonly state: ApprovalReturn;
+      readonly mode: "confirm" | "return" | "interrupted";
+    }
   | {
       readonly _tag: "joinCode";
       readonly machineId: MachineId;

@@ -12,7 +12,6 @@ export type SettingsSheetTarget =
   | "SettingsEnvironmentAgentBehavior"
   | "SettingsEnvironmentMaintenance"
   | "SettingsProviderAccounts"
-  | "SettingsGeneral"
   | "SettingsKeyboard"
   | "SettingsMicrophone"
   | "SettingsFollowUp"
@@ -22,6 +21,8 @@ export type SettingsSheetTarget =
   | "SettingsDiagnostics"
   | "SettingsOpenSourceLicenses"
   | "SettingsUsage"
-  | "SettingsFork";
+  | "SettingsFork"
+  | "SettingsVoice"
+  | "SettingsVoiceProject";
 
 export type SettingsLegalDocumentTarget = "SettingsLegal";

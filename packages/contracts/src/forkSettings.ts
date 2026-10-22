@@ -325,6 +325,11 @@ export const ForkServerSettingsFields = {
    * the desktop app (`t3code://threads/...`) as soon as the page loads.
    */
   threadLinksOpenDesktopApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: a thread link with `#<messageId>` opens the thread at that message, scrolls to it and
+   * highlights it. Off: the link opens the thread only.
+   */
+  messageLinks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: machine map connection. See `MachineMapSettings`. */
   machineMap: MachineMapSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /** Fork: how a Cloudflare Access sign-in of a browser meets the clients of the map. See `ClientAccessMode`. */
@@ -399,6 +404,7 @@ export const ForkServerSettingsPatchFields = {
   preferOriginRemote: Schema.optionalKey(Schema.Boolean),
   threadLinkChips: Schema.optionalKey(Schema.Boolean),
   threadLinksOpenDesktopApp: Schema.optionalKey(Schema.Boolean),
+  messageLinks: Schema.optionalKey(Schema.Boolean),
   keybindingSync: Schema.optionalKey(Schema.Boolean),
   /** An empty value removes the saved key; the redaction marker keeps it. */
   voiceTranscriptionOpenAiApiKey: Schema.optionalKey(TrimmedString),

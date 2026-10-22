@@ -8,6 +8,14 @@ Each section names:
 - **Works on:** web, desktop and mobile. "Server" means that the server does it for every client.
 - **Limits:** known limits, each with the condition to revisit it.
 
+## Central build caches
+
+Local builds can keep their disposable Vite caches and Android app outputs outside checkouts.
+
+- **Setting:** `T3_FORK_CENTRAL_BUILD_CACHE=1` in the build environment (off by default). `XDG_CACHE_HOME` chooses the cache base; otherwise it is `~/.cache`. No installed-app setting is needed.
+- **Works on:** local web, server, desktop, portal and marketing Vite tools, shared-client tests, and Android prebuilds. Each canonical checkout path has its own SHA-256 key. APKs remain at `apps/mobile/android/app/build/outputs/apk` through a link.
+- **Limits:** existing local outputs are not moved or deleted. Enable before a clean Android prebuild. Root Android outputs, dependency codegen and `.cxx` stay in place. Disabling the variable does not remove an existing link; the next clean prebuild restores the normal layout. `node scripts/fork-build-cache-prune.ts --dry-run` previews central-only cleanup, with 14 days as the default age. See [operations](operations.md#central-build-caches).
+
 ## Remote access
 
 ### Cloudflare Access login
@@ -59,6 +67,20 @@ Use the machine map name as the server environment name. A name change in the po
 ### Portal views
 
 The portal has the views Map, Table, Health, Settings, Queue, Tasks, History, Inbox and Clients (MM-1102). Each view and each selected item has its own link. Agents use the `machines_*` and `machine_tool_call` tools for machine operations. Client approvals, invites and the resume after an emergency pause stay with the owner.
+
+The map role never raises a thread's limits. Map writes need a live full-access/default caller, even with `edit`. `machine_tool_call` also needs all tool capabilities that the target grants: orchestration, worktree and pull requests. It refuses restricted callers, including reads. A restricted caller reads a thread on another machine with `t3_thread_read` and `environmentId`, see [Thread mentions across machines](#thread-mentions-across-machines). An allowed call still needs the arrow with agent tools and stays within its level. These checks run on the server for agents started from web, desktop and mobile.
+
+Command execution, delegation with wake-up, explicit arrow capabilities and secret copy are specified in MM-1908 to MM-1918. They are not available through these tools yet.
+
+### Thread mentions across machines
+
+The `@` menu lists the threads of this machine and of the machines that it reads through the machine map. With more than one machine, each item names its machine. The agent reads an attached thread of another machine through the arrow, on the T3 server of that machine (MM-1905 to MM-1907).
+
+- **Setting:** an arrow with agent tools and a level above `none`, from the machine that runs the agent to the machine of the thread. Set it in the portal.
+- **Works on:** web, desktop and mobile, through local, relay and tunnel connections. The client lists the threads of a machine only when it also connects to that machine.
+- A send stops when the target machine cannot read an attached thread. Remove the thread, or switch to a machine that can read it.
+- Agents in plan, approval-required or auto mode can read these threads. The other machine gives the read a read-only session and refuses every write.
+- **Limits:** a machine asks each peer once for its environment id. An offline peer is not listed until it answers. Right after a page load, a send can stop for a moment until the list of readable machines arrives.
 
 ### Join and install
 
@@ -120,7 +142,9 @@ Only the owner makes an invite, in the portal. "Invite an app" shows a QR code t
 
 To add a phone from the map, select "Add phone", or double-click empty map space (long-press on a phone) and select "Add phone here". Check the name and arrows, which start at `standard`, then make the invite with the passkey check. The same dialog shows the QR code, link and "Add with Obtainium". The phone card appears at the chosen point. "Invite an app" in Clients still starts new arrows at `none`.
 
-After a passkey check, the dialog returns and makes the invite without another click. On the same phone, select "Open in the T3 app" in the dialog or invite page, then tap Add environment in the app. Or copy the link, open the T3 app, open Environments, tap +, and paste it in Address. Older app builds need this copy-and-paste path.
+After a successful passkey check, the dialog returns and makes the invite without another click. Browser approvals and owner-only settings changes, including held changes, resume the same way. The saved request expires after 10 minutes. If confirmation fails or expires, select "Try again". If an affected item changed while you confirmed, the portal asks you to review it before applying anything.
+
+On the same phone, select "Open in the T3 app" in the dialog or invite page, then tap Add environment in the app. Or copy the link, open the T3 app, open Environments, tap +, and paste it in Address. Older app builds need this copy-and-paste path.
 
 - In the mobile app, scan the code in Add environment, or paste its link in Address. The app then pairs with every machine that it may reach.
 - The app keeps the token, also when a machine does not pair at once. It pairs again by itself when a machine ends its session, for example after an access change, an expiry, a resume or a `clientAccess` change.
@@ -161,7 +185,7 @@ A read-only map in the right panel of a thread. Open it from the "+" menu of the
 
 ### Fork releases
 
-Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives and `SHA256SUMS`. A release builds on each push to main that changes more than docs or the portal. `t3 update`, "Update everything" and `scripts/install.sh` install from the fork releases. How releases build: [Fork Release](operations.md#fork-release).
+Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives and `SHA256SUMS`. A release builds on each push to main that changes more than docs or the portal. `t3 update`, "Update everything" and `scripts/install.sh` install from the fork releases. Each morning one nightly becomes a release with notes in three sections: fork changes, upstream changes and their integration. How releases build: [Fork Release](operations.md#fork-release) and [Daily release](operations.md#daily-release).
 
 - **Works on:** desktop and server.
 - **Limits:** macOS builds use a self-made certificate and are not notarized, so the first install needs Control-click > Open. Revisit if the fork gets an Apple developer account.
@@ -353,7 +377,18 @@ Every thread link in chat shows as the chip of an attached thread, and opens the
 - **Works on:** web, desktop, mobile. Mobile reads the setting of the server of the thread, and has no switch of its own.
 - The chip reads `t3-thread://v1/<threadId>`, `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
 - An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
-- **Limits:** `?message=<messageId>` is kept, but the app does not scroll to the message. Revisit when upstream pingdotgg/t3code#19203 adds message links.
+- A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
+- A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile. See [Message links](#message-links).
+
+### Message links
+
+A thread link that names a message opens the thread at that message. Use **Copy message link** beside a message on web and desktop, or hold its copy button on mobile. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
+
+- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". Off: the link opens the thread only, and **Copy message link** is hidden.
+- **Works on:** web, desktop, mobile.
+- **Forms:** `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
+- A message that the thread does not have shows "Message not found", and the thread stays open.
+- **Limits:** on mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
 
 ### Thread addresses open the desktop app
 
@@ -395,6 +430,26 @@ The plus button of the mobile composer, the new thread draft and question answer
 - **Works on:** mobile.
 - **Limits:** photos only, because the app asks for no microphone access. Revisit if video from the camera is needed.
 
+### Android assistant panel
+
+T3 Code can be the Android digital assistant. The assistant button opens a panel over the current app. The panel attaches the screenshot and the screen text, takes typed or spoken text, and starts a new thread or adds the message to an existing thread. The title of the panel opens a picker with a search, the recent threads and the projects. With more than one machine, a machine icon opens the machine list, and the picker then shows the threads and projects of that machine. "Ask T3 Code" in the Android share sheet opens the same panel with the shared text or image. Context pills show the context: the shared item, the screenshot, the screen text, the text selected on screen, the page link, the clipboard, and, when turned on in Settings > Voice, the newest photo of the last 15 minutes and the last known location. A tap attaches a pill or leaves it out; a hold opens it to read and edit the text, or to draw on the screenshot. Text that was not sent comes back when the panel opens again within a minute.
+
+- **Setting:** the Android setting Default apps > Digital assistant app. The options are phone-local preferences under `voice` (`apps/mobile/src/persistence/forkVoicePreferences.ts`), in Settings > Voice of the mobile app: a new thread or the last opened thread (a new thread by default), keyboard or voice first (keyboard by default), start the thread after speaking (off), attach the screenshot (on), attach the screen text (on), open the thread (off), read the first reply aloud (off), and the project (the last new thread project by default).
+- **Works on:** mobile, Android 10 or later.
+- The panel and the app share one JS runtime. The outbox sender and the T3 Connect sign-in run once across both (`apps/mobile/src/lib/singletonHost.ts`).
+- The message goes through the thread outbox, so a new thread uses the project's model defaults, and the message waits for the connection when offline. A message to an existing thread is queued after a running turn, so "read the first reply aloud" reads the reply to that message.
+- **Limits:** no lock screen launch, because anyone that holds the phone could start agent work. A share of several images keeps only the first; revisit if users share albums. The location is the last fix the phone knows, so it can be old or missing; it never turns on GPS. Revisit with a request to unlock first. Password fields are left out of the screen text. Apps that block screenshots send none.
+
+### Read aloud on mobile
+
+A read-aloud button next to copy and fork on each reply. Holding it reads every new reply of that thread aloud, until it is held again.
+
+- **Setting:** phone-local preferences under `voice`, in Settings > Voice of the mobile app: the read-aloud button (on by default), the threads that read new replies, and the speech rate.
+- **Works on:** mobile.
+- The text is cleaned for speech: a code block becomes "Code block.", and markup characters are dropped.
+- Only replies of runs that complete after the thread starts to read aloud count, so a thread never reads its history.
+- **Limits:** replies are read only while the app or the assistant panel is on screen, because Android pauses JS timers in the background. Revisit if users ask for replies with the screen off: that needs a native player driven by the agent push notification.
+
 ### Thread card layouts
 
 Build the thread card from its elements, for desktop and web and for mobile.
@@ -432,14 +487,17 @@ The active pull request filters show as chips above the list.
 
 ### Global scripts
 
-Scripts for every project, pinned script buttons, floating previews and app overlays.
+Scripts for every project, pinned script buttons, desktop global shortcuts, floating previews and app overlays.
 
 - **Setting:** server settings `globalScripts`, `pinnedGlobalScriptIds` and `pinnedProjectScriptIds` (all empty by default). Settings > General > Global scripts.
 - **Works on:** web, desktop.
 - Pin a script to get a button. Global pins show in the title bar. Project pins show next to the thread details toggle. Right-click a button for the pin menu.
 - A global script's preview opens as a floating popup. A script can run in the background without the terminal drawer (`runInBackground`).
-- An action with "Open as an app overlay" (`previewOverlay`) opens its page in a large panel over the app. It runs its command only when the page is down.
-- **Limits:** a remote client opens an app overlay in the preview instead, because it cannot frame the page. The mobile app runs project scripts only. Revisit when the mobile parity work reaches scripts.
+- An action with "Open as an app overlay" (`previewOverlay`) opens its page in a large panel over the app. It probes the page URL first. If the page is down, it runs the command in a background terminal and waits up to 20 seconds for an answer. The page can post `{ type: "t3:close-overlay" }` to close the overlay.
+- In the global script editor, set "Global shortcut" (`globalScripts[].globalShortcut`) to an Electron accelerator, for example `CommandOrControl+Alt+N` or `F18`. It is off until set. It works from any app while the desktop app runs. It shows and focuses T3 Code, then runs the script like its pinned button. Clear the field, or delete the script, to release its key. Settings > Fork > Global scripts opens the same editor.
+- The open thread's environment supplies the shortcuts. With no open thread, the primary environment supplies them. App-toggle keys take priority, then the first script with a key. An unavailable key shows a notification; choose a different key. An unrelated settings write does not release unchanged keys.
+- For navgator, add a global script with command `navgator web --no-open`, preview URL `http://127.0.0.1:4747` and "Open as an app overlay" on. Set its global shortcut and open a thread with terminal access. The shortcut starts navgator only if the page does not answer. It uses the page URL, not `/api/health` or a navgator-specific marker.
+- **Limits:** starting a command needs an open thread with terminal access, as pinned scripts do. A running overlay page can open without a thread. A remote environment opens an app overlay in the preview instead, because the client cannot frame its page. Web clients can edit the shortcut but cannot register an OS key. The mobile app runs project scripts only. Revisit when the mobile parity work reaches scripts.
 
 ### App toggle shortcuts
 
@@ -541,7 +599,7 @@ The mobile app uses the themes that its servers publish.
 
 ### Fork settings on mobile
 
-Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips and what New thread opens. A change writes the setting to each selected environment.
+Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
 
 - **Works on:** mobile.
 - **Limits:** a change on the phone is the own value of each server, not the shared value of the machine map. Set the shared value in the portal or from a machine with the map role `edit`.
