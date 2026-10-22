@@ -84,11 +84,14 @@ jobs:
             *) everything "Manual run" ;;
           esac
           # The compare API lists at most 300 files. A longer list runs every job.
-          files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$head" --jq '.files[].filename')" ||
+          # A rename lists the old path too: moving a file out of a package changes that package.
+          files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$head" \
+            --jq '.files[] | .filename, (.previous_filename // empty)')" ||
             everything "The compare with $base failed"
           (($(wc -l <<<"$files") < 300)) || everything "300 or more changed files"
           { echo "files<<EOF"; echo "$files"; echo "EOF"; } >>"$GITHUB_OUTPUT"
-          echo "$files" >"$RUNNER_TEMP/changed-paths"
+          # Fork: Markdown is docs anywhere. ci-changes.cjs treats only root *.md as docs.
+          grep -v '\.md$' <<<"$files" >"$RUNNER_TEMP/changed-paths" || true
           decision="$(node .github/scripts/ci-changes.cjs --paths "$RUNNER_TEMP/changed-paths")"
           # As upstream: a code push to main runs every job, the backstop for a
           # dependency the script misses. A docs-only push still skips them.

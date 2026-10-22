@@ -25,7 +25,7 @@ Do not hardcode a model id. If no reviewer runs, stop and report it. A self-revi
 
 ## 3. Run a round
 
-Each round is a new `delegate_task` call with `mode: "async"`, `isolation: "worktree"` and a new `clientRequestId` (`review-<branch>-r<N>`). Do not edit the change while a round runs. A timeout or an error is not approval.
+Each round is a new `delegate_task` call with `mode: "async"`, `isolation: "worktree"` and a new `clientRequestId` (`review-<branch>-<first 8 characters of the head SHA when the loop starts>-r<N>`). Reuse an id only to retry the same round. Do not edit the change while a round runs. A timeout or an error is not approval.
 
 Brief for round 1:
 

@@ -60,7 +60,7 @@ Each day at 09:00 Israel time, the VPS task "Fork daily release" promotes a nigh
 
 - A newer push to main or to a pull request cancels the Fork CI run of the older push.
 - The job "Fork CI result" fails when any Fork CI job fails or is cancelled. Branch protection requires this one check.
-- Fork CI compares a push with the commit of the last green push run, and a pull request with its base. Upstream's `.github/scripts/ci-changes.cjs` maps the changed files to packages and their dependents. A pull request runs only the jobs that those packages need. When only docs changed, only the Lint job runs, on the changed files. A code push to main and a manual run run every job.
+- Fork CI compares a push with the commit of the last green push run, and a pull request with its base. Upstream's `.github/scripts/ci-changes.cjs` maps the changed files to packages and their dependents. A pull request runs only the jobs that those packages need. When only `docs/` or Markdown files changed, only the Lint job runs, on the changed files. A code push to main and a manual run run every job.
 - Each job installs through upstream's `.github/actions/setup-ci-deps`. A cache hit makes no request to npm.
 - The Lint job also runs `scripts/fork-check-doc-links.ts`. It fails on a relative link or an anchor that does not resolve in `README.md`, `docs/fork*`, `docs/fork/` or `apps/machine-map/*.md`.
 
