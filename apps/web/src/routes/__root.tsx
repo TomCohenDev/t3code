@@ -38,7 +38,6 @@ import { DesktopUpdateIdleInstall } from "../components/desktop/DesktopUpdateIdl
 import { MachineMapDesktop } from "../components/desktop/MachineMapDesktop";
 import { ClientPendingSurface } from "../components/auth/ClientPendingSurface";
 import { MachinePausedSurface, MachinePauseWatcher } from "../components/auth/MachinePausedSurface";
-import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { DesktopUpdateLaunchNotice } from "../components/sidebar/updateEverythingRun";
 import { LegacyThreadMigrationToast } from "../components/LegacyThreadMigrationToast";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
@@ -289,7 +288,6 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? (
             <EventRouter skipInitialBootstrapNavigation={returningFromWelcome} />
           ) : null}
-          {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
           {isElectron ? <DesktopUpdateLaunchNotice /> : null}
           {appShell}
           {/* Above the router: a theme draft is judged by walking the app, so the
