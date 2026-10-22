@@ -102,6 +102,7 @@ import {
   startAttachmentUpload,
 } from "../../lib/attachmentUploadQueue";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { loadReadableThreadEnvironmentIds } from "../../state/machineMap";
 import { fileAttachmentCapabilityBlockReason } from "./composerAttachmentFiles";
 import { readEnvironmentScope } from "../../state/session";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
@@ -533,11 +534,23 @@ export function useComposerSend(input: ComposerSendInput) {
           previewAnnotationContextReference(directAnnotation.annotation),
         ])
       : promptRef.current;
-    const strandedThread = unreadableThreadContexts({
-      text: promptForSend,
-      records: composerThreadContexts,
-      readableEnvironmentIds: readableThreadEnvironmentIds(environmentId),
-    })[0];
+    const strandedIn = (readableEnvironmentIds: ReadonlyArray<EnvironmentId>) =>
+      unreadableThreadContexts({
+        text: promptForSend,
+        records: composerThreadContexts,
+        readableEnvironmentIds,
+      })[0];
+    let strandedThread = strandedIn(readableThreadEnvironmentIds(environmentId));
+    if (strandedThread) {
+      // MM-1906: after a page load, the answer of the machine map can still be on its way. Wait
+      // for it, so the first send with a thread of another machine is not refused.
+      sendInFlightRef.current = true;
+      strandedThread = strandedIn(
+        await loadReadableThreadEnvironmentIds(environmentId).finally(() => {
+          sendInFlightRef.current = false;
+        }),
+      );
+    }
     if (strandedThread) {
       const owner =
         readEnvironmentPresentation(strandedThread.environmentId)?.entry.target.label ??

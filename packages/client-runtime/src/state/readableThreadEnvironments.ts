@@ -1,10 +1,10 @@
 import { type EnvironmentId, WS_METHODS } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import { readableThreadEnvironments } from "../composerThreadItems.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import { createEnvironmentRpcQueryAtomFamily, executeAtomQuery } from "./runtime.ts";
 
 /**
  * Fork: MM-1906, MM-1907. The machines whose threads the agents of an environment can read, for the
@@ -44,5 +44,20 @@ export function createReadableThreadEnvironmentAtoms<R, E>(
         ),
     ),
   );
-  return { readable, readableIds, readableIdsByEnvironment };
+  /**
+   * `readableIds` after the server answered. Before the first answer, `readableIds` holds only the
+   * environment itself, so a send with a thread of another machine waits for this instead. A
+   * failed answer keeps that fallback, and the send check then reports the thread as unreadable.
+   */
+  const loadReadableIds = async (
+    registry: AtomRegistry.AtomRegistry,
+    environmentId: EnvironmentId,
+  ): Promise<ReadonlyArray<EnvironmentId>> => {
+    await executeAtomQuery(registry, query({ environmentId, input: {} }), {
+      label: "Read the machines whose threads this agent reads",
+      reportFailure: false,
+    });
+    return registry.get(readableIds(environmentId));
+  };
+  return { readable, readableIds, readableIdsByEnvironment, loadReadableIds };
 }
