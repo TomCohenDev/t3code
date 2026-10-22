@@ -11,15 +11,15 @@ The fork disables every upstream workflow, because they need upstream's runners 
 
 ### Fork Sync
 
-`.github/workflows/fork-sync.yml` merges `pingdotgg/t3code` main into fork main every day.
+`.github/workflows/fork-sync.yml` merges `Yarden-zamir/t3code` main into fork main every 3 hours. Yarden's fork merges `pingdotgg/t3code`, so upstream changes arrive through it. "Upstream" in the fork tools and the changelog means Yarden's fork.
 
 - It typechecks the merge, runs the fork tests and pushes the merge as a fast-forward. If main moved during the run, it merges the new main and pushes again.
 - The fork tests are the test files that the fork changed since `git merge-base upstream/main HEAD`. A diff against a newer upstream main also lists files that only upstream changed.
 - The apps/web fork tests run from `apps/web`, in its unit and browser projects. A browser test needs Playwright Chromium, so the job installs it first.
-- A conflict only in `README.md` resolves by itself. See [Change the fork](#change-the-fork).
+- A conflict only in `README.md` resolves by itself. The fork section stays on top, and Yarden's README below its own fork section follows. See [Change the fork](#change-the-fork).
 - If the merge conflicts, the typecheck fails or a fork test fails, the sync comments on the issue "Fork sync: upstream merge failed" and stops.
 - After each sync, the job "Check upstream workflows" fails when another workflow is active. It prints the `gh workflow disable` command for that workflow.
-- GitHub can start the daily run hours after its 03:17 UTC schedule. Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
+- GitHub can start a run hours after its schedule (minute 17 of every third hour, UTC). Before you merge upstream by hand, read [Repair agent](../fork-agents.md#repair-agent).
 
 ### Fork Release
 
@@ -50,7 +50,7 @@ The builds use the `nightly` update channel, the app id `com.t3tools.t3code` and
 
 A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` job, `scripts/fork-notify-agent.sh`. A pull request never calls it.
 
-- The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (`yarden-zamir-vps-2`), project "t3code fork" (`/root/Github/t3code/main`).
+- The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (vienna), project "t3code fork".
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
 - A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 6 hours before.
 - The repair agent ignores a cancelled run.
@@ -77,7 +77,7 @@ Name the fork PRs that the plan builds on. Check fork merges first, then upstrea
 - Add a new fork setting to Settings > Fork: its entry in `FORK_SETTING_GROUPS` (`forkSettingsCatalog.ts`) and its row in `FORK_SETTING_ROWS` (`ForkSettings.tsx`). Add a fork preference to the reset list in `forkSettingsRestore.ts`.
 - `forkSettingsRegistration.test.ts` fails when a fork setting has no Fork page row or no Restore defaults rule. A setting without a row needs a reason in that test.
 - The top of `README.md`, up to the first `---` line, lists the fork features and fixes. Keep one line per feature, with a link to its section in [features.md](features.md). A pull request that adds, removes or changes a fork feature updates its line and its section.
-- If a Fork Sync merge conflicts only in `README.md`, the sync keeps the fork section up to the first `---` line and takes the upstream README below it. A conflict in another file stops the sync.
+- If a Fork Sync merge conflicts only in `README.md`, the sync keeps the fork section up to the first `---` line and takes the README of Yarden's fork below its first `---` line. A conflict in another file stops the sync.
 - If a sync conflicts on a tooltip line with a `ShortcutHint` (the key chips in upstream tooltips), take the upstream line, then add one `ShortcutHint` back. If the same file conflicts again, keep the upstream tooltip text in that file.
 - A merge without conflicts can still break a fork feature. Each fork feature that changes upstream behavior needs a test of that behavior, so that the fork tests catch the break.
 - Prefer automated setup over manual instructions when the permission cost is acceptable. Keep documentation for steps that code cannot do.

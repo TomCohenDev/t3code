@@ -15,9 +15,9 @@ describe("linkCommitSubject", () => {
       { text: "#123", url: "https://github.com/TomCohenDev/t3code/pull/123" },
     ]);
     expect(linkCommitSubject({ subject: "#7 and #8", fork: false })).toMatchObject([
-      { text: "#7", url: "https://github.com/pingdotgg/t3code/pull/7" },
+      { text: "#7", url: "https://github.com/Yarden-zamir/t3code/pull/7" },
       { text: " and ", url: null },
-      { text: "#8", url: "https://github.com/pingdotgg/t3code/pull/8" },
+      { text: "#8", url: "https://github.com/Yarden-zamir/t3code/pull/8" },
     ]);
   });
 

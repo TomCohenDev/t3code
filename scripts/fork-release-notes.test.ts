@@ -21,14 +21,15 @@ it("sorts first-parent commits into pull requests, upstream syncs and direct com
     }),
     { _tag: "PullRequest", number: 7, title: "Yarden-zamir/fix/a" },
   );
-  assert.deepStrictEqual(
-    classifyFirstParentCommit({
-      parents: merge,
-      subject: "chore(sync): merge pingdotgg/t3code main",
-      body: "",
-    }),
-    { _tag: "UpstreamSync", upstreamHead: "branch-parent" },
-  );
+  for (const subject of [
+    "chore(sync): merge Yarden-zamir/t3code main",
+    "chore(sync): merge pingdotgg/t3code main",
+  ]) {
+    assert.deepStrictEqual(classifyFirstParentCommit({ parents: merge, subject, body: "" }), {
+      _tag: "UpstreamSync",
+      upstreamHead: "branch-parent",
+    });
+  }
   // A commit that only names a pull request in its subject is not a merge.
   assert.deepStrictEqual(
     classifyFirstParentCommit({
