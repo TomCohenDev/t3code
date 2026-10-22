@@ -24,6 +24,7 @@ import {
 } from "../state/use-composer-drafts";
 import { importComposerContextClipboard } from "../lib/composerContextClipboard";
 import { mobilePreferencesAtom } from "../state/preferences";
+import { useReadableThreadEnvironmentIds } from "../state/readableThreadEnvironments";
 import { ComposerContextSheet } from "./ComposerContextSheet";
 import { AppText as Text } from "./ui/AppText";
 import {
@@ -73,6 +74,7 @@ export function ComposerEditor({
   const [selected, setSelected] = useState<{ source: string; start: number; end: number } | null>(
     null,
   );
+  const readableThreadEnvironmentIds = useReadableThreadEnvironmentIds(environmentId ?? null);
   const importRef = useRef<AbortController | null>(null);
   const [importing, setImporting] = useState(false);
   useEffect(
@@ -97,7 +99,7 @@ export function ComposerEditor({
         retained.attachments.length,
         controller.signal,
         retained.context?.records.length ?? 0,
-        environmentId,
+        environmentId === undefined ? undefined : readableThreadEnvironmentIds,
       );
       if (!result) {
         insertComposerDraftText(draftKey, clipboard.text, insertion);
@@ -117,7 +119,7 @@ export function ComposerEditor({
         );
       if (result.skippedThreads.length > 0)
         warnings.push(
-          `${result.skippedThreads.map((title) => `"${title}"`).join(", ")} ${result.skippedThreads.length === 1 ? "is" : "are"} on another machine.`,
+          `${result.skippedThreads.map((title) => `"${title}"`).join(", ")} ${result.skippedThreads.length === 1 ? "is" : "are"} on a machine that this machine cannot read.`,
         );
       if (warnings.length > 0)
         Dialog.alert(

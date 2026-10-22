@@ -1757,7 +1757,9 @@ export default function ChatView(props: ChatViewProps) {
     isEnvironmentChanging,
     readPendingEnvironmentChange,
     onEnvironmentChangeStable,
+    readableThreadEnvironmentIds,
   } = useDraftEnvironmentRouting({
+    environmentId,
     draftId,
     draftThread,
     envLocked,
@@ -2931,6 +2933,7 @@ export default function ChatView(props: ChatViewProps) {
     needsLoadBalancing,
     loadBalancing,
     readPendingEnvironmentChange,
+    readableThreadEnvironmentIds,
     pendingApprovals,
     respondingRequestIds,
     activePendingProgress,

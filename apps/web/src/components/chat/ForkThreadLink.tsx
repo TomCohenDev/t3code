@@ -2,7 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, MessageId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { parseKnownThreadAddress, type ThreadAddress } from "@t3tools/shared/threadAddress";
-import { formatThreadLink, percentDecodedThreadLinkId } from "@t3tools/shared/threadLinks";
+import {
+  formatThreadLink,
+  percentDecodedThreadLinkId,
+  resolveThreadLinkRef,
+} from "@t3tools/shared/threadLinks";
 import { threadLinkMessageId } from "@t3tools/shared/threadMessageLinks";
 import {
   linkThreadMarkers,
@@ -12,7 +16,7 @@ import {
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
 
-import { useThreadShell } from "../../state/entities";
+import { useThreadRefs, useThreadShell } from "../../state/entities";
 import { environmentSummaries } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
@@ -70,12 +74,21 @@ function ThreadLinkChip(props: {
   const decoded = useThreadShell(
     written === null && decodedId !== null ? scopeThreadRef(props.environmentId, decodedId) : null,
   );
-  const thread = written ?? decoded;
+  const local = written ?? decoded;
+  // MM-1907: a link to a thread on another machine resolves like MarkdownThreadLink does.
+  const refs = useThreadRefs(local === null);
+  const remote = useThreadShell(
+    local === null
+      ? resolveThreadLinkRef(scopeThreadRef(props.environmentId, props.threadId), refs)
+      : null,
+  );
+  const thread = local ?? remote;
+  const environmentId = thread?.environmentId ?? props.environmentId;
   const threadId = thread?.id ?? props.threadId;
   const title = thread?.title.trim() || props.label;
   return (
     <ThreadContextChip
-      record={{ environmentId: props.environmentId, threadId, title }}
+      record={{ environmentId, threadId, title }}
       copyMarkdown={formatThreadLink(threadId, title, props.messageId ?? undefined)}
       messageId={props.messageId}
     />

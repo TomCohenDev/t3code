@@ -127,6 +127,10 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
+    "./state/readableThreadEnvironments": {
+      "types": "./src/state/readableThreadEnvironments.ts",
+      "default": "./src/state/readableThreadEnvironments.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"

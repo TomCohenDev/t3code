@@ -48,7 +48,7 @@ import {
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
-import { threadContextsOutsideEnvironment } from "@t3tools/shared/composerContextReferences";
+import { unreadableThreadContexts } from "@t3tools/shared/composerContextReferences";
 
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 
@@ -95,6 +95,7 @@ import { selectIncomingShareAttachmentsForServer } from "../sharing/incoming-sha
 import { appAtomRegistry } from "../../state/atom-registry";
 import { serverEnvironment } from "../../state/server";
 
+import { useReadableThreadEnvironmentIds } from "../../state/readableThreadEnvironments";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 
 function NewTaskWorkspaceIcon(props: {
@@ -157,6 +158,9 @@ export function NewTaskDraftScreen(props: {
   const [creationMetadata] = useState(makeTurnCommandMetadata);
   const projects = useProjects();
   const flow = useNewTaskFlow();
+  const readableThreadEnvironmentIds = useReadableThreadEnvironmentIds(
+    flow.selectedProject?.environmentId ?? null,
+  );
   const navigation = useNavigation();
   const goBack = useWorkspaceBackNavigation("threads");
   const {
@@ -900,10 +904,10 @@ export function NewTaskDraftScreen(props: {
       Dialog.alert("Too much context", contextBlockReason);
       return null;
     }
-    const strandedThread = threadContextsOutsideEnvironment({
+    const strandedThread = unreadableThreadContexts({
       text: draft.text,
       records: draft.context?.records ?? [],
-      environmentId: selectedProject.environmentId,
+      readableEnvironmentIds: readableThreadEnvironmentIds,
     })[0];
     if (strandedThread) {
       const owner =
@@ -912,7 +916,7 @@ export function NewTaskDraftScreen(props: {
         )?.environmentLabel ?? "its machine";
       Dialog.alert(
         "Attached thread unavailable",
-        `"${strandedThread.title}" is on another machine. Switch back to ${owner} or remove it from the draft.`,
+        `"${strandedThread.title}" is on ${owner}, and this machine has no arrow with agent tools to it in the machine map. Switch back to ${owner} or remove it from the draft.`,
       );
       return null;
     }

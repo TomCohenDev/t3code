@@ -7,11 +7,16 @@ import {
   AuthAccessTokenResult,
   AuthAccessTokenType,
   AuthEnvironmentBootstrapTokenType,
+  AuthOrchestrationReadScope,
   AuthPairingCredentialResult,
   AuthTokenExchangeGrantType,
+  type EnvironmentId,
+  ExecutionEnvironmentDescriptor,
   type MachineId,
+  OrchestratorMcpFailure,
+  type OrchestratorMcpThreadReadInput,
+  OrchestratorMcpThreadReadResult,
   type PeerMachine,
-  type OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -28,16 +33,19 @@ import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { mcpToolSession } from "../../mcp/AcpMcpStdioBridge.ts";
 import type * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import type * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
-import { effectiveLevel } from "./machineAccess.ts";
-import { requireMachineToolCaller } from "./machineCallerAccess.ts";
+import { effectiveLevel, reachablePeers } from "./machineAccess.ts";
+import { requireMachineThreadReader, requireMachineToolCaller } from "./machineCallerAccess.ts";
 import * as MachineMapState from "./MachineMapState.ts";
 
 const REQUEST_TIMEOUT = Duration.seconds(15);
+// An offline peer must not hold up the `@` menu of every client for the full request timeout.
+const DESCRIPTOR_TIMEOUT = Duration.seconds(5);
 
 export class MachinePeerError extends Schema.TaggedError<MachinePeerError>()("MachinePeerError", {
   reason: Schema.Literals([
     "not-on-map",
     "unknown-machine",
+    "unknown-environment",
     "no-agent-tools",
     "no-hostname",
     "pairing-refused",
@@ -67,6 +75,23 @@ interface PeerSession {
   readonly scopes: ReadonlyArray<string>;
 }
 
+/**
+ * `read` asks the peer for `orchestration:read` only. The peer then caps the MCP session at
+ * read-only (MM-1902), so a restricted caller reads there and every write is refused there.
+ */
+type SessionKind = "full" | "read";
+
+/** MM-1907: a machine whose threads this machine can read, for the `@` menu of its clients. */
+export interface ReadableEnvironment {
+  readonly environmentId: EnvironmentId;
+  readonly machineId: MachineId;
+  readonly name: string;
+}
+
+type ReaderServices =
+  | McpInvocationContext.McpInvocationContext
+  | ThreadManagement.ThreadManagementService;
+
 export class MachinePeers extends Context.Service<
   MachinePeers,
   {
@@ -77,23 +102,52 @@ export class MachinePeers extends Context.Service<
       readonly machine: string;
       readonly tool: string;
       readonly input: Readonly<Record<string, unknown>>;
-    }) => Effect.Effect<
-      unknown,
+    }) => Effect.Effect<unknown, MachinePeerError | OrchestratorMcpFailure, ReaderServices>;
+    /**
+     * MM-1905: `t3_thread_read` of a thread on the machine with `environmentId`, through the arrow
+     * with agent tools and a read-only session. Restricted callers may read (MM-1902).
+     */
+    readonly readThread: (
+      input: OrchestratorMcpThreadReadInput & { readonly environmentId: EnvironmentId },
+    ) => Effect.Effect<
+      OrchestratorMcpThreadReadResult,
       MachinePeerError | OrchestratorMcpFailure,
-      McpInvocationContext.McpInvocationContext | ThreadManagement.ThreadManagementService
+      ReaderServices
     >;
+    /** MM-1907: the peers whose threads `readThread` reaches now. Unreachable peers are left out. */
+    readonly readableEnvironments: Effect.Effect<ReadonlyArray<ReadableEnvironment>>;
   }
 >()("t3/fork/machineMap/MachinePeers") {}
 
 const peerOrigin = (peer: PeerMachine & { readonly hostname: string }) =>
   `https://${peer.hostname}`;
 
+const ToolResult = Schema.Struct({
+  isError: Schema.optional(Schema.Boolean),
+  structuredContent: Schema.optional(Schema.Unknown),
+  content: Schema.optional(
+    Schema.Array(Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) })),
+  ),
+});
+const decodeToolResult = Schema.decodeUnknownEffect(ToolResult);
+const decodeReadResult = Schema.decodeUnknownEffect(OrchestratorMcpThreadReadResult);
+const decodeFailureText = Schema.decodeUnknownEffect(Schema.fromJsonString(OrchestratorMcpFailure));
+
+const unexpectedResult = (peerName: string) =>
+  new MachinePeerError({
+    reason: "tool-failed",
+    detail: `${peerName} sent a t3_thread_read result that this machine cannot read. Update both machines to the same T3 Code version.`,
+  });
+
 const make = Effect.gen(function* () {
   const state = yield* MachineMapState.MachineMapState;
   const httpClient = yield* HttpClient.HttpClient;
-  // One session per peer, so repeated tool calls do not pile up sessions on the peer. A level
-  // change on the peer revokes it (MM-1306); the next call then pairs again.
-  const sessions = new Map<MachineId, PeerSession>();
+  // One session per peer and kind, so repeated tool calls do not pile up sessions on the peer. A
+  // level change on the peer revokes it (MM-1306); the next call then pairs again.
+  const sessions = new Map<`${MachineId}:${SessionKind}`, PeerSession>();
+  // A peer keeps its environment id across restarts. Known limit: a peer reinstalled with a new
+  // environment id keeps its old entry until a lookup of the new id misses and probes again.
+  const environmentIds = new Map<MachineId, EnvironmentId>();
 
   const resolvePeer = Effect.fn("MachinePeers.resolvePeer")(function* (machine: string) {
     const local = yield* state.snapshot;
@@ -135,6 +189,7 @@ const make = Effect.gen(function* () {
     peer: PeerMachine & { readonly hostname: string },
     token: MachineMapState.MachineToken,
     selfName: string,
+    kind: SessionKind,
   ) {
     const origin = peerOrigin(peer);
     const headers = MachineMapState.tokenHeaders(token);
@@ -156,6 +211,7 @@ const make = Effect.gen(function* () {
         requested_token_type: AuthAccessTokenType,
         client_label: `machine ${selfName}`,
         client_device_type: "bot",
+        ...(kind === "read" ? { scope: AuthOrchestrationReadScope } : {}),
       }),
       httpClient.execute,
       Effect.flatMap(HttpClientResponse.filterStatusOk),
@@ -166,7 +222,7 @@ const make = Effect.gen(function* () {
       accessToken: exchanged.access_token,
       scopes: exchanged.scope.split(" ").filter((scope) => scope.length > 0),
     };
-    sessions.set(peer.id, session);
+    sessions.set(`${peer.id}:${kind}`, session);
     return session;
   });
 
@@ -181,7 +237,7 @@ const make = Effect.gen(function* () {
     function* (to) {
       const resolved = yield* resolvePeer(to);
       const startedAt = yield* Clock.currentTimeMillis;
-      return yield* pair(resolved.peer, resolved.token, resolved.selfName).pipe(
+      return yield* pair(resolved.peer, resolved.token, resolved.selfName, "full").pipe(
         Effect.flatMap((session) =>
           Clock.currentTimeMillis.pipe(
             Effect.map((endedAt): ArrowTestResult => ({
@@ -226,75 +282,194 @@ const make = Effect.gen(function* () {
       ),
   );
 
+  const requireAgentTools = Effect.fn("MachinePeers.requireAgentTools")(function* (
+    resolved: Effect.Success<ReturnType<typeof resolvePeer>>,
+  ) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    if (
+      resolved.arrow === undefined ||
+      !resolved.arrow.agentTools ||
+      effectiveLevel(resolved.arrow, nowMs) === "none"
+    ) {
+      return yield* new MachinePeerError({
+        reason: "no-agent-tools",
+        detail: `The arrow from this machine to ${resolved.peer.name} does not allow agent tools.`,
+      });
+    }
+  });
+
+  /**
+   * One MCP call on a peer. `check` runs again before pairing, after the MCP handshake and before
+   * the retry, because the caller's modes can change while it waits (MM-1904).
+   */
+  const callPeer = Effect.fn("MachinePeers.callPeer")(function* (input: {
+    readonly resolved: Effect.Success<ReturnType<typeof resolvePeer>>;
+    readonly kind: SessionKind;
+    readonly check: Effect.Effect<void, OrchestratorMcpFailure, ReaderServices>;
+    readonly tool: string;
+    readonly input: Readonly<Record<string, unknown>>;
+  }) {
+    const { resolved, kind, check } = input;
+    const headers = MachineMapState.tokenHeaders(resolved.token);
+    const call = Effect.fn("MachinePeers.call")(function* (session: PeerSession) {
+      yield* check;
+      const remote = yield* mcpToolSession({
+        endpoint: `${peerOrigin(resolved.peer)}/mcp`,
+        authorization: `Bearer ${session.accessToken}`,
+        clientName: "t3-code-machine-peer",
+        // Cloudflare Access in front of the peer needs the machine token on every request.
+        fetchImplementation: (url, init) =>
+          // @effect-diagnostics-next-line globalFetch:off - the MCP bridge takes a fetch function; this only adds the Access headers.
+          fetch(url, { ...init, headers: { ...(init?.headers as object), ...headers } }),
+      });
+      // Initializing MCP waits on B too; a downgrade during that wait must stop tools/call.
+      yield* check;
+      return yield* remote.call(input.tool, input.input);
+    }, Effect.scoped);
+    const pairOrFail = check.pipe(
+      Effect.andThen(
+        pair(resolved.peer, resolved.token, resolved.selfName, kind).pipe(
+          Effect.mapError(
+            (cause) =>
+              new MachinePeerError({
+                reason: "pairing-refused",
+                detail: `${resolved.peer.name} refused the pairing: ${describe(cause)}.`,
+              }),
+          ),
+        ),
+      ),
+    );
+    const key = `${resolved.peer.id}:${kind}` as const;
+    const cached = sessions.get(key);
+    const first = cached ?? (yield* pairOrFail);
+    return yield* call(first).pipe(
+      // The bridge reports a revoked session only in its message. Pair again once.
+      Effect.catch((error) =>
+        cached !== undefined && error.message.includes("HTTP 401")
+          ? Effect.sync(() => sessions.delete(key)).pipe(
+              Effect.andThen(pairOrFail),
+              Effect.flatMap(call),
+            )
+          : Effect.fail(error),
+      ),
+      Effect.mapError((error) =>
+        error._tag === "MachinePeerError" || error._tag === "OrchestratorMcpFailure"
+          ? error
+          : new MachinePeerError({
+              reason: "tool-failed",
+              detail: `${input.tool} on ${resolved.peer.name} failed: ${error.message.slice(0, 500)}`,
+            }),
+      ),
+    );
+  });
+
   const callTool: MachinePeers["Service"]["callTool"] = Effect.fn("MachinePeers.callTool")(
     function* (input) {
       yield* requireMachineToolCaller();
       const resolved = yield* resolvePeer(input.machine);
-      const nowMs = yield* Clock.currentTimeMillis;
-      if (
-        resolved.arrow === undefined ||
-        !resolved.arrow.agentTools ||
-        effectiveLevel(resolved.arrow, nowMs) === "none"
-      ) {
+      yield* requireAgentTools(resolved);
+      return yield* callPeer({
+        resolved,
+        kind: "full",
+        check: requireMachineToolCaller(),
+        tool: input.tool,
+        input: input.input,
+      });
+    },
+  );
+
+  const environmentIdOf = Effect.fn("MachinePeers.environmentIdOf")(function* (
+    peer: { readonly machine: PeerMachine; readonly origin: string },
+    token: MachineMapState.MachineToken,
+  ) {
+    const descriptor = yield* HttpClientRequest.get(
+      `${peer.origin}/.well-known/t3/environment`,
+    ).pipe(
+      HttpClientRequest.setHeaders(MachineMapState.tokenHeaders(token)),
+      httpClient.execute,
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
+      Effect.flatMap(HttpClientResponse.schemaBodyJson(ExecutionEnvironmentDescriptor)),
+      Effect.timeout(DESCRIPTOR_TIMEOUT),
+    );
+    environmentIds.set(peer.machine.id, descriptor.environmentId);
+    return descriptor.environmentId;
+  });
+
+  /** The peers that an arrow with agent tools reaches now, with their environment ids. */
+  const probeReadable = Effect.fn("MachinePeers.probeReadable")(function* (refresh: boolean) {
+    const local = yield* state.snapshot;
+    const desired = local.enabled ? local.saved.desired : null;
+    if (desired === null || local.token === null) return [];
+    const token = local.token;
+    const nowMs = yield* Clock.currentTimeMillis;
+    const peers = reachablePeers(desired, nowMs).filter((peer) => peer.agentTools);
+    return yield* Effect.forEach(
+      peers,
+      (peer) => {
+        const { machine } = peer;
+        const cached = environmentIds.get(machine.id);
+        const environmentId =
+          cached !== undefined && !refresh ? Effect.succeed(cached) : environmentIdOf(peer, token);
+        return environmentId.pipe(
+          Effect.map((id): ReadonlyArray<ReadableEnvironment> => [
+            { environmentId: id, machineId: machine.id, name: machine.name },
+          ]),
+          Effect.orElseSucceed((): ReadonlyArray<ReadableEnvironment> => []),
+        );
+      },
+      { concurrency: "unbounded" },
+    ).pipe(Effect.map((lists) => lists.flat()));
+  });
+
+  const readThread: MachinePeers["Service"]["readThread"] = Effect.fn("MachinePeers.readThread")(
+    function* ({ environmentId, ...input }) {
+      yield* requireMachineThreadReader();
+      const find = (readable: ReadonlyArray<ReadableEnvironment>) =>
+        readable.find((candidate) => candidate.environmentId === environmentId);
+      const target = find(yield* probeReadable(false)) ?? find(yield* probeReadable(true));
+      if (target === undefined) {
         return yield* new MachinePeerError({
-          reason: "no-agent-tools",
-          detail: `The arrow from this machine to ${resolved.peer.name} does not allow agent tools.`,
+          reason: "unknown-environment",
+          detail: `No arrow with agent tools from this machine reaches environment ${environmentId}, or its machine is offline. The owner can add the arrow in the machine map.`,
         });
       }
-      const headers = MachineMapState.tokenHeaders(resolved.token);
-      const call = Effect.fn("MachinePeers.call")(function* (session: PeerSession) {
-        yield* requireMachineToolCaller();
-        const remote = yield* mcpToolSession({
-          endpoint: `${peerOrigin(resolved.peer)}/mcp`,
-          authorization: `Bearer ${session.accessToken}`,
-          clientName: "t3-code-machine-peer",
-          // Cloudflare Access in front of the peer needs the machine token on every request.
-          fetchImplementation: (url, init) =>
-            // @effect-diagnostics-next-line globalFetch:off - the MCP bridge takes a fetch function; this only adds the Access headers.
-            fetch(url, { ...init, headers: { ...(init?.headers as object), ...headers } }),
-        });
-        // Initializing MCP waits on B too; a downgrade during that wait must stop tools/call.
-        yield* requireMachineToolCaller();
-        return yield* remote.call(input.tool, input.input);
-      }, Effect.scoped);
-      const pairOrFail = requireMachineToolCaller().pipe(
-        Effect.andThen(
-          pair(resolved.peer, resolved.token, resolved.selfName).pipe(
-            Effect.mapError(
-              (cause) =>
-                new MachinePeerError({
-                  reason: "pairing-refused",
-                  detail: `${resolved.peer.name} refused the pairing: ${describe(cause)}.`,
-                }),
-            ),
-          ),
-        ),
+      const resolved = yield* resolvePeer(target.machineId);
+      yield* requireAgentTools(resolved);
+      const raw = yield* callPeer({
+        resolved,
+        kind: "read",
+        check: requireMachineThreadReader(),
+        tool: "t3_thread_read",
+        // The peer reads its own thread, so it gets no environment id.
+        input,
+      });
+      const result = yield* decodeToolResult(raw).pipe(
+        Effect.mapError(() => unexpectedResult(resolved.peer.name)),
       );
-      const cached = sessions.get(resolved.peer.id);
-      const first = cached ?? (yield* pairOrFail);
-      return yield* call(first).pipe(
-        // The bridge reports a revoked session only in its message. Pair again once.
-        Effect.catch((error) =>
-          cached !== undefined && error.message.includes("HTTP 401")
-            ? Effect.sync(() => sessions.delete(resolved.peer.id)).pipe(
-                Effect.andThen(pairOrFail),
-                Effect.flatMap(call),
-              )
-            : Effect.fail(error),
-        ),
-        Effect.mapError((error) =>
-          error._tag === "MachinePeerError" || error._tag === "OrchestratorMcpFailure"
-            ? error
-            : new MachinePeerError({
+      if (result.isError === true) {
+        const text = result.content?.find((part) => part.text !== undefined)?.text ?? "";
+        return yield* decodeFailureText(text).pipe(
+          Effect.mapError(
+            () =>
+              new MachinePeerError({
                 reason: "tool-failed",
-                detail: `${input.tool} on ${resolved.peer.name} failed: ${error.message.slice(0, 500)}`,
+                detail: `t3_thread_read on ${resolved.peer.name} failed: ${text.slice(0, 500)}`,
               }),
-        ),
+          ),
+          Effect.flatMap(Effect.fail),
+        );
+      }
+      return yield* decodeReadResult(result.structuredContent).pipe(
+        Effect.mapError(() => unexpectedResult(resolved.peer.name)),
       );
     },
   );
 
-  return MachinePeers.of({ testArrow, callTool });
+  const readableEnvironments: MachinePeers["Service"]["readableEnvironments"] = probeReadable(
+    false,
+  ).pipe(Effect.withSpan("MachinePeers.readableEnvironments"));
+
+  return MachinePeers.of({ testArrow, callTool, readThread, readableEnvironments });
 });
 
 export const layer = Layer.effect(MachinePeers, make);

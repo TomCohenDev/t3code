@@ -223,6 +223,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.machineMapReportDesktop]: "machineMap",
   [WS_METHODS.machineMapShareSettings]: "machineMap",
   [WS_METHODS.machineMapRead]: "machineMap",
+  [WS_METHODS.machineMapReadableEnvironments]: "machineMap",
   [WS_METHODS.webPushPublicKey]: "webPush",
   [WS_METHODS.webPushSubscribe]: "webPush",
   [WS_METHODS.webPushTest]: "webPush",

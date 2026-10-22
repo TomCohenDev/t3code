@@ -286,12 +286,12 @@ Requirements have stable numbers. Do not renumber them. Mark a removed requireme
 ## 19. Cross-machine work
 
 - **MM-1901** The arrow from A to B is the only machine-to-machine grant. Each cross-machine feature uses B's T3 server. It uses neither SSH nor a shared database.
-- **MM-1902** Each cross-machine call stays within the source thread's runtime mode, interaction mode and tool capabilities, and the arrow's grant. The narrower limit wins.
+- **MM-1902** Each cross-machine call stays within the source thread's runtime mode, interaction mode and tool capabilities, and the arrow's grant. The narrower limit wins. A thread read of MM-1905 works in every mode: A pairs that session without `orchestration:operate`, B makes such a session read-only, and B refuses every write on it.
 - **MM-1903** A machine's map role never raises a thread's limits. A restricted thread cannot use `edit` to change settings, send commands or raise access.
 - **MM-1904** When B cannot enforce a source limit, A refuses the call before it sends work. A checks the live caller again after pairing, after the MCP handshake and before a retry. B never lends its map role or onward arrows to the caller.
 - **MM-1905** One server-side thread reader serves `t3_thread_read` and thread attachments. It reads local threads from the local database and other threads through the same arrow and checks as `machine_tool_call`.
 - **MM-1906** A thread attachment keeps its `environmentId`. The composer send check accepts a reachable thread on another machine and reports a refused or unavailable read without sending incomplete context.
-- **MM-1907** The `@` thread menu on web, desktop and mobile lists reachable threads across machines and names the machine of each item. Thread chips and message links still open the correct thread and message.
+- **MM-1907** The `@` thread menu on web, desktop and mobile lists reachable threads across machines. When more than one machine is reachable, each item names its machine. Thread chips and message links still open the correct thread and message.
 - **MM-1908** An arrow has an explicit `exec` capability. `machine_exec` runs a command through B's T3 server, returns its output and exit status, and records the actor, target and result in portal history.
 - **MM-1909** The arrow and the caller's credentials control command execution. No shell command blocklist or command-pattern block grants or refuses execution.
 - **MM-1910** `delegate_task` accepts a target machine. The child runs on B. `task_status` and `task_cancel` reach that child through the arrow. Completion wakes the parent on A.

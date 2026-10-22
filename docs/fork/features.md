@@ -68,9 +68,19 @@ Use the machine map name as the server environment name. A name change in the po
 
 The portal has the views Map, Table, Health, Settings, Queue, Tasks, History, Inbox and Clients (MM-1102). Each view and each selected item has its own link. Agents use the `machines_*` and `machine_tool_call` tools for machine operations. Client approvals, invites and the resume after an emergency pause stay with the owner.
 
-The map role never raises a thread's limits. Map writes need a live full-access/default caller, even with `edit`. `machine_tool_call` also needs all tool capabilities that the target grants: orchestration, worktree and pull requests. It refuses restricted callers, including reads, until the target can enforce narrower limits. An allowed call still needs the arrow with agent tools and stays within its level. These checks run on the server for agents started from web, desktop and mobile.
+The map role never raises a thread's limits. Map writes need a live full-access/default caller, even with `edit`. `machine_tool_call` also needs all tool capabilities that the target grants: orchestration, worktree and pull requests. It refuses restricted callers, including reads. A restricted caller reads a thread on another machine with `t3_thread_read` and `environmentId`, see [Thread mentions across machines](#thread-mentions-across-machines). An allowed call still needs the arrow with agent tools and stays within its level. These checks run on the server for agents started from web, desktop and mobile.
 
-Cross-machine thread mentions, command execution, delegation with wake-up, explicit arrow capabilities and secret copy are specified in MM-1905 to MM-1918. They are not available through these tools yet.
+Command execution, delegation with wake-up, explicit arrow capabilities and secret copy are specified in MM-1908 to MM-1918. They are not available through these tools yet.
+
+### Thread mentions across machines
+
+The `@` menu lists the threads of this machine and of the machines that it reads through the machine map. With more than one machine, each item names its machine. The agent reads an attached thread of another machine through the arrow, on the T3 server of that machine (MM-1905 to MM-1907).
+
+- **Setting:** an arrow with agent tools and a level above `none`, from the machine that runs the agent to the machine of the thread. Set it in the portal.
+- **Works on:** web, desktop and mobile, through local, relay and tunnel connections. The client lists the threads of a machine only when it also connects to that machine.
+- A send stops when the target machine cannot read an attached thread. Remove the thread, or switch to a machine that can read it.
+- Agents in plan, approval-required or auto mode can read these threads. The other machine gives the read a read-only session and refuses every write.
+- **Limits:** a machine asks each peer once for its environment id. An offline peer is not listed until it answers. Right after a page load, a send can stop for a moment until the list of readable machines arrives.
 
 ### Join and install
 
@@ -359,6 +369,7 @@ Every thread link in chat shows as the chip of an attached thread, and opens the
 - **Works on:** web, desktop, mobile. Mobile reads the setting of the server of the thread, and has no switch of its own.
 - The chip reads `t3-thread://v1/<threadId>`, `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
 - An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
+- A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
 - A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile. See [Message links](#message-links).
 
 ### Message links
@@ -367,7 +378,7 @@ A thread link that names a message opens the thread at that message. Use **Copy 
 
 - **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". Off: the link opens the thread only, and **Copy message link** is hidden.
 - **Works on:** web, desktop, mobile.
-- **Forms:** `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`.
+- **Forms:** `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
 - A message that the thread does not have shows "Message not found", and the thread stays open.
 - **Limits:** on mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
 

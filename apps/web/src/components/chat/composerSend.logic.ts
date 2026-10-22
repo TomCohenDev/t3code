@@ -11,11 +11,23 @@ export function referencedThreadContexts(draft: {
   return draft.threadContexts.filter((record) => referenced.has(record.contextId));
 }
 
+/**
+ * Fork: MM-1906. A machine reads an attached thread when the thread is on that machine or on a
+ * machine that it reads through the machine map. `readableEnvironmentIds` holds both.
+ */
+export function canReadThreadContexts(
+  threadContexts: ReadonlyArray<ThreadContextRecord>,
+  readableEnvironmentIds: ReadonlyArray<EnvironmentId>,
+): boolean {
+  return threadContexts.every((record) => readableEnvironmentIds.includes(record.environmentId));
+}
+
 /** Why a send waits for the user to pick a machine when no machine was chosen automatically. */
 export function loadBalancingSendWarning(input: {
   readonly pending: boolean;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly candidateEnvironmentIds: ReadonlyArray<EnvironmentId>;
+  /** The readable environment ids of each candidate machine. */
+  readonly candidateReadableEnvironmentIds: ReadonlyArray<ReadonlyArray<EnvironmentId>>;
 }) {
   if (input.pending) {
     return {
@@ -25,8 +37,8 @@ export function loadBalancingSendWarning(input: {
   }
   const noMachineReadsEveryThread =
     input.threadContexts.length > 0 &&
-    !input.candidateEnvironmentIds.some((environmentId) =>
-      input.threadContexts.every((record) => record.environmentId === environmentId),
+    !input.candidateReadableEnvironmentIds.some((readable) =>
+      canReadThreadContexts(input.threadContexts, readable),
     );
   return {
     title: "Choose a machine to continue",

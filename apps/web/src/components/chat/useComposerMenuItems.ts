@@ -22,6 +22,7 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useThreadShells } from "~/state/entities";
+import { useReadableThreadEnvironments } from "~/state/machineMap";
 import {
   pullRequestEnvironment,
   usePullRequestList,
@@ -89,6 +90,10 @@ export function useComposerMenuItems({
     pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
   const isPathTrigger = composerTriggerKind === "path";
   const environmentThreadShells = useThreadShells(isPathTrigger);
+  // Fork: MM-1907. Threads of the machines that this machine's agent reads, named per machine.
+  const readableThreadEnvironments = useReadableThreadEnvironments(
+    isPathTrigger ? environmentId : null,
+  );
   const workspaceEntries = useComposerPathSearch({
     environmentId,
     cwd: isPathTrigger ? gitCwd : null,
@@ -159,7 +164,7 @@ export function useComposerMenuItems({
       return [
         ...matchComposerThreadItems({
           shells: environmentThreadShells,
-          environmentId,
+          readable: readableThreadEnvironments,
           excludeThreadId: activeThreadId,
           query: composerTrigger.query,
         }),
