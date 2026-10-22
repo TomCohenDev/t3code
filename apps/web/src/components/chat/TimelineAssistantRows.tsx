@@ -13,6 +13,7 @@ import { ChangedFilesCard } from "./ChangedFilesTree";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
 import { useProject, useThreadShell } from "../../state/entities";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { ForkCopyMessageLink } from "./ForkCopyMessageLink";
 import { AssistantCitationSource } from "./AssistantCitationSource";
 import { resolveAssistantMessageCopyState } from "./MessagesTimeline.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -67,7 +68,9 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             showCopyButton={row.showAssistantCopyButton}
             copyStreaming={row.assistantCopyStreaming}
           />
-        ) : null}
+        ) : (
+          <ForkCopyMessageLink threadRef={ctx.threadRef} messageId={row.message.id} standalone />
+        )}
       </div>
     </>
   );
@@ -175,6 +178,7 @@ function AssistantMessageMeta({
         showCopyButton={showCopyButton}
         streaming={copyStreaming}
       />
+      <ForkCopyMessageLink threadRef={ctx.threadRef} messageId={message.id} />
       {projectedItem?.item.type === "assistant_message" ? (
         <AssistantForkButton projectedItem={projectedItem} />
       ) : null}

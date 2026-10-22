@@ -55,13 +55,16 @@ export function resolveThreadLinkRef(
   return null;
 }
 
+export function formatThreadLinkHref(threadId: string, messageId?: string): string {
+  return `${THREAD_LINK_HREF_PREFIX}${threadId}${messageId === undefined ? "" : `#${messageId}`}`;
+}
+
 export function formatThreadLink(threadId: string, label: string, messageId?: string): string {
   const cleaned = label
     .replace(/[[\]\\\r\n]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const fragment = messageId === undefined ? "" : `#${messageId}`;
-  return `[${cleaned || threadId}](${THREAD_LINK_HREF_PREFIX}${threadId}${fragment})`;
+  return `[${cleaned || threadId}](${formatThreadLinkHref(threadId, messageId)})`;
 }
 
 export function hasThreadLinks(markdown: string): boolean {

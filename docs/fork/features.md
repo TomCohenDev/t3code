@@ -359,9 +359,9 @@ Every thread link in chat shows as the chip of an attached thread, and opens the
 
 ### Message links
 
-A thread link that names a message opens the thread at that message. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
+A thread link that names a message opens the thread at that message. Use **Copy message link** beside a message on web and desktop, or hold its copy button on mobile. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
 
-- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". Off: the link opens the thread only.
+- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". Off: the link opens the thread only, and **Copy message link** is hidden.
 - **Works on:** web, desktop, mobile.
 - **Forms:** `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`.
 - A message that the thread does not have shows "Message not found", and the thread stays open.

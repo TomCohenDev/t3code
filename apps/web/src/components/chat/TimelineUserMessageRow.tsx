@@ -40,6 +40,7 @@ import {
   SnapShotAttachmentDetails,
 } from "./SnapShotAttachmentDetails";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { ForkCopyMessageLink } from "./ForkCopyMessageLink";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { shouldCollapseUserMessage } from "./MessagesTimeline.logic";
@@ -534,6 +535,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </TooltipPopup>
           </Tooltip>
           <div className="flex items-center gap-0.5">
+            <ForkCopyMessageLink threadRef={ctx.threadRef} messageId={row.message.id} />
             {typeof revertTurnCount === "number" && (
               <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
             )}
