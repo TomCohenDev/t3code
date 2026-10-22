@@ -493,7 +493,7 @@ export interface DiffRow {
   readonly after: string;
 }
 
-const NOTHING = "—";
+const NOTHING = "-";
 
 const clientLink = (map: MachineMapDocument, id: string): Pick<DiffRow, "link"> =>
   map.clients.some((client) => client.id === id) ? { link: { _tag: "client", id } } : {};
