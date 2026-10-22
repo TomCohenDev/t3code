@@ -26,9 +26,6 @@ export const ForkBrowserCaptureReport = Schema.Union([
 ]);
 export type ForkBrowserCaptureReport = typeof ForkBrowserCaptureReport.Type;
 
-export const FORK_BROWSER_CAPTURE_CHANNEL = "fork:browser-capture";
-export const FORK_BROWSER_CAPTURE_REPORT_CHANNEL = "fork:browser-capture-report";
-
 export interface ForkBrowserCaptureBridge {
   readonly forkCapture?: {
     readonly report: (event: ForkBrowserCaptureReport) => Promise<void>;

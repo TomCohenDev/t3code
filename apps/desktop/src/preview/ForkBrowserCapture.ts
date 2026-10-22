@@ -1,9 +1,9 @@
-import {
-  FORK_BROWSER_CAPTURE_CHANNEL,
-  type ForkBrowserCaptureCommand,
-  type ForkBrowserCaptureReport,
+import type {
+  ForkBrowserCaptureCommand,
+  ForkBrowserCaptureReport,
 } from "@t3tools/contracts/forkBrowserCapture";
 
+import { FORK_BROWSER_CAPTURE_CHANNEL } from "../ipc/channels.ts";
 import type { DesktopBrowserTabDebugger, DesktopBrowserTabKey } from "./DesktopBrowserHost.ts";
 
 const keyOf = (key: DesktopBrowserTabKey) => `${key.threadId}\u0000${key.tabId}`;

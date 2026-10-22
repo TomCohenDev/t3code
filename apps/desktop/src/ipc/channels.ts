@@ -130,3 +130,6 @@ export const TAKE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:take-legacy-local-stor
 export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-local-storage";
 export const CONFIGURE_GLOBAL_SCRIPT_SHORTCUTS_CHANNEL =
   "desktop:configure-global-script-shortcuts";
+// Fork: browser capture leases. Here, not in contracts, because the sandboxed preload cannot load packages.
+export const FORK_BROWSER_CAPTURE_CHANNEL = "fork:browser-capture";
+export const FORK_BROWSER_CAPTURE_REPORT_CHANNEL = "fork:browser-capture-report";

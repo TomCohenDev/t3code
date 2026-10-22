@@ -1,10 +1,13 @@
 import { ipcRenderer } from "electron";
+import type {
+  ForkBrowserCaptureBridge,
+  ForkBrowserCaptureCommand,
+} from "@t3tools/contracts/forkBrowserCapture";
+
 import {
   FORK_BROWSER_CAPTURE_CHANNEL,
   FORK_BROWSER_CAPTURE_REPORT_CHANNEL,
-  type ForkBrowserCaptureBridge,
-  type ForkBrowserCaptureCommand,
-} from "@t3tools/contracts/forkBrowserCapture";
+} from "./ipc/channels.ts";
 
 // Fork: keep this optional so a newer web client can still use an older desktop host.
 export const forkCapture = {
