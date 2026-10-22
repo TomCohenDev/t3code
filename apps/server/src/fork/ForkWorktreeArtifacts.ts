@@ -304,7 +304,7 @@ const make = Effect.gen(function* () {
                   ) {
                     const shim = yield* fs.readFileString(entry);
                     payload =
-                      (/^#!/.test(shim) && /(?:basedir=|\$basedir)/i.test(shim)) ||
+                      (shim.startsWith("#!") && /(?:basedir=|\$basedir)/i.test(shim)) ||
                       (/^@(?:ECHO|SETLOCAL)/i.test(shim) && shim.includes("%~dp0"));
                   }
                   if (!looksGenerated(folderType, child, payload)) {

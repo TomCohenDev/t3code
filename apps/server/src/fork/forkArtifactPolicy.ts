@@ -209,7 +209,7 @@ export function looksGenerated(
     (/^manifest-merger-[\w-]+-report\.txt$/.test(name) ||
       /^lint-results-[\w-]+\.txt$/.test(name) ||
       /\.tab(?:_[a-z]+)?(?:\.(?:len|keystream|values\.at))?$/.test(name) ||
-      /\.apk\.idsig$/.test(name))
+      name.endsWith(".apk.idsig"))
   )
     return true;
   if (/\.ya?ml$/.test(name)) return /^(?:nightly|latest)(?:[-.][\w.-]+)?\.ya?ml$/.test(name);
