@@ -264,11 +264,15 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     scratchStartInFlightRef.current = false;
   }
 
-  // Fork: `mobileNewThreadProject` can skip the picker for a plain new thread.
-  const navigationState = navigation.getState();
+  // Fork: `mobileNewThreadProject` can skip the picker for a plain new thread. Not on the way
+  // back from a draft, which selectProject also detects through the route before this one.
+  const forkRootNavigation = navigation.getState()?.routeNames.includes("NewTaskProject")
+    ? navigation
+    : navigation.getParent();
+  const forkRootState = forkRootNavigation?.getState();
   useForkNewThreadStart({
     enabled:
-      navigationState?.routes[navigationState.index - 1]?.name !== "NewTaskDraft" &&
+      !isDraftThreadRoute(forkRootState?.routes[forkRootState.index - 1]) &&
       routeShareId === undefined &&
       Object.values(route.params ?? {}).every((value) => value === undefined),
     projects,
