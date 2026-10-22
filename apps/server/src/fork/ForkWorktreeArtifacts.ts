@@ -182,142 +182,140 @@ const make = Effect.gen(function* () {
             refusals.add(`${relative}: user data`);
             continue;
           }
-          const check = () =>
-            Effect.gen(function* () {
-              if (
-                folderType === "node_modules" &&
-                !(yield* candidatesFor(cwd)).some(
-                  (candidate) =>
-                    candidate.folderType === folderType && candidate.relative === relative,
-                )
+          const check = Effect.fn("ForkWorktreeArtifacts.checkArtifactPath")(function* () {
+            if (
+              folderType === "node_modules" &&
+              !(yield* candidatesFor(cwd)).some(
+                (candidate) =>
+                  candidate.folderType === folderType && candidate.relative === relative,
               )
-                return false;
-              const currentData = yield* fs.realPath(config.stateDir).pipe(
-                Effect.catchIf(
-                  (error) => error.reason._tag === "NotFound",
-                  () => Effect.succeed(path.resolve(config.stateDir)),
-                ),
-              );
-              if (inside(target, currentData) || inside(currentData, target)) return false;
-              if ((yield* fs.realPath(target)) !== target || (yield* isLink(target))) return false;
-              const ignored = yield* git.execute({
-                cwd: root,
-                args: ["check-ignore", "--quiet", "--", `${relative}/`],
-                allowNonZeroExit: true,
-                operation: "check artifact ignore",
-              });
-              if (ignored.exitCode !== 0) return false;
-              const tracked = yield* git.execute({
-                cwd: root,
-                args: ["ls-files", "-z", "--", `:(literal)${relative}/`],
-                maxOutputBytes: 16 * 1024,
-                operation: "check tracked artifact files",
-              });
-              return tracked.stdout === "" && !tracked.stdoutTruncated;
+            )
+              return false;
+            const currentData = yield* fs.realPath(config.stateDir).pipe(
+              Effect.catchIf(
+                (error) => error.reason._tag === "NotFound",
+                () => Effect.succeed(path.resolve(config.stateDir)),
+              ),
+            );
+            if (inside(target, currentData) || inside(currentData, target)) return false;
+            if ((yield* fs.realPath(target)) !== target || (yield* isLink(target))) return false;
+            const ignored = yield* git.execute({
+              cwd: root,
+              args: ["check-ignore", "--quiet", "--", `${relative}/`],
+              allowNonZeroExit: true,
+              operation: "check artifact ignore",
             });
+            if (ignored.exitCode !== 0) return false;
+            const tracked = yield* git.execute({
+              cwd: root,
+              args: ["ls-files", "-z", "--", `:(literal)${relative}/`],
+              maxOutputBytes: 16 * 1024,
+              operation: "check tracked artifact files",
+            });
+            return tracked.stdout === "" && !tracked.stdoutTruncated;
+          });
           if (!(yield* check())) {
             refusals.add(`${relative}: tracked, not ignored, or changed path`);
             continue;
           }
-          const inspect = () =>
-            Effect.gen(function* () {
-              let size = 0;
-              let rejection: string | null = null;
-              const contents = [target];
-              const payloads = new Map<string, boolean>();
-              const dependencyPayload = (file: string) =>
-                Effect.gen(function* () {
-                  const start = path.dirname(file);
-                  if (payloads.has(start)) return payloads.get(start)!;
-                  for (
-                    let parent = start;
-                    parent !== target && inside(target, parent);
-                    parent = path.dirname(parent)
-                  ) {
-                    const manifest = path.join(parent, "package.json");
-                    if (Option.isSome(yield* fs.readLink(manifest).pipe(Effect.option))) continue;
-                    if (yield* fs.exists(manifest)) {
-                      const valid = yield* fs
-                        .readFileString(manifest)
-                        .pipe(Effect.flatMap(decodeDependency), Effect.option);
-                      if (Option.isSome(valid)) {
-                        // An arbitrary source project under node_modules is not an installed payload.
-                        const segments = path.relative(target, parent).split(path.sep);
-                        const store = segments[0] === ".pnpm" ? segments[1] : undefined;
-                        const name = valid.value.name.replaceAll("/", "+");
-                        const key = `${name}@${valid.value.version}`;
-                        if (
-                          !(
-                            store === key ||
-                            store?.startsWith(`${key}_`) ||
-                            store?.startsWith(`${key}(`) ||
-                            store?.startsWith(`${name}@file+`)
-                          )
-                        )
-                          continue;
-                        payloads.set(start, true);
-                        return true;
-                      }
-                    }
-                  }
-                  payloads.set(start, false);
-                  return false;
-                });
-              while (contents.length > 0 && rejection === null) {
-                const entry = contents.pop()!;
-                if (++inspected > 2_000_000) return { size, rejection: "inspection limit reached" };
-                if (protectedName(path.basename(entry))) {
-                  rejection = "protected file or directory";
-                  break;
-                }
-                const link = yield* fs.readLink(entry).pipe(Effect.option);
-                if (Option.isSome(link)) {
-                  const resolved = yield* fs.realPath(entry).pipe(Effect.option);
-                  if (Option.isNone(resolved) || !inside(root, resolved.value))
-                    rejection = "symbolic link leaves the worktree or is unreadable";
-                  else if (path.relative(root, resolved.value).split(path.sep).some(protectedName))
-                    rejection = "symbolic link targets protected worktree data";
-                  else if (
-                    !looksGenerated(
-                      folderType,
-                      path.relative(target, entry).split(path.sep).join("/"),
-                      folderType === "node_modules",
+          const inspect = Effect.fn("ForkWorktreeArtifacts.inspectArtifact")(function* () {
+            let size = 0;
+            let rejection: string | null = null;
+            const contents = [target];
+            const payloads = new Map<string, boolean>();
+            // Runs for each file in an artifact walk, so a span per call would be too frequent.
+            const dependencyPayload = Effect.fnUntraced(function* (file: string) {
+              const start = path.dirname(file);
+              if (payloads.has(start)) return payloads.get(start)!;
+              for (
+                let parent = start;
+                parent !== target && inside(target, parent);
+                parent = path.dirname(parent)
+              ) {
+                const manifest = path.join(parent, "package.json");
+                if (Option.isSome(yield* fs.readLink(manifest).pipe(Effect.option))) continue;
+                if (yield* fs.exists(manifest)) {
+                  const valid = yield* fs
+                    .readFileString(manifest)
+                    .pipe(Effect.flatMap(decodeDependency), Effect.option);
+                  if (Option.isSome(valid)) {
+                    // An arbitrary source project under node_modules is not an installed payload.
+                    const segments = path.relative(target, parent).split(path.sep);
+                    const store = segments[0] === ".pnpm" ? segments[1] : undefined;
+                    const name = valid.value.name.replaceAll("/", "+");
+                    const key = `${name}@${valid.value.version}`;
+                    if (
+                      !(
+                        store === key ||
+                        store?.startsWith(`${key}_`) ||
+                        store?.startsWith(`${key}(`) ||
+                        store?.startsWith(`${name}@file+`)
+                      )
                     )
-                  )
-                    rejection = `unrecognized file type; example: ${path.relative(target, entry).split(path.sep).join("/")}`;
-                  continue;
+                      continue;
+                    payloads.set(start, true);
+                    return true;
+                  }
                 }
-                if ((yield* fs.realPath(entry)) !== entry) {
-                  rejection = "directory changed during inspection";
+              }
+              payloads.set(start, false);
+              return false;
+            });
+            while (contents.length > 0 && rejection === null) {
+              const entry = contents.pop()!;
+              if (++inspected > 2_000_000) return { size, rejection: "inspection limit reached" };
+              if (protectedName(path.basename(entry))) {
+                rejection = "protected file or directory";
+                break;
+              }
+              const link = yield* fs.readLink(entry).pipe(Effect.option);
+              if (Option.isSome(link)) {
+                const resolved = yield* fs.realPath(entry).pipe(Effect.option);
+                if (Option.isNone(resolved) || !inside(root, resolved.value))
+                  rejection = "symbolic link leaves the worktree or is unreadable";
+                else if (path.relative(root, resolved.value).split(path.sep).some(protectedName))
+                  rejection = "symbolic link targets protected worktree data";
+                else if (
+                  !looksGenerated(
+                    folderType,
+                    path.relative(target, entry).split(path.sep).join("/"),
+                    folderType === "node_modules",
+                  )
+                )
+                  rejection = `unrecognized file type; example: ${path.relative(target, entry).split(path.sep).join("/")}`;
+                continue;
+              }
+              if ((yield* fs.realPath(entry)) !== entry) {
+                rejection = "directory changed during inspection";
+                break;
+              }
+              const stat = yield* fs.stat(entry);
+              if (stat.type === "Directory")
+                for (const name of yield* fs.readDirectory(entry))
+                  contents.push(path.join(entry, name));
+              else if (stat.type === "File") {
+                const child = path.relative(target, entry).split(path.sep).join("/");
+                let payload = folderType === "node_modules" && (yield* dependencyPayload(entry));
+                if (
+                  !payload &&
+                  folderType === "node_modules" &&
+                  child.startsWith(".bin/") &&
+                  Number(stat.size) < 65_536
+                ) {
+                  const shim = yield* fs.readFileString(entry);
+                  payload =
+                    (shim.startsWith("#!") && /(?:basedir=|\$basedir)/i.test(shim)) ||
+                    (/^@(?:ECHO|SETLOCAL)/i.test(shim) && shim.includes("%~dp0"));
+                }
+                if (!looksGenerated(folderType, child, payload)) {
+                  rejection = `unrecognized file type; example: ${child}`;
                   break;
                 }
-                const stat = yield* fs.stat(entry);
-                if (stat.type === "Directory")
-                  for (const name of yield* fs.readDirectory(entry))
-                    contents.push(path.join(entry, name));
-                else if (stat.type === "File") {
-                  const child = path.relative(target, entry).split(path.sep).join("/");
-                  let payload = folderType === "node_modules" && (yield* dependencyPayload(entry));
-                  if (
-                    !payload &&
-                    folderType === "node_modules" &&
-                    child.startsWith(".bin/") &&
-                    Number(stat.size) < 65_536
-                  ) {
-                    const shim = yield* fs.readFileString(entry);
-                    payload =
-                      (shim.startsWith("#!") && /(?:basedir=|\$basedir)/i.test(shim)) ||
-                      (/^@(?:ECHO|SETLOCAL)/i.test(shim) && shim.includes("%~dp0"));
-                  }
-                  if (!looksGenerated(folderType, child, payload)) {
-                    rejection = `unrecognized file type; example: ${child}`;
-                    break;
-                  }
-                  size += Number(stat.size);
-                } else rejection = "special filesystem entry";
-              }
-              return { size, rejection };
-            });
+                size += Number(stat.size);
+              } else rejection = "special filesystem entry";
+            }
+            return { size, rejection };
+          });
           const first = yield* inspect();
           if (first.rejection !== null) {
             refusals.add(`kept ${relative}: ${first.rejection}`);
@@ -394,278 +392,274 @@ export const layerDefault = layer.pipe(
   Layer.provide(Processes.layer.pipe(Layer.provide(ProcessRunner.layer))),
 );
 
-export const makeSweep = (guards: {
+export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* (guards: {
   readonly hasTerminal: (cwd: string) => boolean;
   readonly terminals?: () => ReadonlyArray<TerminalSummary>;
   readonly idle: (thread: OrchestrationV2ThreadShell, now: number) => boolean;
   readonly activityAt: (thread: OrchestrationV2ThreadShell) => number;
-}) =>
-  Effect.gen(function* () {
-    const artifacts = yield* ForkWorktreeArtifacts;
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const sql = yield* SqlClient.SqlClient;
-    const projections = yield* Projections.ProjectionStoreV2;
-    const projects = yield* ProjectStore.ProjectStoreV2;
-    const settingsService = yield* Settings.ServerSettingsService;
-    const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
-    const git = yield* Git.GitVcsDriver;
-    const setups = yield* SetupTracker.WorktreeSetupTracker;
-    const canonical = (cwd: string) =>
-      fs.realPath(cwd).pipe(
-        Effect.catchIf(
-          (error) => error.reason._tag === "NotFound",
-          () => Effect.succeed(path.resolve(cwd)),
-        ),
-      );
-    return (settings: ServerSettings, now: number, entries: StorageCleanupReportEntry[]) =>
-      Effect.gen(function* () {
-        if (!settings.worktreeArtifactEviction) return;
-        const report = (entry: StorageCleanupReportEntry) => {
-          const index = entries.findIndex(
-            (existing) => existing.kind === "worktree" && existing.path === entry.path,
-          );
-          if (index < 0) {
-            entries.push(entry);
-            return;
-          }
-          const previous = entries[index]!;
-          entries[index] = {
-            ...entry,
-            outcome:
-              previous.outcome === "failed" || entry.outcome === "failed"
-                ? "failed"
-                : previous.outcome === "removed" || entry.outcome === "removed"
-                  ? "removed"
-                  : previous.outcome,
-            reason: `${previous.reason}; ${entry.reason}`,
-            projectPath: entry.projectPath ?? previous.projectPath,
-            bytes:
-              previous.bytes === null && entry.bytes === null
-                ? null
-                : (previous.bytes ?? 0) + (entry.bytes ?? 0),
-          };
-        };
-        const rows = yield* sql<{
-          threadId: string;
-          worktreePath: string;
-        }>`SELECT thread_id AS "threadId", json_extract(payload_json, '$.worktreePath') AS "worktreePath" FROM orchestration_v2_projection_threads WHERE json_extract(payload_json, '$.worktreePath') IS NOT NULL`;
-        const normalized = yield* Effect.forEach(rows, (row) =>
-          canonical(row.worktreePath).pipe(Effect.map((key) => ({ ...row, key }))),
+}) {
+  const artifacts = yield* ForkWorktreeArtifacts;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const sql = yield* SqlClient.SqlClient;
+  const projections = yield* Projections.ProjectionStoreV2;
+  const projects = yield* ProjectStore.ProjectStoreV2;
+  const settingsService = yield* Settings.ServerSettingsService;
+  const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
+  const git = yield* Git.GitVcsDriver;
+  const setups = yield* SetupTracker.WorktreeSetupTracker;
+  const canonical = (cwd: string) =>
+    fs.realPath(cwd).pipe(
+      Effect.catchIf(
+        (error) => error.reason._tag === "NotFound",
+        () => Effect.succeed(path.resolve(cwd)),
+      ),
+    );
+  return (settings: ServerSettings, now: number, entries: StorageCleanupReportEntry[]) =>
+    Effect.gen(function* () {
+      if (!settings.worktreeArtifactEviction) return;
+      const report = (entry: StorageCleanupReportEntry) => {
+        const index = entries.findIndex(
+          (existing) => existing.kind === "worktree" && existing.path === entry.path,
         );
-        const groups = Map.groupBy(normalized, (row) => row.key);
-        for (const [canonicalCwd, group] of groups) {
-          const cwd = path.resolve(group[0]!.worktreePath);
-          const thread = yield* projections.getThreadShell(
-            group[0]!.threadId as OrchestrationV2ThreadShell["id"],
+        if (index < 0) {
+          entries.push(entry);
+          return;
+        }
+        const previous = entries[index]!;
+        entries[index] = {
+          ...entry,
+          outcome:
+            previous.outcome === "failed" || entry.outcome === "failed"
+              ? "failed"
+              : previous.outcome === "removed" || entry.outcome === "removed"
+                ? "removed"
+                : previous.outcome,
+          reason: `${previous.reason}; ${entry.reason}`,
+          projectPath: entry.projectPath ?? previous.projectPath,
+          bytes:
+            previous.bytes === null && entry.bytes === null
+              ? null
+              : (previous.bytes ?? 0) + (entry.bytes ?? 0),
+        };
+      };
+      const rows = yield* sql<{
+        threadId: string;
+        worktreePath: string;
+      }>`SELECT thread_id AS "threadId", json_extract(payload_json, '$.worktreePath') AS "worktreePath" FROM orchestration_v2_projection_threads WHERE json_extract(payload_json, '$.worktreePath') IS NOT NULL`;
+      const normalized = yield* Effect.forEach(rows, (row) =>
+        canonical(row.worktreePath).pipe(Effect.map((key) => ({ ...row, key }))),
+      );
+      const groups = Map.groupBy(normalized, (row) => row.key);
+      for (const [canonicalCwd, group] of groups) {
+        const cwd = path.resolve(group[0]!.worktreePath);
+        const thread = yield* projections.getThreadShell(
+          group[0]!.threadId as OrchestrationV2ThreadShell["id"],
+        );
+        const project =
+          thread === null
+            ? Option.none()
+            : yield* projects.get(thread.projectId).pipe(Effect.orElseSucceed(() => Option.none()));
+        const entry: StorageCleanupReportEntry = {
+          kind: "worktree",
+          outcome: "kept",
+          reason: "",
+          path: cwd,
+          projectPath: Option.isSome(project) ? project.value.workspaceRoot : null,
+          threadId: thread?.id ?? null,
+          threadTitle: thread?.title ?? null,
+          bytes: null,
+          files: null,
+        };
+        const keep = (reason: string) => report({ ...entry, reason: `Artifacts kept: ${reason}` });
+        if (group.length !== 1) {
+          keep(`shared by ${group.length} threads`);
+          continue;
+        }
+        if (thread === null) {
+          keep("thread is unavailable");
+          continue;
+        }
+        const workspaceBlock = Effect.gen(function* () {
+          if (!(yield* fs.exists(cwd))) return "workspace folder is missing";
+          const allProjects = yield* projects.listShells();
+          for (const project of allProjects) {
+            const real = yield* canonical(project.workspaceRoot);
+            const relative = path.relative(canonicalCwd, real);
+            if (
+              relative === "" ||
+              (!path.isAbsolute(relative) &&
+                relative !== ".." &&
+                !relative.startsWith(`..${path.sep}`))
+            )
+              return "contains a project checkout";
+          }
+          const project = yield* projects.get(thread.projectId);
+          if (
+            Option.isNone(project) ||
+            !setupProjectScript(
+              resolveProjectScripts(yield* settingsService.getSettings, {
+                ...project.value,
+                id: project.value.projectId,
+              }),
+            )
+          )
+            return "no project setup script is configured";
+          const [expected, actual, branch] = yield* Effect.all([
+            git.execute({
+              cwd: project.value.workspaceRoot,
+              args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+              operation: "inspect artifact repository",
+            }),
+            git.execute({
+              cwd,
+              args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+              operation: "inspect artifact worktree",
+            }),
+            git.execute({
+              cwd,
+              args: ["symbolic-ref", "HEAD"],
+              operation: "inspect artifact branch",
+            }),
+          ]);
+          if (
+            (yield* canonical(expected.stdout.trim())) !==
+              (yield* canonical(actual.stdout.trim())) ||
+            branch.stdout.trim() !== `refs/heads/${thread.branch}`
+          )
+            return "repository or branch changed";
+          return null;
+        });
+        const blocked = Effect.gen(function* () {
+          const checkNow = Math.max(now, yield* Clock.currentTimeMillis);
+          const currentSettings = yield* settingsService.getSettings;
+          if (!currentSettings.worktreeArtifactEviction) return "setting was switched off";
+          const current = yield* projections.getThreadShell(thread.id);
+          if (
+            current === null ||
+            path.resolve(current.worktreePath ?? "") !== cwd ||
+            current.branch !== thread.branch
+          )
+            return "thread workspace changed";
+          if (!guards.idle(current, checkNow))
+            return "thread is running or has queued or pending work";
+          if ((yield* setups.get(current.id))?.phase === "running")
+            return "T3-known setup is running for this worktree";
+          if (guards.hasTerminal(cwd) || guards.hasTerminal(canonicalCwd)) return "open terminal";
+          for (const terminal of guards.terminals?.() ?? []) {
+            if (terminal.status !== "running" && terminal.status !== "starting") continue;
+            if (
+              terminal.worktreePath !== null &&
+              (yield* canonical(terminal.worktreePath)) === canonicalCwd
+            )
+              return "T3 terminal metadata names this worktree";
+            const resolved = yield* fs.realPath(terminal.cwd).pipe(Effect.option);
+            if (Option.isNone(resolved)) return "terminal working directory could not be read";
+            const relative = path.relative(canonicalCwd, resolved.value);
+            if (
+              resolved.value === path.dirname(canonicalCwd) ||
+              relative === "" ||
+              (!path.isAbsolute(relative) &&
+                relative !== ".." &&
+                !relative.startsWith(`..${path.sep}`))
+            )
+              return "open terminal in worktree or container";
+          }
+          if (
+            current.settledAt === null &&
+            guards.activityAt(current) >
+              checkNow - currentSettings.worktreeArtifactEvictionDays * DAY_MS
+          )
+            return `inactive for less than ${currentSettings.worktreeArtifactEvictionDays} days`;
+          if (
+            current.settledAt !== null &&
+            checkNow -
+              Math.max(DateTime.toEpochMillis(current.settledAt), guards.activityAt(current)) <
+              60_000
+          )
+            return "settled moments ago";
+          const workspaceReason = yield* workspaceBlock;
+          if (workspaceReason !== null) return workspaceReason;
+          const ownership = yield* sql<{
+            worktreePath: string;
+          }>`SELECT json_extract(payload_json, '$.worktreePath') AS "worktreePath" FROM orchestration_v2_projection_threads WHERE json_extract(payload_json, '$.worktreePath') IS NOT NULL`;
+          const owners = yield* Effect.filter(ownership, (owner) =>
+            canonical(owner.worktreePath).pipe(Effect.map((key) => key === canonicalCwd)),
           );
-          const project =
-            thread === null
-              ? Option.none()
-              : yield* projects
-                  .get(thread.projectId)
-                  .pipe(Effect.orElseSucceed(() => Option.none()));
-          const entry: StorageCleanupReportEntry = {
-            kind: "worktree",
-            outcome: "kept",
-            reason: "",
-            path: cwd,
-            projectPath: Option.isSome(project) ? project.value.workspaceRoot : null,
-            threadId: thread?.id ?? null,
-            threadTitle: thread?.title ?? null,
-            bytes: null,
-            files: null,
-          };
-          const keep = (reason: string) =>
-            report({ ...entry, reason: `Artifacts kept: ${reason}` });
-          if (group.length !== 1) {
-            keep(`shared by ${group.length} threads`);
-            continue;
-          }
-          if (thread === null) {
-            keep("thread is unavailable");
-            continue;
-          }
-          const workspaceBlock = Effect.gen(function* () {
-            if (!(yield* fs.exists(cwd))) return "workspace folder is missing";
-            const allProjects = yield* projects.listShells();
-            for (const project of allProjects) {
-              const real = yield* canonical(project.workspaceRoot);
-              const relative = path.relative(canonicalCwd, real);
-              if (
-                relative === "" ||
-                (!path.isAbsolute(relative) &&
-                  relative !== ".." &&
-                  !relative.startsWith(`..${path.sep}`))
-              )
-                return "contains a project checkout";
-            }
-            const project = yield* projects.get(thread.projectId);
-            if (
-              Option.isNone(project) ||
-              !setupProjectScript(
-                resolveProjectScripts(yield* settingsService.getSettings, {
-                  ...project.value,
-                  id: project.value.projectId,
-                }),
-              )
-            )
-              return "no project setup script is configured";
-            const [expected, actual, branch] = yield* Effect.all([
-              git.execute({
-                cwd: project.value.workspaceRoot,
-                args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-                operation: "inspect artifact repository",
-              }),
-              git.execute({
-                cwd,
-                args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-                operation: "inspect artifact worktree",
-              }),
-              git.execute({
-                cwd,
-                args: ["symbolic-ref", "HEAD"],
-                operation: "inspect artifact branch",
-              }),
-            ]);
-            if (
-              (yield* canonical(expected.stdout.trim())) !==
-                (yield* canonical(actual.stdout.trim())) ||
-              branch.stdout.trim() !== `refs/heads/${thread.branch}`
-            )
-              return "repository or branch changed";
-            return null;
-          });
-          const blocked = Effect.gen(function* () {
-            const checkNow = Math.max(now, yield* Clock.currentTimeMillis);
-            const currentSettings = yield* settingsService.getSettings;
-            if (!currentSettings.worktreeArtifactEviction) return "setting was switched off";
-            const current = yield* projections.getThreadShell(thread.id);
-            if (
-              current === null ||
-              path.resolve(current.worktreePath ?? "") !== cwd ||
-              current.branch !== thread.branch
-            )
-              return "thread workspace changed";
-            if (!guards.idle(current, checkNow))
-              return "thread is running or has queued or pending work";
-            if ((yield* setups.get(current.id))?.phase === "running")
-              return "T3-known setup is running for this worktree";
-            if (guards.hasTerminal(cwd) || guards.hasTerminal(canonicalCwd)) return "open terminal";
-            for (const terminal of guards.terminals?.() ?? []) {
-              if (terminal.status !== "running" && terminal.status !== "starting") continue;
-              if (
-                terminal.worktreePath !== null &&
-                (yield* canonical(terminal.worktreePath)) === canonicalCwd
-              )
-                return "T3 terminal metadata names this worktree";
-              const resolved = yield* fs.realPath(terminal.cwd).pipe(Effect.option);
-              if (Option.isNone(resolved)) return "terminal working directory could not be read";
-              const relative = path.relative(canonicalCwd, resolved.value);
-              if (
-                resolved.value === path.dirname(canonicalCwd) ||
-                relative === "" ||
-                (!path.isAbsolute(relative) &&
-                  relative !== ".." &&
-                  !relative.startsWith(`..${path.sep}`))
-              )
-                return "open terminal in worktree or container";
-            }
-            if (
-              current.settledAt === null &&
-              guards.activityAt(current) >
-                checkNow - currentSettings.worktreeArtifactEvictionDays * DAY_MS
-            )
-              return `inactive for less than ${currentSettings.worktreeArtifactEvictionDays} days`;
-            if (
-              current.settledAt !== null &&
-              checkNow -
-                Math.max(DateTime.toEpochMillis(current.settledAt), guards.activityAt(current)) <
-                60_000
-            )
-              return "settled moments ago";
-            const workspaceReason = yield* workspaceBlock;
-            if (workspaceReason !== null) return workspaceReason;
-            const ownership = yield* sql<{
-              worktreePath: string;
-            }>`SELECT json_extract(payload_json, '$.worktreePath') AS "worktreePath" FROM orchestration_v2_projection_threads WHERE json_extract(payload_json, '$.worktreePath') IS NOT NULL`;
-            const owners = yield* Effect.filter(ownership, (owner) =>
-              canonical(owner.worktreePath).pipe(Effect.map((key) => key === canonicalCwd)),
-            );
-            if (owners.length !== 1) return "worktree ownership changed";
-            const pending =
-              yield* sql`SELECT 1 FROM orchestration_v2_effect_outbox WHERE thread_id = ${thread.id} AND status NOT IN ('succeeded', 'cancelled') LIMIT 1`;
-            if (pending.length > 0) return "thread has pending work";
-            const live = yield* sql<{
-              id: string;
-              cwd: string;
-              worktreePath: string | null;
-            }>`SELECT s.provider_session_id AS "id", json_extract(s.payload_json, '$.cwd') AS "cwd",
+          if (owners.length !== 1) return "worktree ownership changed";
+          const pending =
+            yield* sql`SELECT 1 FROM orchestration_v2_effect_outbox WHERE thread_id = ${thread.id} AND status NOT IN ('succeeded', 'cancelled') LIMIT 1`;
+          if (pending.length > 0) return "thread has pending work";
+          const live = yield* sql<{
+            id: string;
+            cwd: string;
+            worktreePath: string | null;
+          }>`SELECT s.provider_session_id AS "id", json_extract(s.payload_json, '$.cwd') AS "cwd",
                 json_extract(t.payload_json, '$.worktreePath') AS "worktreePath"
               FROM orchestration_v2_projection_provider_sessions s
               LEFT JOIN orchestration_v2_projection_provider_threads p ON p.provider_session_id = s.provider_session_id
               LEFT JOIN orchestration_v2_projection_threads t ON t.thread_id = COALESCE(p.thread_id, s.thread_id)
               WHERE s.status != 'stopped'`;
-            for (const session of live) {
-              if (!(yield* sessions.isLive(session.id as Parameters<typeof sessions.isLive>[0])))
-                continue;
-              if (
-                session.worktreePath != null &&
-                (yield* canonical(session.worktreePath)) === canonicalCwd
-              )
-                return "T3 provider metadata names this worktree";
-              const resolved = yield* fs.realPath(session.cwd).pipe(Effect.option);
-              if (Option.isNone(resolved)) return "provider working directory could not be read";
-              const relative = path.relative(canonicalCwd, resolved.value);
-              if (
-                resolved.value === path.dirname(canonicalCwd) ||
-                relative === "" ||
-                (!path.isAbsolute(relative) &&
-                  relative !== ".." &&
-                  !relative.startsWith(`..${path.sep}`))
-              )
-                return "provider session is still open";
-            }
-            return null;
-          }).pipe(Effect.orElseSucceed(() => "thread state could not be checked"));
-          yield* withWorkspaceLease(
-            cwd,
-            Effect.gen(function* () {
-              const reason = yield* blocked;
-              if (reason !== null) return keep(reason);
-              const result = yield* artifacts.evict({ cwd, blocked });
-              report({
-                ...entry,
-                outcome: result.failed ? "failed" : result.directories > 0 ? "removed" : "kept",
-                reason: result.directories > 0 ? result.reason : `Artifacts kept: ${result.reason}`,
-                // Logical size is not physical reclamation, especially for pnpm APFS clones.
-                bytes: null,
-                artifactBreakdown: result.artifactBreakdown,
-              });
-            }).pipe(
-              Effect.catch(() =>
-                Effect.sync(() => {
-                  keep("inspection failed");
-                }),
-              ),
-            ),
-          );
-        }
-      }).pipe(
-        Effect.catch(() =>
-          Effect.sync(() => {
-            entries.push({
-              kind: "worktree",
-              outcome: "failed",
-              reason: "Artifact cleanup could not inspect thread ownership",
-              path: null,
-              projectPath: null,
-              threadId: null,
-              threadTitle: null,
+          for (const session of live) {
+            if (!(yield* sessions.isLive(session.id as Parameters<typeof sessions.isLive>[0])))
+              continue;
+            if (
+              session.worktreePath != null &&
+              (yield* canonical(session.worktreePath)) === canonicalCwd
+            )
+              return "T3 provider metadata names this worktree";
+            const resolved = yield* fs.realPath(session.cwd).pipe(Effect.option);
+            if (Option.isNone(resolved)) return "provider working directory could not be read";
+            const relative = path.relative(canonicalCwd, resolved.value);
+            if (
+              resolved.value === path.dirname(canonicalCwd) ||
+              relative === "" ||
+              (!path.isAbsolute(relative) &&
+                relative !== ".." &&
+                !relative.startsWith(`..${path.sep}`))
+            )
+              return "provider session is still open";
+          }
+          return null;
+        }).pipe(Effect.orElseSucceed(() => "thread state could not be checked"));
+        yield* withWorkspaceLease(
+          cwd,
+          Effect.gen(function* () {
+            const reason = yield* blocked;
+            if (reason !== null) return keep(reason);
+            const result = yield* artifacts.evict({ cwd, blocked });
+            report({
+              ...entry,
+              outcome: result.failed ? "failed" : result.directories > 0 ? "removed" : "kept",
+              reason: result.directories > 0 ? result.reason : `Artifacts kept: ${result.reason}`,
+              // Logical size is not physical reclamation, especially for pnpm APFS clones.
               bytes: null,
-              files: null,
+              artifactBreakdown: result.artifactBreakdown,
             });
-          }),
-        ),
-      );
-  });
+          }).pipe(
+            Effect.catch(() =>
+              Effect.sync(() => {
+                keep("inspection failed");
+              }),
+            ),
+          ),
+        );
+      }
+    }).pipe(
+      Effect.catch(() =>
+        Effect.sync(() => {
+          entries.push({
+            kind: "worktree",
+            outcome: "failed",
+            reason: "Artifact cleanup could not inspect thread ownership",
+            path: null,
+            projectPath: null,
+            threadId: null,
+            threadTitle: null,
+            bytes: null,
+            files: null,
+          });
+        }),
+      ),
+    );
+});

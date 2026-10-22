@@ -65,8 +65,8 @@ const make = Effect.gen(function* () {
   const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
   const workspaceDependencies = yield* makeWorkspaceDependencies;
 
-  const prepare: ForkWorktreeResume["Service"]["prepare"] = (input) =>
-    Effect.gen(function* () {
+  const prepare: ForkWorktreeResume["Service"]["prepare"] = Effect.fn("ForkWorktreeResume.prepare")(
+    function* (input: Parameters<ForkWorktreeResume["Service"]["prepare"]>[0]) {
       const { thread, run } = input;
       const cwd = thread.worktreePath;
       if (cwd === null) return;
@@ -152,30 +152,29 @@ const make = Effect.gen(function* () {
       if (branch.exitCode !== 0 && (exists || branch.exitCode !== 1))
         return yield* fail("The saved local branch does not exist or cannot be read.");
       let recreationNotice = "";
-      const recreateBranch = () =>
-        Effect.gen(function* () {
-          if (branch.exitCode === 0) return;
-          yield* exec(["check-ref-format", "--branch", thread.branch!]);
-          const remote = yield* exec(["ls-remote", "--symref", "origin", "HEAD"]);
-          const defaultBranch = remote.stdout.match(/^ref: refs\/heads\/([^\r\n]+)\tHEAD$/m)?.[1];
-          if (!defaultBranch)
-            return yield* fail(
-              "The origin default branch could not be determined; no branch was created.",
-            );
-          yield* exec([
-            "fetch",
-            "origin",
-            `refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
-          ]);
-          // No force: a branch created concurrently must be left untouched.
-          yield* exec([
-            "branch",
-            "--no-track",
-            thread.branch!,
-            `refs/remotes/origin/${defaultBranch}`,
-          ]);
-          recreationNotice = `The branch was gone, so this worktree was recreated from ${defaultBranch}. Earlier uncommitted work is not in it.`;
-        });
+      const recreateBranch = Effect.fn("ForkWorktreeResume.recreateBranch")(function* () {
+        if (branch.exitCode === 0) return;
+        yield* exec(["check-ref-format", "--branch", thread.branch!]);
+        const remote = yield* exec(["ls-remote", "--symref", "origin", "HEAD"]);
+        const defaultBranch = remote.stdout.match(/^ref: refs\/heads\/([^\r\n]+)\tHEAD$/m)?.[1];
+        if (!defaultBranch)
+          return yield* fail(
+            "The origin default branch could not be determined; no branch was created.",
+          );
+        yield* exec([
+          "fetch",
+          "origin",
+          `refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+        ]);
+        // No force: a branch created concurrently must be left untouched.
+        yield* exec([
+          "branch",
+          "--no-track",
+          thread.branch!,
+          `refs/remotes/origin/${defaultBranch}`,
+        ]);
+        recreationNotice = `The branch was gone, so this worktree was recreated from ${defaultBranch}. Earlier uncommitted work is not in it.`;
+      });
       if (exists) {
         const [actualCommon, actualBranch, top] = yield* Effect.all([
           exec(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd),
@@ -267,54 +266,56 @@ const make = Effect.gen(function* () {
       if (!needsSetup) return;
       yield* marker.mark;
       const startedAt = yield* DateTime.now;
-      const activity = (status: "running" | "completed" | "failed", output: string) =>
-        Effect.gen(function* () {
-          const now = yield* DateTime.now;
-          const item: OrchestrationV2TurnItem = {
-            id: ids.derive.runSignalTurnItem({ runId: run.id, signal: "fork-worktree-restore" }),
-            threadId: thread.id,
-            runId: run.id,
-            nodeId: run.rootNodeId,
-            providerThreadId: input.providerThreadId,
-            providerTurnId: null,
-            nativeItemRef: null,
-            parentItemId: null,
-            ordinal:
-              Math.max(
-                0,
-                ...input.turnItems
-                  .filter((item) => item.runId === run.id)
-                  .map((item) => item.ordinal),
-              ) + 1,
-            type: "command_execution",
-            status,
-            title: exists ? "Restoring worktree dependencies" : "Restored missing worktree",
-            input: "Project setup",
-            output: recreationNotice ? `${recreationNotice}\n${output}` : output,
-            ...(status === "running" ? {} : { exitCode: status === "completed" ? 0 : 1 }),
-            startedAt,
-            completedAt: status === "running" ? null : now,
-            updatedAt: now,
-          };
-          yield* sink.writeIfRunCurrent({
-            threadId: thread.id,
-            runId: run.id,
-            activeAttemptId: input.attemptId,
-            expectedStatus: "starting",
-            events: [
-              {
-                id: yield* ids.allocate.event({ threadId: thread.id }),
-                threadId: thread.id,
-                runId: run.id,
-                ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
-                providerInstanceId: run.providerInstanceId,
-                occurredAt: now,
-                type: "turn-item.updated",
-                payload: item,
-              },
-            ],
-          });
+      const activity = Effect.fn("ForkWorktreeResume.activity")(function* (
+        status: "running" | "completed" | "failed",
+        output: string,
+      ) {
+        const now = yield* DateTime.now;
+        const item: OrchestrationV2TurnItem = {
+          id: ids.derive.runSignalTurnItem({ runId: run.id, signal: "fork-worktree-restore" }),
+          threadId: thread.id,
+          runId: run.id,
+          nodeId: run.rootNodeId,
+          providerThreadId: input.providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal:
+            Math.max(
+              0,
+              ...input.turnItems
+                .filter((item) => item.runId === run.id)
+                .map((item) => item.ordinal),
+            ) + 1,
+          type: "command_execution",
+          status,
+          title: exists ? "Restoring worktree dependencies" : "Restored missing worktree",
+          input: "Project setup",
+          output: recreationNotice ? `${recreationNotice}\n${output}` : output,
+          ...(status === "running" ? {} : { exitCode: status === "completed" ? 0 : 1 }),
+          startedAt,
+          completedAt: status === "running" ? null : now,
+          updatedAt: now,
+        };
+        yield* sink.writeIfRunCurrent({
+          threadId: thread.id,
+          runId: run.id,
+          activeAttemptId: input.attemptId,
+          expectedStatus: "starting",
+          events: [
+            {
+              id: yield* ids.allocate.event({ threadId: thread.id }),
+              threadId: thread.id,
+              runId: run.id,
+              ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+              providerInstanceId: run.providerInstanceId,
+              occurredAt: now,
+              type: "turn-item.updated",
+              payload: item,
+            },
+          ],
         });
+      });
       yield* activity("running", "Running project setup before the agent starts.");
       yield* Effect.gen(function* () {
         const result = yield* setup.runForThread({
@@ -353,18 +354,21 @@ const make = Effect.gen(function* () {
           ),
         ),
       );
-    }).pipe(
-      Effect.mapError((cause) =>
-        isWorktreeResumeError(cause)
-          ? cause
-          : new WorktreeResumeError({
-              cwd: input.thread.worktreePath ?? "",
-              reason:
-                "The worktree could not be prepared. Existing branches were not reset and existing checkout files were not replaced.",
-              cause,
-            }),
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.mapError((cause) =>
+          isWorktreeResumeError(cause)
+            ? cause
+            : new WorktreeResumeError({
+                cwd: input.thread.worktreePath ?? "",
+                reason:
+                  "The worktree could not be prepared. Existing branches were not reset and existing checkout files were not replaced.",
+                cause,
+              }),
+        ),
       ),
-    );
+  );
   return ForkWorktreeResume.of({ prepare });
 });
 

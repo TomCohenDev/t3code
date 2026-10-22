@@ -46,15 +46,16 @@ export const makeWorkspaceDependencies = Effect.gen(function* () {
     Effect.gen(function* () {
       const root = yield* fs.realPath(cwd);
       const folders = new Set<string>();
-      const packageExists = (directory: string) =>
-        Effect.gen(function* () {
-          const file = path.join(directory, "package.json");
-          if (Option.isSome(yield* fs.readLink(file).pipe(Effect.option)))
-            return yield* new WorkspaceDependencyInspectionError({ cwd });
-          if (!(yield* fs.exists(file))) return false;
-          yield* decodePackage(yield* fs.readFileString(file));
-          return true;
-        });
+      const packageExists = Effect.fn("ForkWorkspaceDependencies.packageExists")(function* (
+        directory: string,
+      ) {
+        const file = path.join(directory, "package.json");
+        if (Option.isSome(yield* fs.readLink(file).pipe(Effect.option)))
+          return yield* new WorkspaceDependencyInspectionError({ cwd });
+        if (!(yield* fs.exists(file))) return false;
+        yield* decodePackage(yield* fs.readFileString(file));
+        return true;
+      });
       if (yield* packageExists(root)) folders.add("node_modules");
       const manifest = path.join(root, "pnpm-workspace.yaml");
       if (Option.isSome(yield* fs.readLink(manifest).pipe(Effect.option)))
