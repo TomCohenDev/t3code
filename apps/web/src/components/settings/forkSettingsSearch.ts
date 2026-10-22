@@ -78,10 +78,10 @@ export const APPEARANCE_ITEMS = [
     environmentOnly: true,
   },
   {
-    id: "mobile-sidebar-groups",
-    title: "Sidebar groups on mobile",
+    id: "mobile-sidebar-tabs",
+    title: "Sidebar tabs on mobile",
     to: "/settings/appearance",
-    searchTerms: ["mobile phone android app sidebar groups tabs thread list home"],
+    searchTerms: ["mobile phone android app sidebar tabs groups thread list home"],
     environmentOnly: true,
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
@@ -160,7 +160,7 @@ export const BEHAVIOR_ITEMS = [
     id: "keyboard-focus-levels",
     title: "Keyboard focus levels",
     to: "/settings/general",
-    searchTerms: ["keyboard escape arrows focus composer timeline sidebar cursor cite groups"],
+    searchTerms: ["keyboard escape arrows focus composer timeline sidebar cursor cite tabs"],
   },
   {
     id: "focus-level-highlight",
@@ -195,16 +195,16 @@ export const BEHAVIOR_ITEMS = [
     searchTerms: ["snooze menu presets choices later tonight tomorrow next week remind wake"],
   },
   {
-    id: "sidebar-groups",
-    title: "Sidebar groups",
+    id: "sidebar-tabs",
+    title: "Sidebar tabs",
     to: "/settings/general",
     searchTerms: ["tabs folders groups organize threads drag rules monitors views sidebar"],
   },
   {
-    id: "sidebar-group-single-thread",
+    id: "sidebar-tab-single-thread",
     title: "Single-thread tabs",
     to: "/settings/general",
-    searchTerms: ["sidebar group tab one thread open directly"],
+    searchTerms: ["sidebar tab one thread open directly"],
   },
   {
     id: "pull-request-filter-chips",

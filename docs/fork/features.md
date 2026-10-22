@@ -325,30 +325,31 @@ The model applies to runs that launch a new thread. A run that posts into a boun
 
 ## Threads
 
-### Sidebar groups
+### Sidebar tabs
 
-Thread groups show as tabs under the sidebar search. A thread lives in one group, so the groups act like folders.
+Tabs under the sidebar search hold threads. A thread lives in one tab, so the tabs act like folders.
 
-- **Setting:** client settings `sidebarGroupsEnabled` (off by default) and `sidebarGroupSingleThreadOpens` (off by default). Settings > General > "Sidebar groups" and "Single-thread tabs". The groups are the server setting `sidebarGroups` of the primary server. The machine map syncs them to every machine (MM-411). The mobile app shows the tabs while the server setting `mobileSidebarGroups` is on (off by default): Settings > Appearance > Mobile app, or Fork in the mobile Settings.
-- **Works on:** web, desktop, mobile. On mobile the tabs show above the thread list. Tap a tab to show its threads. Long-press a tab to edit, move or delete it, and tap + to make a group. Long-press a thread and pick "Move to tab". Settings > Fork > Sidebar groups lists the groups too.
+- **Setting:** client settings `sidebarTabsEnabled` (off by default) and `sidebarTabSingleThreadOpens` (off by default). Settings > General > "Sidebar tabs" and "Single-thread tabs". The tabs are the server setting `sidebarTabs` of the primary server. The machine map syncs them to every machine (MM-411). The mobile app shows the tabs while the server setting `mobileSidebarTabs` is on (off by default): Settings > Appearance > Mobile app, or Fork in the mobile Settings.
+- **Works on:** web, desktop, mobile. On mobile the tabs show above the thread list. Tap a tab to show its threads. Long-press a tab to edit, move or delete it, and tap + to make a tab. Long-press a thread and pick "Assign to tab". Settings > Fork > Sidebar tabs lists the tabs too.
 - **Use it:**
-  - The first tab, "Threads", holds every thread that is in no group. It can be renamed, and it can show all threads.
-  - Drag a thread onto a tab to move it into that group. During a drag, a + shows at the end of the bar. A drop on it makes a new group.
-  - Right-click the bar outside a tab and pick "New group" to make an empty group. Right-click a tab, or click the sliders button of the open tab, to rename it, pick its icon, edit its rules, move it or delete it.
-  - Rules put threads in a group. A thread matches a group when it matches every rule. Rules compare the repository, the repository owner, the status, the provider, the creator, the background work and the title. A repository rule matches on every machine.
-  - A thread lives in the group that you dragged it into. Otherwise it lives in the first group, from left to right, whose rules match. Otherwise it lives in "Threads".
-  - A rule on "Group" makes a view: a tab that shows the threads of other groups. Pick Group > "Any group" for an "All" tab.
-  - A tab shows the status of its most urgent thread. Settled and snoozed threads stay in the Settled and Snoozed shelves of their group.
-  - With "Single-thread tabs", a group with one thread shows that thread on its tab, and a click opens it.
+  - The first tab, "Threads", holds every thread that is in no other tab. It can be renamed, and it can show all threads.
+  - Drag a thread onto a tab to assign it to that tab. During a drag, a + shows at the end of the bar. A drop on it makes a new tab.
+  - Right-click the bar outside a tab and pick "New tab" to make an empty tab. Right-click a tab, or click the sliders button of the open tab, to rename it, pick its icon, edit its rules, move it or delete it.
+  - Rules put threads in a tab. A thread matches a tab when it matches every rule. Rules compare the repository, the repository owner, the status, the provider, the creator, the background work and the title. A repository rule matches on every machine.
+  - A thread lives in the tab that you assigned it to. Otherwise it lives in the first tab, from left to right, whose rules match. Otherwise it lives in "Threads".
+  - A rule on "Tab" makes a view: a tab that shows the threads of other tabs. Pick Tab > "Any tab" for an "All" tab.
+  - A tab shows the status of its most urgent thread. Settled and snoozed threads stay in the Settled and Snoozed shelves of their tab.
+  - With "Single-thread tabs", a tab with one thread shows that thread on its tab, and a click opens it.
   - Each tab has an icon, or a dot by default. Turn off "Show the name on the tab" to show the icon only.
   - Tabs that do not fit go to a "+N" menu. Drag a tab to move it; the first tab stays first.
   - Search covers every tab. A thread that you open from a link or a notification shows its tab.
 - **Limits:**
   - On mobile, "Single-thread tabs" does not apply, and a thread link does not switch to the tab of the thread. Revisit if users open threads from links on the phone often.
-  - The hosted app at app.t3.codes has no primary server to keep the groups, so it shows no tabs. Revisit if hosted clients get a place for shared settings.
-  - When two devices change groups at the same moment, the last change wins. Revisit if groups get lost in practice.
+  - The hosted app at app.t3.codes has no primary server to keep the tabs, so it shows no tabs. Revisit if hosted clients get a place for shared settings.
+  - When two devices change tabs at the same moment, the last change wins. Revisit if tabs get lost in practice.
   - A machine without the map role `edit`, or off the map, keeps a change on its own server only.
-  - Applies only after upstream thread groups merge ([pingdotgg/t3code#15988](https://github.com/pingdotgg/t3code/pull/15988) "feat: related threads stay together as a group"): a nested thread always shows in the tab of its top thread, so a nested group never splits across tabs. This holds for views too. A drag or "Move to tab" on a nested thread moves its top thread. Fork Sync resolves that merge with this rule.
+  - Tabs were called groups before. A server moves `sidebarGroups` and `mobileSidebarGroups` in `settings.json` to the new keys once at start, and renames the old `sidebar.group.*`, `sidebar.previousGroup` and `sidebar.nextGroup` keybindings. A client moves `sidebarGroupsEnabled` and `sidebarGroupSingleThreadOpens` when it loads. The portal moves the shared values and overrides of the map once. A machine on an older version keeps the old keys, so it does not sync tabs with a machine on a newer version until both update. The open tab resets to "Threads" once.
+  - Applies only after upstream thread groups merge ([pingdotgg/t3code#15988](https://github.com/pingdotgg/t3code/pull/15988) "feat: related threads stay together as a group"): a nested thread always shows in the tab of its top thread, so a nested group never splits across tabs. This holds for views too. A drag or "Assign to tab" on a nested thread assigns its top thread. Fork Sync resolves that merge with this rule.
 
 ### Snooze quick options
 
@@ -502,13 +503,13 @@ Global keys that show and hide the desktop app.
 
 ### Keyboard focus levels
 
-Escape moves focus from the composer to the timeline, then to the sidebar. Arrow keys move a cursor there to open threads, switch groups and cite parts of messages. Inside a message, the cursor also stops on links, section headers and buttons, and Enter clicks them.
+Escape moves focus from the composer to the timeline, then to the sidebar. Arrow keys move a cursor there to open threads, switch tabs and cite parts of messages. Inside a message, the cursor also stops on links, section headers and buttons, and Enter clicks them.
 
 - **Setting:** client settings `keyboardFocusLevels` (off by default) and `focusLevelHighlight` (on by default). Settings > General > "Keyboard focus levels" and "Focus highlight". Change the keys in Settings > Keybindings (`focus.*`, `sidebar.*` and `timeline.*` commands).
 - **Works on:** web, desktop.
 - Keys for thread actions, approvals and right panel tabs, and `mod+,` on web, work with the setting off.
 - `focusLevelHighlight` outlines the area that takes focus from a key.
-- **Limits:** the setting is off by default because it changes existing keys. Escape in the timeline and the right panel moves focus. A click into the timeline makes Up and Down move the cursor instead of scrolling. `mod+f` in the sidebar focuses sidebar search. Letters typed in the sidebar no longer go to the composer, and digits switch groups.
+- **Limits:** the setting is off by default because it changes existing keys. Escape in the timeline and the right panel moves focus. A click into the timeline makes Up and Down move the cursor instead of scrolling. `mod+f` in the sidebar focuses sidebar search. Letters typed in the sidebar no longer go to the composer, and digits switch tabs.
 
 ### Shortcuts in tooltips
 
@@ -517,7 +518,7 @@ Control tooltips show the keys of the control as chips, such as "Stash ⌘S", fo
 - **Setting:** client settings `tooltipShortcuts` (on by default) and `tooltipShortcutLimit` (default 4, 1 to 9). Settings > General > "Shortcuts in tooltips" and "Keys per tooltip".
 - **Works on:** web, desktop.
 - Your own keys come first. More keys than the limit show as "+N".
-- **Limits:** a group tab names no digit while focus levels are off. A sidebar row names the pin and settle keys only for the open thread.
+- **Limits:** a sidebar tab names no digit while focus levels are off. A sidebar row names the pin and settle keys only for the open thread.
 
 ### Keyboard cheat sheet
 
@@ -601,10 +602,10 @@ Fork in the mobile Settings holds the fork settings that apply to the mobile app
 A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
 
 - **Works on:** web, desktop.
-- The slots are the sidebar group icons (`group.<id>`), the thread statuses (`status.<status>`), the group tab bar buttons (`groups.more`, `groups.new`, `groups.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
-- Each icon carries `data-app-icon="<slot>"`. The group tabs carry `data-sidebar-group-tab`, `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
+- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
+- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
 - The tick3d themes in the dotfiles carry a neo-brutalism pack. The `t3-theme` skill in the dotfiles describes the fields.
-- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar groups reach mobile.
+- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
 ### Local server groups
 
