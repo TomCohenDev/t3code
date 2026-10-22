@@ -74,6 +74,8 @@ const FORK_SETTING_GROUPS = [
   {
     title: "Threads",
     entries: [
+      { ids: ["restore-worktrees-on-resume"] },
+      { ids: ["worktree-artifact-eviction", "worktree-artifact-eviction-days"] },
       { ids: ["sidebar-groups", "sidebar-group-single-thread"] },
       { ids: ["snooze-quick-options"] },
       { ids: ["mobile-new-thread-project"] },

@@ -19,6 +19,27 @@ export const CATEGORY_SCOPES: Readonly<Record<ForkSettingsPath, SettingsSearchSc
 
 export const WORKTREE_PATH_TEMPLATE_ITEMS = [
   {
+    id: "worktree-artifact-eviction",
+    title: "Evict worktree artifacts",
+    to: "/settings/fork",
+    environmentOnly: true,
+    searchTerms: ["storage cleanup disk node_modules caches build dependencies worktrees"],
+  },
+  {
+    id: "worktree-artifact-eviction-days",
+    title: "Artifact eviction inactivity days",
+    to: "/settings/fork",
+    environmentOnly: true,
+    searchTerms: ["storage cleanup disk inactive days worktrees"],
+  },
+  {
+    id: "restore-worktrees-on-resume",
+    title: "Restore worktrees on resume",
+    to: "/settings/fork",
+    environmentOnly: true,
+    searchTerms: ["missing folder restore checkout dependencies setup node_modules"],
+  },
+  {
     id: "storage-worktree-path-template",
     title: "Worktree path template",
     to: "/settings/storage",

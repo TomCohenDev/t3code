@@ -12,6 +12,9 @@ import type { ScopedSettingsPatch } from "./scopedSettings";
  * (desktop connection settings). A new fork preference goes in this list.
  */
 const FORK_RESTORED_SETTINGS = [
+  ["restoreWorktreesOnResume", "Restore worktrees on resume"],
+  ["worktreeArtifactEviction", "Evict worktree artifacts"],
+  ["worktreeArtifactEvictionDays", "Artifact eviction inactivity days"],
   ["installedAppEnabled", "Installed app"],
   ["webPushEnabled", "Web Push"],
   ["forkAutoUpdate", "Server auto-update"],
