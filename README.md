@@ -79,7 +79,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Scripts and terminal**
 
-- **[Global scripts](docs/fork/features.md#global-scripts):** scripts for every project, pinned buttons, floating previews and app overlays.
+- **[Global scripts](docs/fork/features.md#global-scripts):** scripts for every project, pinned buttons, desktop global shortcuts, floating previews and app overlays.
 - **[App toggle shortcuts](docs/fork/features.md#app-toggle-shortcuts):** global keys that show and hide the desktop app.
 - **[Keyboard focus levels](docs/fork/features.md#keyboard-focus-levels):** Escape moves focus between composer, timeline and sidebar; arrow keys move a cursor.
 - **[Shortcuts in tooltips](docs/fork/features.md#shortcuts-in-tooltips):** control tooltips show the keys of the control as chips.

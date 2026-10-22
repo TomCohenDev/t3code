@@ -20,6 +20,7 @@ import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from ".
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { AppOverlay } from "../components/AppOverlay";
+import { GlobalScriptShortcuts } from "../components/GlobalScriptShortcuts";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { AddProjectToMachineDialogHost } from "../components/AddProjectToMachineDialog";
@@ -242,6 +243,7 @@ function RootRouteView() {
         <Outlet />
       </AppSidebarLayout>
       <AppOverlay />
+      <GlobalScriptShortcuts />
     </CommandPalette>
   );
 

@@ -15,6 +15,7 @@ import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings.ts";
 import type { EditorId } from "./editor.ts";
 import type { PreviewForwardedShortcut } from "./keybindings.ts";
+import type { ProjectScript } from "./project.ts";
 
 import type {
   DesktopAppActivationRequest,
@@ -1073,6 +1074,10 @@ export interface DesktopBridge {
   getLocalEnvironmentBearerToken: (rejectedToken?: string) => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
+  /** Fork: register the current environment's global script keys in the desktop host. */
+  configureGlobalScriptShortcuts?: (
+    scripts: readonly ProjectScript[],
+  ) => Promise<readonly string[]>;
   getConnectionCatalog?: () => Promise<string | null>;
   setConnectionCatalog?: (catalog: string) => Promise<boolean>;
   clearConnectionCatalog?: () => Promise<void>;

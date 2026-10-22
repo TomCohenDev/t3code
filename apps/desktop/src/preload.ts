@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   setLocalEnvironmentEnabled: (enabled) =>
     ipcRenderer.invoke(IpcChannels.SET_LOCAL_ENVIRONMENT_ENABLED_CHANNEL, enabled),
   getClientSettings: () => ipcRenderer.invoke(IpcChannels.GET_CLIENT_SETTINGS_CHANNEL),
+  configureGlobalScriptShortcuts: (scripts) =>
+    ipcRenderer.invoke(IpcChannels.CONFIGURE_GLOBAL_SCRIPT_SHORTCUTS_CHANNEL, scripts),
   setClientSettings: (settings) =>
     ipcRenderer.invoke(IpcChannels.SET_CLIENT_SETTINGS_CHANNEL, settings),
   requestSnapShotPermissions: (includeAccessibility) =>

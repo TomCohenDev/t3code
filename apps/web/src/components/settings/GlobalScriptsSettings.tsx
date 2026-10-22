@@ -111,7 +111,7 @@ export function GlobalScriptsSettingsRows() {
         settingKeys={["globalScripts"]}
         mixed={mixed}
         {...searchableSetting("global-scripts")}
-        description="Commands available in every project. They run in the thread's worktree, or else the project folder. Right-click the sidebar toggle or the chat header to pin them."
+        description="Commands available in every project. They run in the thread's worktree, or else the project folder. Pin them from the sidebar toggle or chat header, or set a desktop global shortcut in the script editor."
         control={
           <Button
             size="xs"
