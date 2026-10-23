@@ -93,6 +93,12 @@ export const ArrowRecord = Schema.Struct({
   level: MachineLevel,
   /** Agents on `from` can call T3 tools on `to` (MM-303). */
   agentTools: Schema.Boolean,
+  /**
+   * MM-1908: agents on `from` can run commands on `to` with `machine_exec`. It works only with
+   * agent tools on and a level of `standard` or `admin`. Maps before exec decode with false, and
+   * older machines ignore the field.
+   */
+  exec: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   /** MM-304: at this time the arrow returns to `revertLevel`. */
   expiresAt: Schema.NullOr(MapTime),
   revertLevel: Schema.NullOr(MachineLevel),
@@ -656,6 +662,31 @@ export const MapToolName = Schema.Literals([
 ]);
 export type MapToolName = typeof MapToolName.Type;
 
+/** MM-1908: the outcome of one `machine_exec` run. `stopped`: a pause or an arrow change ended it. */
+export const MachineExecOutcome = Schema.Literals(["exited", "timedOut", "stopped", "failed"]);
+export type MachineExecOutcome = typeof MachineExecOutcome.Type;
+
+/** MM-1908: one `machine_exec` run, as the machine that ran it reports it. No output of the command. */
+export const MachineExecReport = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  at: MapTime,
+  /** The machine whose agent asked for the run. */
+  from: MachineId,
+  /** The calling thread on `from`, as `from` reports it. */
+  threadId: Schema.NullOr(Schema.String),
+  threadTitle: Schema.NullOr(Schema.String),
+  command: Schema.String,
+  cwd: Schema.String,
+  outcome: MachineExecOutcome,
+  exitCode: Schema.NullOr(Schema.Int),
+  durationMs: NonNegativeInt,
+});
+export type MachineExecReport = typeof MachineExecReport.Type;
+
+/** MM-1908: one run in the History view. The portal adds `to`: the machine that reported it. */
+export const MachineExecRecord = Schema.Struct({ ...MachineExecReport.fields, to: MachineId });
+export type MachineExecRecord = typeof MachineExecRecord.Type;
+
 export const MachineToPortal = Schema.Union([
   Schema.TaggedStruct("hello", {
     protocol: Schema.Literal(MACHINE_MAP_PROTOCOL),
@@ -693,6 +724,8 @@ export const MachineToPortal = Schema.Union([
     threadId: Schema.NullOr(Schema.String),
     threadTitle: Schema.NullOr(Schema.String),
   }),
+  /** MM-1908: this machine ran a command for another machine. */
+  Schema.TaggedStruct("execRan", { report: MachineExecReport }),
   /** MM-207: the machine saved the new token secret. */
   Schema.TaggedStruct("rotated", { tokenClientId: TrimmedNonEmptyString }),
   /** MM-906: a browser key that no client holds signed in through Cloudflare Access. */
@@ -767,7 +800,13 @@ export const MapToolInputs = {
     agentTools: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
-          "True lets agents on `from` call T3 tools on `to` with machine_tool_call. Omit to keep the current value.",
+          "True lets agents on `from` call T3 tools on `to` with machine_tool_call. Omit to keep the current value. False also turns exec off.",
+      }),
+    ),
+    exec: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "True lets agents on `from` run shell commands on `to` with machine_exec. It needs agent tools and the level standard or admin. Omit to keep the current value.",
       }),
     ),
     expiresInMinutes: Schema.optionalKey(

@@ -148,6 +148,7 @@ import {
 } from "./threadActionMenu.logic";
 import {
   applySidebarThreadDrop,
+  filterSidebarV2VisibleThreads,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
@@ -191,6 +192,11 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
+import {
+  completeSidebarRouteReveal,
+  pendingSidebarRouteReveal,
+  type SidebarRouteReveal,
+} from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Button } from "./ui/button";
 import {
@@ -300,7 +306,7 @@ type SidebarOptimisticDrop = {
 
 interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
-  /** Fork: the threads of the open group tab, narrowed by the project scope and the owner filter. */
+  /** Fork: the threads of the open sidebar tab, narrowed by the project scope and the owner filter. */
   readonly visibleThreads: readonly EnvironmentThreadShell[];
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
@@ -367,7 +373,7 @@ function useSidebarThreads(input: {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
-  /** Fork: what the group tabs and the owner filter read. */
+  /** Fork: what the sidebar tabs and the owner filter read. */
   readonly fork: {
     readonly ownerFilter: ReturnType<typeof ForkSidebar.useSidebarOwnerFilter>["ownerFilter"];
     readonly ownerVisibleProjectKeys: ReadonlySet<string> | null;
@@ -401,8 +407,8 @@ function useSidebarThreads(input: {
     () => scheduleSnoozeWake(nextSnoozeWakeAt, () => bumpSnoozeWakeTick((tick) => tick + 1)),
     [nextSnoozeWakeAt],
   );
-  // Fork: thread groups as tabs. The list shows the threads of the open tab.
-  const sidebarGroups = ForkSidebar.useSidebarGroups({
+  // Fork: sidebar tabs. The list shows the threads of the open tab.
+  const sidebarTabs = ForkSidebar.useSidebarTabs({
     threads,
     ownerVisibleProjectKeys: input.fork.ownerVisibleProjectKeys,
     scopedProjectKeys,
@@ -414,7 +420,7 @@ function useSidebarThreads(input: {
   const ownerFilter = input.fork.ownerFilter;
   const settledResetKey = JSON.stringify([
     projectScopeKey,
-    sidebarGroups.tabId,
+    sidebarTabs.tabId,
     ownerFilter ? [ownerFilter.operator, [...ownerFilter.owners]] : null,
   ]);
   const [settledShelfExpanded, setSettledShelfExpanded] = useLocalStorage(
@@ -432,7 +438,7 @@ function useSidebarThreads(input: {
     false,
     Schema.Boolean,
   );
-  // The settled tail restarts whenever the project scope, the group tab or the owner filter changes.
+  // The settled tail restarts whenever the project scope, the sidebar tab or the owner filter changes.
   const [settledTail, setSettledTail] = useState({
     scopeKey: settledResetKey,
     count: SETTLED_TAIL_INITIAL_COUNT,
@@ -445,7 +451,7 @@ function useSidebarThreads(input: {
 
   const partition = partitionSidebarThreads({
     threads,
-    visibleThreads: sidebarGroups.visibleThreads,
+    visibleThreads: sidebarTabs.visibleThreads,
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
@@ -497,7 +503,7 @@ function useSidebarThreads(input: {
     routeRowThreadKey,
     ...partition,
     threads,
-    sidebarGroups,
+    sidebarTabs,
     workingShelfEnabled,
     searchableThreads: [
       ...pinnedThreads,
@@ -798,7 +804,7 @@ const SIDEBAR_DRAG_DISTANCE = 6;
 
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
 
-export default function Sidebar() {
+export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
   const {
     owner,
     projects,
@@ -1091,7 +1097,7 @@ export default function Sidebar() {
 
   const {
     threads,
-    sidebarGroups,
+    sidebarTabs,
     workingShelfEnabled,
     pinnedThreads,
     draggableThreadKeys,
@@ -1139,6 +1145,44 @@ export default function Sidebar() {
   });
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
+
+  // History, the command palette, and links can open a thread the project
+  // scope hides or the list has scrolled away. A remount starts the list at
+  // the top, so each mount also scrolls to the open thread once, without
+  // widening the scope.
+  const mountRevealOwed = useRef(true);
+  const revealRouteRow = useStableCallback(() => {
+    const pendingKey = pendingSidebarRouteReveal(routeReveal, routeRowThreadKey);
+    // Search results replace the thread list; reveal once the list returns.
+    if (isSearchingThreads) return;
+    const revealKey = pendingKey ?? (mountRevealOwed.current ? routeRowThreadKey : null);
+    if (revealKey === null) return;
+    const thread = threads.find((candidate) => threadShellKey(candidate) === revealKey);
+    if (thread === undefined) return;
+    if (
+      pendingKey !== null &&
+      scopedProjectKeys !== null &&
+      filterSidebarV2VisibleThreads([thread], scopedProjectKeys).length === 0 &&
+      filterSidebarV2VisibleThreads([thread], null).length === 1
+    ) {
+      // The row renders under the widened scope; scroll on that pass.
+      setProjectScopeKey(null);
+      return;
+    }
+    const activeRow = document.querySelector('[data-sidebar="content"] [aria-current="page"]');
+    if (!activeRow) return;
+    completeSidebarRouteReveal(routeReveal);
+    mountRevealOwed.current = false;
+    activeRow.scrollIntoView({ block: "nearest" });
+  });
+  useEffect(revealRouteRow, [
+    revealRouteRow,
+    routeRowThreadKey,
+    threads,
+    projectScopeKey,
+    isSearchingThreads,
+  ]);
+
   const threadSearchMatchByKey = new Map(
     threadSearch.matches.map((match) => [threadSearchMatchKey(match), match] as const),
   );
@@ -1455,7 +1499,7 @@ export default function Sidebar() {
   const finishThreadDrag = (started: boolean) => {
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
-    sidebarGroups.endDrag();
+    sidebarTabs.endDrag();
     endThreadContextDrag();
     if (started) {
       listMotionRef.current?.release();
@@ -1483,8 +1527,8 @@ export default function Sidebar() {
     return bounds !== undefined && (point.x < bounds.left || point.x > bounds.right);
   };
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
-    // Fork: over a group tab the list stops sorting and the ghost follows the pointer.
-    const contextDrag = sidebarGroups.moveDrag(point) || pointerOutsideThreadList(point);
+    // Fork: over a sidebar tab the list stops sorting and the ghost follows the pointer.
+    const contextDrag = sidebarTabs.moveDrag(point) || pointerOutsideThreadList(point);
     setDragState((current) =>
       current === null || current.contextDrag === contextDrag
         ? current
@@ -1501,7 +1545,7 @@ export default function Sidebar() {
     return true;
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
-    if (sidebarGroups.dropDrag(point, contextDragThreads().map(scopedThreadKey))) return true;
+    if (sidebarTabs.dropDrag(point, contextDragThreads().map(scopedThreadKey))) return true;
     if (!pointerOutsideThreadList(point)) return false;
     dropThreadContext(point, contextDragThreads());
     return true;
@@ -2838,7 +2882,7 @@ export default function Sidebar() {
             />
             <ForkSidebar.HeaderFilterRows
               owner={owner}
-              groups={sidebarGroups}
+              tabs={sidebarTabs}
               dragging={dragState !== null}
               routeThreadKey={routeRowThreadKey}
               projectFor={(thread) =>
@@ -3244,8 +3288,8 @@ export default function Sidebar() {
                 "No threads in the projects of these owners"
               ) : ownerFilter?.operator === "is_not" ? (
                 "No threads outside the hidden owners"
-              ) : sidebarGroups.emptyMessage !== null ? (
-                sidebarGroups.emptyMessage
+              ) : sidebarTabs.emptyMessage !== null ? (
+                sidebarTabs.emptyMessage
               ) : (
                 "No threads yet"
               )}

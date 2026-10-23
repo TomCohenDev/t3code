@@ -4,6 +4,9 @@
  * machine on every call (MM-802, MM-805). `machine_tool_call` goes to the other machine directly.
  */
 import {
+  MACHINE_EXEC_MAX_OUTPUT_BYTES,
+  MachineExecInput,
+  MachineExecResult,
   MachineMapClientState,
   MachineMapJoinInput,
   MapToolInputs,
@@ -15,6 +18,7 @@ import * as Schema from "effect/Schema";
 import * as Tool from "effect/ai/Tool";
 import * as Toolkit from "effect/ai/Toolkit";
 
+import * as MachineExec from "../../../fork/machineMap/MachineExec.ts";
 import * as MachineMap from "../../../fork/machineMap/MachineMap.ts";
 import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -28,6 +32,7 @@ const shared = {
     ThreadManagementService.ThreadManagementService,
     MachineMap.MachineMap,
     MachinePeers.MachinePeers,
+    MachineExec.MachineExec,
   ],
 };
 
@@ -127,6 +132,13 @@ const MachineToolCallTool = Tool.make("machine_tool_call", {
   success: Schema.Unknown,
 }).annotate(Tool.Destructive, true);
 
+const MachineExecTool = Tool.make("machine_exec", {
+  ...shared,
+  description: `Run a shell command on another machine of the map, through the T3 server of that machine, as its user. Use it for work that needs that machine: logs, builds, git, services. It needs an arrow from this machine to that machine with exec and agent tools on and the level standard or admin, and a live full-access/default caller with orchestration, worktree and pull-requests tool capabilities. Restricted callers are refused. The other machine checks the arrow again, and an emergency pause, a removed arrow or exec turned off stops a running command at once. It does not need the portal. The portal History records the machine, the calling thread, the command, the exit code and the time, never the output. The call waits for the command, at most the timeout. Start long work with nohup or a service and poll it instead. The result is {machine, cwd, shell, outcome ("exited" or "timedOut"), exitCode, stdout, stderr, stdoutTruncated, stderrTruncated, durationMs}. stdout and stderr keep at most ${MACHINE_EXEC_MAX_OUTPUT_BYTES} bytes each and then end with a truncation marker. A timeout loses the output.`,
+  parameters: MachineExecInput,
+  success: MachineExecResult,
+}).annotate(Tool.Destructive, true);
+
 export const MachineMapToolkit = Toolkit.make(
   MachinesReadTool,
   MachinesResourcesTool,
@@ -138,4 +150,5 @@ export const MachineMapToolkit = Toolkit.make(
   MachinesPresetTool,
   MachinesJoinTool,
   MachineToolCallTool,
+  MachineExecTool,
 );

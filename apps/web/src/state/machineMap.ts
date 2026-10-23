@@ -10,6 +10,7 @@ import { type EnvironmentId, type MachineMapClientState, WS_METHODS } from "@t3t
 import { Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useEnvironmentQuery } from "./query";
 
 /**
@@ -90,3 +91,7 @@ export function useReadableEnvironmentIdsByEnvironment(
     readableThreadEnvironmentAtoms.readableIdsByEnvironment(environmentIds.join("\u0000")),
   );
 }
+
+/** MM-1906: the readable environment ids of `environmentId` once its server answered. */
+export const loadReadableThreadEnvironmentIds = (environmentId: EnvironmentId) =>
+  readableThreadEnvironmentAtoms.loadReadableIds(appAtomRegistry, environmentId);

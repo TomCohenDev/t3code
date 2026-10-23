@@ -9,6 +9,7 @@ import {
   ClientId,
   CommandDelivery,
   MachineCommandInput,
+  MachineExecRecord,
   MachineId,
   MachineKind,
   MachineLevel,
@@ -244,6 +245,10 @@ export const ResourceSampleEvent = Schema.TaggedStruct("resourceSample", {
 });
 export type ResourceSampleEvent = typeof ResourceSampleEvent.Type;
 
+/** MM-1908: page event with the newest `machine_exec` runs, on connection and on each run. */
+export const ExecsEvent = Schema.TaggedStruct("execs", { execs: Schema.Array(MachineExecRecord) });
+export type ExecsEvent = typeof ExecsEvent.Type;
+
 /** MM-212: page event when a machine used its join code. It holds no part of the code. */
 export const EnrolledEvent = Schema.TaggedStruct("enrolled", { machineId: MachineId });
 export type EnrolledEvent = typeof EnrolledEvent.Type;
@@ -365,6 +370,8 @@ export type MapToolResult =
       readonly proposals: ReadonlyArray<MapProposal>;
       /** MM-1507: the latest samples, the thresholds and the active alerts. */
       readonly resources: ResourcesOverview;
+      /** MM-1908: the newest 50 `machine_exec` runs, without their output. */
+      readonly execs: ReadonlyArray<MachineExecRecord>;
     }
   | {
       readonly _tag: "resources";

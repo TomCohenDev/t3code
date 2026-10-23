@@ -73,7 +73,7 @@ import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { pullRequestStatus } from "../pull-requests/pullRequestStatus";
 import { useContinueElsewhereMenu } from "./forkContinueElsewhere";
-import { useThreadGroupMenu } from "./forkThreadGroupMenu";
+import { useThreadTabMenu } from "./forkThreadTabMenu";
 
 interface StatusLabel {
   readonly label: string;
@@ -800,8 +800,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         : [],
     [props.autoSettleOptOutSupported, thread.autoSettleDisabledAt],
   );
-  // Fork: "Move to group" while sidebar group tabs are on (forkThreadGroupMenu.ts).
-  const { items: groupMenuItems, handle: handleGroupMenu } = useThreadGroupMenu(thread);
+  // Fork: "Assign to tab" while sidebar tabs are on (forkThreadTabMenu.ts).
+  const { items: tabMenuItems, handle: handleTabMenu } = useThreadTabMenu(thread);
   // Fork: "Continue on another machine", also while the thread's machine is offline.
   const { items: continueMenuItems, handle: handleContinueMenu } = useContinueElsewhereMenu(thread);
   const titleMenuItems = useMemo<MenuAction[]>(
@@ -811,10 +811,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         supported: props.titleRegenerationSupported,
         isRegenerating: thread.titleRegeneration != null,
       }),
-      ...groupMenuItems,
+      ...tabMenuItems,
       ...continueMenuItems,
     ],
-    [props.titleRegenerationSupported, thread.titleRegeneration, groupMenuItems, continueMenuItems],
+    [props.titleRegenerationSupported, thread.titleRegeneration, tabMenuItems, continueMenuItems],
   );
   const snoozableCardMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -878,7 +878,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
-      if (handleGroupMenu(nativeEvent.event)) return;
+      if (handleTabMenu(nativeEvent.event)) return;
       if (handleContinueMenu(nativeEvent.event)) return;
       if (nativeEvent.event === "new-thread-on-branch") onNewThreadOnBranch(thread);
       if (nativeEvent.event === "settle") handleSettle();
@@ -917,7 +917,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       }
     },
     [
-      handleGroupMenu,
+      handleTabMenu,
       handleContinueMenu,
       onNewThreadOnBranch,
       thread,

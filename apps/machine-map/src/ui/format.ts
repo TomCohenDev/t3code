@@ -1,5 +1,6 @@
 import type {
   CommandStatus,
+  MachineExecOutcome,
   MachineCommandInput,
   MachineLevel,
   MachineMapDocument,
@@ -122,6 +123,13 @@ export const COMMAND_STICKER: Record<CommandStatus, string> = {
   expired: "none",
   cancelled: "none",
 };
+/** MM-1908: the sticker look of each exec outcome. */
+export const EXEC_STICKER: Record<MachineExecOutcome, string> = {
+  exited: "ok",
+  timedOut: "warn",
+  stopped: "none",
+  failed: "",
+};
 
 /** MM-205, MM-601: presence as plain text, with the time since the last connection. */
 export function presenceText(presence: MachinePresence | undefined, now: number): string {
@@ -157,7 +165,7 @@ export function towardGlyph(from: MapPosition, to: MapPosition): Toward {
 
 /** A short text of any setting value for tables. */
 export function valueText(value: unknown): string {
-  if (value === undefined) return "—";
+  if (value === undefined) return "-";
   if (typeof value === "boolean") return value ? "On" : "Off";
   if (typeof value === "string") return value.length > 0 ? value : '""';
   const text = JSON.stringify(value);
@@ -195,7 +203,7 @@ const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
 
 /** Bytes in binary units with up to 3 digits, for example `1.5 GB` or `640 MB`. */
 export function formatBytes(bytes: number | null): string {
-  if (bytes === null) return "—";
+  if (bytes === null) return "-";
   let value = bytes;
   let unit = 0;
   while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
@@ -207,7 +215,7 @@ export function formatBytes(bytes: number | null): string {
 }
 
 export const formatPercent = (value: number | null): string =>
-  value === null ? "—" : `${Math.round(value)}%`;
+  value === null ? "-" : `${Math.round(value)}%`;
 
 /** A span of time between two moments, for example `12 min` or `3 h 5 min`. */
 export function duration(fromIso: string, toMs: number): string {

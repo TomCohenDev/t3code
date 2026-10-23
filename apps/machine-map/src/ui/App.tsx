@@ -386,6 +386,7 @@ export function App() {
     joins: state.joins,
     pending: state.pending,
     invites: state.invites,
+    execs: state.execs,
     draft,
     now,
     route,

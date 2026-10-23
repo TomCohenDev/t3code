@@ -7,6 +7,10 @@ import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag, GlobalFlag } from "effect/cli";
+import {
+  THREAD_CREDENTIAL_AUTHORIZATION_ENV,
+  THREAD_CREDENTIAL_ENDPOINT_ENV,
+} from "@t3tools/provider-core/server/forkThreadCredential";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
@@ -30,8 +34,8 @@ const fail = (detail: string) => Effect.fail(new ToolCliError({ detail }));
 const THREAD_PARAMETER = "threadId";
 
 const toolEnvironment = Config.all({
-  endpoint: Config.String("T3_ACP_MCP_ENDPOINT").pipe(Config.option),
-  authorization: Config.String("T3_ACP_MCP_AUTHORIZATION").pipe(Config.option),
+  endpoint: Config.String(THREAD_CREDENTIAL_ENDPOINT_ENV).pipe(Config.option),
+  authorization: Config.String(THREAD_CREDENTIAL_AUTHORIZATION_ENV).pipe(Config.option),
   terminalThread: Config.String(T3_TERMINAL_THREAD_ID_ENV).pipe(Config.option),
 });
 
@@ -49,7 +53,7 @@ const takesThread = (tool: McpToolEntry) => {
 
 /**
  * Fills `threadId` for thread-bound tools. A caller with its own thread
- * credential (an agent terminal) may omit it; any other caller has no thread,
+ * credential (an agent shell) may omit it; any other caller has no thread,
  * so the thread must come from `--thread` or the T3 terminal environment.
  */
 export const applyCallerThread = (input: {
@@ -99,9 +103,9 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const printJson = (value: unknown) => Console.log(encodeJson(value));
 
 /**
- * Calls one tool on the running server. An agent terminal reuses its thread
- * credential; otherwise the CLI issues a short-lived MCP client session from
- * the local auth store and revokes it after the call.
+ * Calls one tool on the running server. An agent shell reuses its thread
+ * credential (MM-1920); otherwise the CLI issues a short-lived MCP client
+ * session from the local auth store and revokes it after the call.
  */
 export const callOnServer = Effect.fn("callToolOnServer")(function* (
   flags: { readonly baseDir: Option.Option<string> },
@@ -129,7 +133,8 @@ export const callOnServer = Effect.fn("callToolOnServer")(function* (
     const auth = yield* EnvironmentAuth.EnvironmentAuth;
     yield* Effect.acquireUseRelease(
       auth.issueMcpClientSession({
-        label: "t3 tool cli",
+        // The History of the machine map names a caller without a thread by this label.
+        label: "CLI (local user)",
         // The CLI already holds the local auth store, so it gets the widest ceiling.
         access: "full-access",
         client: { deviceType: "bot" },
@@ -191,7 +196,7 @@ const toolCallCommand = Command.make("call", {
   ),
 }).pipe(
   Command.withDescription(
-    "Call a tool on the running T3 Code server and print its result as JSON. The tool has its normal side effects. Inside a T3 Code terminal the call acts as that thread; elsewhere it uses a short full-access session that ends after the call.",
+    "Call a tool on the running T3 Code server and print its result as JSON. The tool has its normal side effects. In an agent's shell the call acts as the agent's thread, with the limits of that thread. Elsewhere, also in a T3 Code terminal, it uses a short full-access session that ends after the call.",
   ),
   Command.withExamples([
     { command: "t3 tool call t3_thread_list", description: "Call a tool without input." },

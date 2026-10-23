@@ -31,6 +31,7 @@ import { useRememberNewThreadProject } from "./forkNewThreadStart";
 
 import {
   AuthOrchestrationOperateScope,
+  type EnvironmentId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
@@ -95,7 +96,10 @@ import { selectIncomingShareAttachmentsForServer } from "../sharing/incoming-sha
 import { appAtomRegistry } from "../../state/atom-registry";
 import { serverEnvironment } from "../../state/server";
 
-import { useReadableThreadEnvironmentIds } from "../../state/readableThreadEnvironments";
+import {
+  loadReadableThreadEnvironmentIds,
+  useReadableThreadEnvironmentIds,
+} from "../../state/readableThreadEnvironments";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 
 function NewTaskWorkspaceIcon(props: {
@@ -904,11 +908,22 @@ export function NewTaskDraftScreen(props: {
       Dialog.alert("Too much context", contextBlockReason);
       return null;
     }
-    const strandedThread = unreadableThreadContexts({
-      text: draft.text,
-      records: draft.context?.records ?? [],
-      readableEnvironmentIds: readableThreadEnvironmentIds,
-    })[0];
+    const strandedIn = (readableEnvironmentIds: ReadonlyArray<EnvironmentId>) =>
+      unreadableThreadContexts({
+        text: draft.text,
+        records: draft.context?.records ?? [],
+        readableEnvironmentIds,
+      })[0];
+    let readableEnvironmentIds = readableThreadEnvironmentIds;
+    if (strandedIn(readableEnvironmentIds)) {
+      // MM-1906: right after the app starts, the answer of the machine map can still be on its
+      // way. Wait for it, so the first start with a thread of another machine is not refused.
+      flow.setSubmitting(true);
+      readableEnvironmentIds = await loadReadableThreadEnvironmentIds(
+        selectedProject.environmentId,
+      ).finally(() => flow.setSubmitting(false));
+    }
+    const strandedThread = strandedIn(readableEnvironmentIds);
     if (strandedThread) {
       const owner =
         flow.environments.find(

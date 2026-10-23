@@ -111,7 +111,10 @@ import {
   type HomeProjectScope,
 } from "../home/homeThreadList";
 import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
-import { useReadableThreadEnvironmentIds } from "../../state/readableThreadEnvironments";
+import {
+  currentReadableThreadEnvironmentIds,
+  useReadableThreadEnvironmentIds,
+} from "../../state/readableThreadEnvironments";
 import {
   resolvePendingTaskInteractionMode,
   resolveProviderInteractionMode,
@@ -361,9 +364,8 @@ export function NewTaskFlowProvider(
   const selectedEnvironmentServerConfig = useEnvironmentServerConfig(
     selectedProject?.environmentId ?? null,
   );
-  const readableThreadEnvironmentIds = useReadableThreadEnvironmentIds(
-    selectedProject?.environmentId ?? null,
-  );
+  // MM-1906: keeps the readable list loaded, so a start rarely waits for it.
+  useReadableThreadEnvironmentIds(selectedProject?.environmentId ?? null);
   const isScratchDraft =
     selectedProject !== null &&
     isScratchProject(selectedProject, selectedEnvironmentServerConfig?.scratchWorkspaceRoot);
@@ -1012,7 +1014,8 @@ export function NewTaskFlowProvider(
       unreadableThreadContexts({
         text: draft.text,
         records: draft.context?.records ?? [],
-        readableEnvironmentIds: readableThreadEnvironmentIds,
+        // Read at call time: a start that waited for the list calls this from an older render.
+        readableEnvironmentIds: currentReadableThreadEnvironmentIds(selectedProject.environmentId),
       }).length > 0
     ) {
       return null;

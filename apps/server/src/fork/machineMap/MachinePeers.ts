@@ -12,6 +12,8 @@ import {
   AuthTokenExchangeGrantType,
   type EnvironmentId,
   ExecutionEnvironmentDescriptor,
+  type MachineExecInput,
+  MachineExecResult,
   type MachineId,
   OrchestratorMcpFailure,
   type OrchestratorMcpThreadReadInput,
@@ -31,10 +33,14 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { mcpToolSession } from "../../mcp/AcpMcpStdioBridge.ts";
-import type * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
-import type * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
-import { effectiveLevel, reachablePeers } from "./machineAccess.ts";
-import { requireMachineThreadReader, requireMachineToolCaller } from "./machineCallerAccess.ts";
+import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
+import { arrowAllowsExec, effectiveLevel, reachablePeers } from "./machineAccess.ts";
+import {
+  historyCaller,
+  requireMachineThreadReader,
+  requireMachineToolCaller,
+} from "./machineCallerAccess.ts";
 import * as MachineMapState from "./MachineMapState.ts";
 
 const REQUEST_TIMEOUT = Duration.seconds(15);
@@ -48,6 +54,7 @@ export class MachinePeerError extends Schema.TaggedError<MachinePeerError>()("Ma
     "unknown-environment",
     "no-agent-tools",
     "no-arrow",
+    "no-exec",
     "no-hostname",
     "pairing-refused",
     "unreachable",
@@ -121,6 +128,17 @@ export class MachinePeers extends Context.Service<
       MachinePeerError | OrchestratorMcpFailure,
       ReaderServices
     >;
+    /**
+     * MM-1908: `machine_exec` on a peer whose arrow allows exec. The peer checks the arrow again,
+     * runs the command and reports it to the portal.
+     */
+    readonly exec: (
+      input: MachineExecInput,
+    ) => Effect.Effect<
+      MachineExecResult,
+      MachinePeerError | OrchestratorMcpFailure,
+      ReaderServices
+    >;
     /** MM-1907: the peers whose threads `readThread` reaches now. Unreachable peers are left out. */
     readonly readableEnvironments: Effect.Effect<ReadonlyArray<ReadableEnvironment>>;
   }
@@ -137,14 +155,37 @@ const ToolResult = Schema.Struct({
   ),
 });
 const decodeToolResult = Schema.decodeUnknownEffect(ToolResult);
-const decodeReadResult = Schema.decodeUnknownEffect(OrchestratorMcpThreadReadResult);
 const decodeFailureText = Schema.decodeUnknownEffect(Schema.fromJsonString(OrchestratorMcpFailure));
 
-const unexpectedResult = (peerName: string) =>
-  new MachinePeerError({
+/** The structured result of a peer tool, or its failure as the peer reported it. */
+const decodePeerResult = Effect.fn("MachinePeers.decodePeerResult")(function* <A>(
+  raw: unknown,
+  schema: Schema.Decoder<A>,
+  tool: string,
+  peerName: string,
+) {
+  const unexpected = new MachinePeerError({
     reason: "tool-failed",
-    detail: `${peerName} sent a t3_thread_read result that this machine cannot read. Update both machines to the same T3 Code version.`,
+    detail: `${peerName} sent a ${tool} result that this machine cannot read. Update both machines to the same T3 Code version.`,
   });
+  const result = yield* decodeToolResult(raw).pipe(Effect.mapError(() => unexpected));
+  if (result.isError === true) {
+    const text = result.content?.find((part) => part.text !== undefined)?.text ?? "";
+    return yield* decodeFailureText(text).pipe(
+      Effect.mapError(
+        () =>
+          new MachinePeerError({
+            reason: "tool-failed",
+            detail: `${tool} on ${peerName} failed: ${text.slice(0, 500)}`,
+          }),
+      ),
+      Effect.flatMap(Effect.fail),
+    );
+  }
+  return yield* Schema.decodeUnknownEffect(schema)(result.structuredContent).pipe(
+    Effect.mapError(() => unexpected),
+  );
+});
 
 const make = Effect.gen(function* () {
   const state = yield* MachineMapState.MachineMapState;
@@ -373,6 +414,13 @@ const make = Effect.gen(function* () {
   const callTool: MachinePeers["Service"]["callTool"] = Effect.fn("MachinePeers.callTool")(
     function* (input) {
       yield* requireMachineToolCaller();
+      if (input.tool === "machine_exec") {
+        // The exec arrow check and the History entry of MM-1908 live in `exec`.
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Use machine_exec to run commands on another machine.",
+        });
+      }
       const resolved = yield* resolvePeer(input.machine);
       yield* requireAgentTools(resolved);
       return yield* callPeer({
@@ -450,27 +498,41 @@ const make = Effect.gen(function* () {
         // The peer reads its own thread, so it gets no environment id.
         input,
       });
-      const result = yield* decodeToolResult(raw).pipe(
-        Effect.mapError(() => unexpectedResult(resolved.peer.name)),
-      );
-      if (result.isError === true) {
-        const text = result.content?.find((part) => part.text !== undefined)?.text ?? "";
-        return yield* decodeFailureText(text).pipe(
-          Effect.mapError(
-            () =>
-              new MachinePeerError({
-                reason: "tool-failed",
-                detail: `t3_thread_read on ${resolved.peer.name} failed: ${text.slice(0, 500)}`,
-              }),
-          ),
-          Effect.flatMap(Effect.fail),
-        );
-      }
-      return yield* decodeReadResult(result.structuredContent).pipe(
-        Effect.mapError(() => unexpectedResult(resolved.peer.name)),
+      return yield* decodePeerResult(
+        raw,
+        OrchestratorMcpThreadReadResult,
+        "t3_thread_read",
+        resolved.peer.name,
       );
     },
   );
+
+  const exec: MachinePeers["Service"]["exec"] = Effect.fn("MachinePeers.exec")(function* (input) {
+    yield* requireMachineToolCaller();
+    const resolved = yield* resolvePeer(input.machine);
+    const nowMs = yield* Clock.currentTimeMillis;
+    if (resolved.arrow === undefined || !arrowAllowsExec(resolved.arrow, nowMs)) {
+      return yield* new MachinePeerError({
+        reason: "no-exec",
+        detail: `The arrow from this machine to ${resolved.peer.name} does not allow exec. It needs exec, agent tools and the level standard or admin. The owner can turn exec on in the machine map.`,
+      });
+    }
+    // MM-806: the portal names the calling thread. An agent cannot set it through this path.
+    const caller = yield* historyCaller();
+    const { caller: _ignored, ...command } = input;
+    const raw = yield* callPeer({
+      resolved,
+      kind: "full",
+      check: requireMachineToolCaller(),
+      tool: "machine_exec",
+      input: {
+        ...command,
+        machine: resolved.peer.id,
+        caller,
+      },
+    });
+    return yield* decodePeerResult(raw, MachineExecResult, "machine_exec", resolved.peer.name);
+  });
 
   const readableEnvironments: MachinePeers["Service"]["readableEnvironments"] = probeReadable(
     false,
@@ -532,7 +594,7 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return MachinePeers.of({ testArrow, callTool, postJson, readThread, readableEnvironments });
+  return MachinePeers.of({ testArrow, callTool, postJson, readThread, exec, readableEnvironments });
 });
 
 export const layer = Layer.effect(MachinePeers, make);

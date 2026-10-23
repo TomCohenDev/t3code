@@ -217,3 +217,32 @@ it("drops the screenshots of the last clusters first when the notes are too big"
   assert.isFalse(trimmed.includes("assets/2-0"));
   assert.throws(() => renderNotes(changes, plan, 10), /over the budget/);
 });
+
+it("shows only the images that the plan picks, and fails for an image of another change", () => {
+  const changes = forkOnly([pullRequest(1, 2), pullRequest(2, 2), pullRequest(3, 1)]);
+  const plan = (images: ReadonlyArray<string>) => ({
+    intro: "",
+    fork: {
+      clusters: [
+        { name: "Picked", sentence: "", changes: ["#1", "#2"], images },
+        { name: "Other", sentence: "", changes: ["#3"] },
+      ],
+    },
+    upstream: emptySection,
+    integration: emptySection,
+  });
+  const notes = renderNotes(changes, plan(["https://github.com/user-attachments/assets/2-1"]));
+  const picked = notes.split("**Other**")[0] ?? "";
+  // A follow-up change can give the image. The other images of the cluster stay out.
+  assert.isTrue(picked.includes("assets/2-1"));
+  assert.isFalse(["assets/1-0", "assets/1-1", "assets/2-0"].some((url) => notes.includes(url)));
+
+  const none = renderNotes(changes, plan([]));
+  assert.isFalse(none.includes("assets/1-0") || none.includes("assets/2-1"));
+  assert.isTrue(none.includes("assets/3-0"));
+
+  assert.throws(
+    () => renderNotes(changes, plan(["https://github.com/user-attachments/assets/3-0"])),
+    /"Picked" names an image that none of its changes has/,
+  );
+});
