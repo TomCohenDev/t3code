@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { McpSchema, McpServer } from "effect/ai";
 
+import * as MachineExec from "../../../fork/machineMap/MachineExec.ts";
 import * as MachineMap from "../../../fork/machineMap/MachineMap.ts";
 import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
@@ -95,6 +96,7 @@ const toolsWith = (
           ),
       }),
     ),
+    Layer.provide(Layer.mock(MachineExec.MachineExec)({})),
   );
 
 const layerTools = toolsWith(liveThreadsLayer);

@@ -1263,6 +1263,7 @@ export function MapView({ map, readOnly }: { map: MachineMapDocument; readOnly: 
           {wait && <ClockIcon label={wait} />}
           {arrow.expiresAt && <span className="sticker warn flat">temp</span>}
           {arrow.agentTools && <span className="sticker accent flat">tools</span>}
+          {arrow.exec && <span className="sticker accent flat">exec</span>}
           {was ? (
             <>
               <span className={`sticker lvl-${was} was`}>{LEVEL_LABEL[was]}</span>

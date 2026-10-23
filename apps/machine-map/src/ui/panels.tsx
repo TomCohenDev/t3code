@@ -338,6 +338,38 @@ function ArrowPanel({ from, to }: { from: string; to: string }) {
           }
         />
       </label>
+      {/* MM-1908: machine_exec is an agent tool, so exec needs agent tools. */}
+      <label className="row toggle-row">
+        <span>
+          <span className="t">
+            Agents on {f} run commands on {t}
+          </span>
+          <span className="v">
+            {arrow.agentTools
+              ? levelRank(arrow.level) >= levelRank("standard")
+                ? `As ${t}'s T3 user, with machine_exec. History lists each run.`
+                : "Works only at Standard or Admin."
+              : "Turn on agent tools first."}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={arrow.exec}
+          disabled={!arrow.exec && (!arrow.agentTools || portal.pause !== null)}
+          onChange={(e) =>
+            portal.submit(`${usesText(f, t)}: exec ${e.target.checked ? "on" : "off"}`, [
+              arrowChange(map, {
+                from: source.id,
+                to: target.id,
+                level: arrow.level,
+                exec: e.target.checked,
+                expiresAt: arrow.expiresAt,
+              }),
+            ])
+          }
+        />
+      </label>
 
       <Section>Delivery</Section>
       <p className="small">
@@ -653,9 +685,9 @@ function MachineOverview({ machine }: { machine: MachineRecord }) {
           <dd>{Math.round(status.uptimeSeconds / 3600)} h</dd>
           <dt>Load</dt>
           <dd>
-            {status.cpuPercent === null ? "CPU —" : `CPU ${Math.round(status.cpuPercent)}%`} ·{" "}
+            {status.cpuPercent === null ? "CPU -" : `CPU ${Math.round(status.cpuPercent)}%`} ·{" "}
             {status.memoryPercent === null
-              ? "memory —"
+              ? "memory -"
               : `memory ${Math.round(status.memoryPercent)}%`}
           </dd>
           <dt>Tasks</dt>
@@ -847,6 +879,7 @@ function MachineAccess({ machine }: { machine: MachineRecord }) {
                 {arrow.expiresAt && <span className="v">Until {shortTime(arrow.expiresAt)}</span>}
               </RouteLink>
               {arrow.agentTools && <span className="sticker accent flat">tools</span>}
+              {arrow.exec && <span className="sticker accent flat">exec</span>}
               {was ? (
                 <>
                   <span className={`sticker lvl-${was} was`}>{LEVEL_LABEL[was]}</span>

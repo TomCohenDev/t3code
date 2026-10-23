@@ -29,6 +29,7 @@ import {
   ALERT_TEXT,
   COMMAND_LABEL,
   COMMAND_STICKER,
+  EXEC_STICKER,
   LEVEL_LABEL,
   machineName,
   PRESENCE_STICKER,
@@ -172,6 +173,7 @@ export function TableView() {
                         {(arrow.agentTools || arrow.expiresAt) && (
                           <span className="stickers">
                             {arrow.agentTools && <span className="sticker accent flat">tools</span>}
+                            {arrow.exec && <span className="sticker accent flat">exec</span>}
                             {arrow.expiresAt && <span className="sticker warn flat">temp</span>}
                           </span>
                         )}
@@ -224,11 +226,11 @@ export function TableView() {
                     )}
                   </td>
                   <td>
-                    {presence?.status ? <BuildLabel status={presence.status} /> : "—"}{" "}
+                    {presence?.status ? <BuildLabel status={presence.status} /> : "-"}{" "}
                     <BuildSticker standing={standings.get(machine.id)} />
                   </td>
                   <td className="mono">
-                    {applied === null ? "—" : `${applied} of ${map.revision}`}
+                    {applied === null ? "-" : `${applied} of ${map.revision}`}
                   </td>
                   <td>
                     <select
@@ -344,7 +346,7 @@ export function SettingsView() {
                           <span className="small muted">{scope}</span>
                         </button>
                       </td>
-                      <td>{hasShared ? valueText(shared[key]) : "—"}</td>
+                      <td>{hasShared ? valueText(shared[key]) : "-"}</td>
                       {map.machines.map((machine) => {
                         const own = map.settings.overrides[machine.id]?.[scope];
                         const hasOwn = own !== undefined && Object.hasOwn(own, key);
@@ -381,7 +383,7 @@ export function SettingsView() {
             </table>
           </div>
           <p className="legend small muted">
-            <span>— no shared value: each machine keeps its own</span>
+            <span>(no shared value: each machine keeps its own)</span>
             <span>
               <span className="sticker warn flat">own</span> the machine keeps its own value
             </span>
@@ -635,7 +637,7 @@ export function TasksView() {
                       <b>{task.title}</b>
                       <span className="sub">
                         {task.schedule} · next{" "}
-                        {task.enabled && task.nextRunAt ? timeUntil(task.nextRunAt, now) : "—"} ·
+                        {task.enabled && task.nextRunAt ? timeUntil(task.nextRunAt, now) : "-"} ·
                         last {timeAgo(task.lastRunAt, now)}
                         {task.lastRunError && ` · ${task.lastRunError}`}
                       </span>
@@ -717,7 +719,12 @@ export function HistoryView() {
   }, [viewing]);
   const shown = past !== null && past.revision === viewing ? past : null;
 
-  const entries = historyEntries(history, portal.snapshot.commands, portal.health.alerts);
+  const entries = historyEntries(
+    history,
+    portal.snapshot.commands,
+    portal.health.alerts,
+    portal.execs,
+  );
   const actors = new Map<string, string>();
   for (const entry of entries) {
     const actor = entryActor(entry);
@@ -847,6 +854,40 @@ export function HistoryView() {
           </span>
           <span className={`sticker ${ended ? "ok" : "warn"}`}>
             {ended ? "ended" : ALERT_STICKER[alert.kind]}
+          </span>
+        </Item>
+      );
+    }
+    if (entry._tag === "exec") {
+      const { exec } = entry;
+      const title = `${machineName(map, exec.from)} ran a command on ${machineName(map, exec.to)}`;
+      return (
+        <Item
+          key={entryKey(entry)}
+          kind="exec"
+          on={false}
+          label={title}
+          open={() => portal.select({ _tag: "arrow", from: exec.from, to: exec.to })}
+          side={
+            <details className="diff">
+              <summary>Command</summary>
+              <p className="small mono">{exec.command}</p>
+              <p className="small">
+                In <span className="mono">{exec.cwd}</span> · {exec.durationMs} ms
+              </p>
+            </details>
+          }
+        >
+          {kindSticker("exec")}
+          <span className="grow">
+            <b>{title}</b>
+            <span className="sub">
+              {actorText(entryActor(entry), map)} · {when(entry.at)}
+            </span>
+          </span>
+          {agentSticker(entryActor(entry))}
+          <span className={`sticker ${EXEC_STICKER[exec.outcome]}`}>
+            {exec.outcome === "exited" ? `exit ${exec.exitCode ?? "?"}` : exec.outcome}
           </span>
         </Item>
       );
@@ -1357,10 +1398,10 @@ export function ClientsView() {
                 {devices.access.sessions.map((session) => (
                   <tr key={`${session.name}:${session.signedInAt}:${session.ip}`}>
                     <td className="left">{session.name}</td>
-                    <td>{session.country ?? "—"}</td>
-                    <td className="mono">{session.ip ?? "—"}</td>
-                    <td>{session.signedInAt ? timeAgo(session.signedInAt, now) : "—"}</td>
-                    <td>{session.expiresAt ? shortTime(session.expiresAt) : "—"}</td>
+                    <td>{session.country ?? "-"}</td>
+                    <td className="mono">{session.ip ?? "-"}</td>
+                    <td>{session.signedInAt ? timeAgo(session.signedInAt, now) : "-"}</td>
+                    <td>{session.expiresAt ? shortTime(session.expiresAt) : "-"}</td>
                   </tr>
                 ))}
               </tbody>

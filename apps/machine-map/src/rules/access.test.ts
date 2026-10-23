@@ -44,6 +44,45 @@ describe("arrowChange", () => {
   });
 });
 
+describe("exec (MM-1908)", () => {
+  it("needs agent tools, and turning agent tools off turns exec off", () => {
+    let map = threeMachines();
+    const without = arrowChange(map, {
+      from: MAC,
+      to: VPS,
+      level: "admin",
+      exec: true,
+      expiresAt: null,
+    });
+    expect(without._tag === "setArrow" && without.arrow.exec).toBe(false);
+    map = applyChanges(map, [
+      arrowChange(map, {
+        from: MAC,
+        to: VPS,
+        level: "admin",
+        agentTools: true,
+        exec: true,
+        expiresAt: null,
+      }),
+    ]).map;
+    expect(findArrow(map, MAC, VPS).exec).toBe(true);
+    const off = arrowChange(map, {
+      from: MAC,
+      to: VPS,
+      level: "admin",
+      agentTools: false,
+      expiresAt: null,
+    });
+    expect(off._tag === "setArrow" && off.arrow.exec).toBe(false);
+  });
+
+  it("counts turning exec on as more access, so an agent only proposes it for its machine", () => {
+    const base = { ...findArrow(threeMachines(), MAC, VPS), agentTools: true };
+    expect(arrowRaises(base, { ...base, exec: true })).toBe(true);
+    expect(arrowRaises({ ...base, exec: true }, base)).toBe(false);
+  });
+});
+
 describe("self-escalation (MM-803)", () => {
   const base = findArrow(threeMachines(), MAC, VPS);
 

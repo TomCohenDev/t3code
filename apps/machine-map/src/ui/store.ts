@@ -9,6 +9,7 @@ import type { ResourcesOverview } from "@t3tools/contracts/machineMapResources";
 import {
   ClientInvitesEvent,
   EnrolledEvent,
+  ExecsEvent,
   HealthEvent,
   PauseEvent,
   PendingClientsEvent,
@@ -33,6 +34,8 @@ export interface PortalState {
   readonly pending: ReadonlyArray<PendingClient> | null;
   /** MM-913: invites of native apps that wait to be used. */
   readonly invites: ReadonlyArray<ClientInvite>;
+  /** MM-1908: the newest `machine_exec` runs. */
+  readonly execs: ExecsEvent["execs"];
 }
 
 export type PageEvent =
@@ -43,7 +46,8 @@ export type PageEvent =
   | ResourceSampleEvent
   | EnrolledEvent
   | PendingClientsEvent
-  | ClientInvitesEvent;
+  | ClientInvitesEvent
+  | ExecsEvent;
 
 const EMPTY_HEALTH: ResourcesOverview = { latest: {}, alerts: [], thresholds: {} };
 
@@ -55,6 +59,7 @@ export const INITIAL_STATE: PortalState = {
   joins: {},
   pending: null,
   invites: [],
+  execs: [],
 };
 
 export function reduce(state: PortalState, event: PageEvent): PortalState {
@@ -64,6 +69,7 @@ export function reduce(state: PortalState, event: PageEvent): PortalState {
   if (event._tag === "health") return { ...state, health: event.health };
   if (event._tag === "pendingClients") return { ...state, pending: event.pending };
   if (event._tag === "clientInvites") return { ...state, invites: event.invites };
+  if (event._tag === "execs") return { ...state, execs: event.execs };
   if (event._tag === "resourceSample") {
     const latest = { ...state.health.latest, [event.machineId]: event.sample };
     return { ...state, health: { ...state.health, latest } };
@@ -164,6 +170,7 @@ const decodeEvent = Schema.decodeUnknownSync(
     EnrolledEvent,
     PendingClientsEvent,
     ClientInvitesEvent,
+    ExecsEvent,
   ]),
 );
 

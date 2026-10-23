@@ -275,6 +275,24 @@ const MAX_ALT_LENGTH = 100;
 const NOTES_BUDGET = 120_000;
 const DEFAULT_HIGHLIGHTS = 5;
 
+function imageLines(
+  images: ReadonlyArray<PullRequestImage>,
+  pullRequestUrl: string,
+  indent: string,
+): string[] {
+  const hidden = images.length - MAX_IMAGES_PER_ITEM;
+  return [
+    ...images.slice(0, MAX_IMAGES_PER_ITEM).map((image) => {
+      const alt =
+        image.alt.length > MAX_ALT_LENGTH
+          ? `${image.alt.slice(0, MAX_ALT_LENGTH - 3)}...`
+          : image.alt;
+      return `${indent}<img src="${escapeAttribute(image.url)}" alt="${escapeAttribute(alt)}" width="600">`;
+    }),
+    ...(hidden > 0 ? ["", `${indent}[${hidden} more in the pull request](${pullRequestUrl})`] : []),
+  ];
+}
+
 /**
  * The collapsed screenshots block under a list item, indented so that GitHub keeps it inside the
  * item. The desktop update popover drops `<details>` blocks (apps/desktop/src/updates/releaseNotes.ts).
@@ -285,18 +303,10 @@ export function renderScreenshots(
   indent = "  ",
 ): string[] {
   if (images.length === 0) return [];
-  const hidden = images.length - MAX_IMAGES_PER_ITEM;
   return [
     `${indent}<details><summary>Screenshots</summary>`,
     "",
-    ...images.slice(0, MAX_IMAGES_PER_ITEM).map((image) => {
-      const alt =
-        image.alt.length > MAX_ALT_LENGTH
-          ? `${image.alt.slice(0, MAX_ALT_LENGTH - 3)}...`
-          : image.alt;
-      return `${indent}<img src="${escapeAttribute(image.url)}" alt="${escapeAttribute(alt)}" width="600">`;
-    }),
-    ...(hidden > 0 ? ["", `${indent}[${hidden} more in the pull request](${pullRequestUrl})`] : []),
+    ...imageLines(images, pullRequestUrl, indent),
     `${indent}</details>`,
   ];
 }
@@ -328,6 +338,11 @@ export interface ClusterPlan {
   readonly sentence: string;
   /** Refs of the changes, most important first. The first one is the main change. */
   readonly changes: ReadonlyArray<string>;
+  /**
+   * The image URLs to show, picked from the images of the cluster's changes. Empty shows none.
+   * Absent shows the images of the first change that has any, and every change's own images.
+   */
+  readonly images?: ReadonlyArray<string>;
 }
 
 export interface SectionPlan {
@@ -368,13 +383,15 @@ function decodeSectionPlan(value: unknown, name: string): SectionPlan {
       typeof candidate.name !== "string" ||
       typeof candidate.sentence !== "string" ||
       !isStringArray(candidate.changes) ||
-      candidate.changes.length === 0
+      candidate.changes.length === 0 ||
+      (candidate.images !== undefined && !isStringArray(candidate.images))
     ) {
       throw new Error(
-        `"${name}.clusters[${index}]" needs a "name", a "sentence" and at least one ref in "changes".`,
+        `"${name}.clusters[${index}]" needs a "name", a "sentence", at least one ref in "changes", and "images" as a list of URLs when present.`,
       );
     }
-    return { name: candidate.name, sentence: candidate.sentence, changes: candidate.changes };
+    const plan = { name: candidate.name, sentence: candidate.sentence, changes: candidate.changes };
+    return candidate.images === undefined ? plan : { ...plan, images: candidate.images };
   });
   return section.highlights === undefined
     ? { clusters }
@@ -450,6 +467,29 @@ function refMatches(ref: string, entry: NoteEntry): boolean {
 interface Cluster {
   readonly plan: ClusterPlan;
   readonly entries: ReadonlyArray<NoteEntry>;
+  /** The images that the plan picked. Undefined when the plan picks none. */
+  readonly picked: ReadonlyArray<PullRequestImage> | undefined;
+}
+
+/** Fails for a URL that no change of the cluster has, so that a plan cannot invent images. */
+function pickImages(
+  section: string,
+  cluster: ClusterPlan,
+  entries: ReadonlyArray<NoteEntry>,
+  problems: string[],
+): ReadonlyArray<PullRequestImage> | undefined {
+  if (cluster.images === undefined) return undefined;
+  const own = new Map(entries.flatMap((entry) => entry.images).map((image) => [image.url, image]));
+  return cluster.images.flatMap((url) => {
+    const image = own.get(url);
+    if (image === undefined) {
+      problems.push(
+        `${section}: "${cluster.name}" names an image that none of its changes has: ${url}`,
+      );
+      return [];
+    }
+    return [image];
+  });
 }
 
 /** Fails with every unknown, repeated and missing ref, so that the agent fixes the plan at once. */
@@ -460,9 +500,8 @@ function resolveClusters(
 ): Cluster[] {
   const problems: string[] = [];
   const used = new Set<NoteEntry>();
-  const clusters = plan.clusters.map((cluster) => ({
-    plan: cluster,
-    entries: cluster.changes.flatMap((ref) => {
+  const clusters = plan.clusters.map((cluster): Cluster => {
+    const clusterEntries = cluster.changes.flatMap((ref) => {
       const matches = entries.filter((entry) => refMatches(ref, entry));
       const [entry] = matches;
       if (entry === undefined || matches.length > 1) {
@@ -477,8 +516,13 @@ function resolveClusters(
       }
       used.add(entry);
       return [entry];
-    }),
-  }));
+    });
+    return {
+      plan: cluster,
+      entries: clusterEntries,
+      picked: pickImages(section, cluster, clusterEntries, problems),
+    };
+  });
   for (const entry of entries) {
     if (!used.has(entry))
       problems.push(`${section}: "${entry.ref}" (${entry.title}) is in no cluster.`);
@@ -493,8 +537,11 @@ function clusterHead(cluster: Cluster): string {
   return `- **${cluster.plan.name}** (${main?.link ?? ""}): ${cluster.plan.sentence}`;
 }
 
-/** The screenshots of the main change, or else of the first change that has any. */
+/** The picked images, or else the images of the first change that has any. */
 function clusterScreenshots(cluster: Cluster): string[] {
+  if (cluster.picked !== undefined) {
+    return renderScreenshots(cluster.picked, cluster.entries[0]?.url ?? "");
+  }
   const shown = cluster.entries.find((entry) => entry.images.length > 0);
   return shown === undefined ? [] : renderScreenshots(shown.images, shown.url);
 }
@@ -505,17 +552,25 @@ const indentLines = (lines: ReadonlyArray<string>, indent: string) =>
 /** A cluster line, with its changes in a collapsed block below it. */
 function renderCluster(cluster: Cluster, withoutImages: ReadonlySet<NoteEntry>): string[] {
   const count = cluster.entries.length;
-  const hasImages = cluster.entries.some(
-    (entry) => entry.images.length > 0 && !withoutImages.has(entry),
-  );
+  const { picked } = cluster;
+  const hasImages =
+    picked === undefined
+      ? cluster.entries.some((entry) => entry.images.length > 0 && !withoutImages.has(entry))
+      : picked.length > 0;
   return [
     clusterHead(cluster),
     `  <details><summary>${count} ${count === 1 ? "change" : "changes"}${hasImages ? ", with screenshots" : ""}</summary>`,
     "",
+    // Picked images sit on top of the fold, instead of under each change.
+    ...(picked === undefined || picked.length === 0
+      ? []
+      : [...imageLines(picked, cluster.entries[0]?.url ?? "", "  "), ""]),
     ...cluster.entries.flatMap((entry) => [
       `  - ${entry.link} ${entry.title}`,
       ...indentLines(entry.children, "    "),
-      ...(withoutImages.has(entry) ? [] : renderScreenshots(entry.images, entry.url, "    ")),
+      ...(picked !== undefined || withoutImages.has(entry)
+        ? []
+        : renderScreenshots(entry.images, entry.url, "    ")),
     ]),
     "  </details>",
   ];
@@ -531,8 +586,8 @@ const SECTIONS = [
  * The release notes from the changes and the agent's plan. The highlights of each section come
  * first. "## Full changelog" then lists every cluster with its changes folded. The desktop update
  * popover reads only the lines above "Full changelog" and drops `<details>` blocks, so it shows
- * the highlight lines. Over the size budget, the changes of the last clusters lose their
- * screenshots first.
+ * the highlight lines. Over the size budget, the changes of the last clusters without picked
+ * images lose their screenshots first.
  */
 export function renderNotes(
   changes: DailyChanges,
@@ -584,6 +639,7 @@ export function renderNotes(
   const withoutImages = new Set<NoteEntry>();
   let text = render(withoutImages);
   const dropOrder = [...clusters.fork, ...clusters.upstream, ...clusters.integration]
+    .filter((cluster) => cluster.picked === undefined)
     .flatMap((cluster) => cluster.entries)
     .filter((entry) => entry.images.length > 0)
     .toReversed();
