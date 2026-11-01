@@ -88,18 +88,13 @@ export const ORGANIZATION_ITEMS = [
     searchTerms: ["sidebar tab one thread open directly"],
   },
   {
-    id: "repository-owner-filters",
-    title: "Repository owner filters",
+    id: "pull-request-filters",
+    title: "Pull request filters",
     to: "/settings/general",
     searchTerms: [
-      "github organization org owner account filter hide exclude pull requests pr sidebar work personal",
+      "github organization org owner account repository filter hide exclude pull requests pr sidebar work personal",
+      "active filters chips exclude negative is not pull requests pr list empty",
     ],
-  },
-  {
-    id: "pull-request-filter-chips",
-    title: "Pull request filter chips",
-    to: "/settings/general",
-    searchTerms: ["active filters chips exclude negative is not pull requests pr list empty"],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 

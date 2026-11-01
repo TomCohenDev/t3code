@@ -184,10 +184,7 @@ const FORK_SETTING_GROUPS = [
   },
   {
     title: "Filters",
-    entries: [
-      { ids: ["repository-owner-filters"], place: "general-sidebar" },
-      { ids: ["pull-request-filter-chips"], place: "general-sidebar" },
-    ],
+    entries: [{ ids: ["pull-request-filters"], place: "general-sidebar" }],
   },
   {
     title: "Scripts and keyboard",
