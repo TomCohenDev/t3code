@@ -60,10 +60,8 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Worktree lifecycle](docs/fork/features.md#worktree-lifecycle):** a path template places new worktrees, idle worktrees lose ignored build outputs and dependencies, cleanup deletes branches that restore can rebuild, and resume recreates a missing checkout with project setup (each part off by default).
 - **[Sidebar tabs](docs/fork/features.md#sidebar-tabs):** tabs above the sidebar list that hold threads, filled by drag or by rules. Mobile shows and edits them too.
 - **[Waiting shelf](docs/fork/features.md#waiting-shelf):** threads that wait on other threads or background work get their own shelf under Working.
-- **[Thread link chips](docs/fork/features.md#thread-link-chips):** every thread link in chat shows as an attached-thread chip.
-- **[Message links](docs/fork/features.md#message-links):** copy a link from each message to open the thread at that message.
+- **[Thread addressing](docs/fork/features.md#thread-addressing):** thread links in chat show as attached-thread chips, each message has a link of its own, and a thread address from Slack or GitHub opens the desktop app (off by default).
 - **[Message pins](docs/fork/features.md#message-pins):** pin messages, and list the pins in thread details and in the sidebar.
-- **[Thread addresses open the desktop app](docs/fork/features.md#thread-addresses-open-the-desktop-app):** a thread address from Slack or GitHub opens the desktop app.
 - **[New thread on mobile](docs/fork/features.md#new-thread-on-mobile):** New thread in the mobile app opens the project list, the last project, or no project.
 - **[Camera in the mobile composer](docs/fork/features.md#camera-in-the-mobile-composer):** the plus button of the mobile composer can take a photo.
 - **[Android assistant panel](docs/fork/features.md#android-assistant-panel):** the Android assistant button starts a thread with the screen.
@@ -92,11 +90,8 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Web Push](docs/fork/features.md#web-push):** a phone gets thread notifications while the app is closed, with registration retries and a separate failure status.
 - **[Thread card layouts](docs/fork/features.md#thread-card-layouts):** build the thread card from its elements, for desktop and for mobile.
 - **[Local server groups](docs/fork/features.md#local-server-groups):** the browser Local servers list also shows servers that no T3 terminal started.
-- **[Theme style](docs/fork/features.md#theme-style):** published themes set shape, fonts, a canvas pattern and user CSS.
-- **[Theme icon packs](docs/fork/features.md#theme-icon-packs):** a published theme replaces app icons with its own SVGs.
-- **[Themes on mobile](docs/fork/features.md#themes-on-mobile):** the mobile app uses the published themes of its servers, with their fonts, shape and canvas pattern.
+- **[Themes](docs/fork/features.md#themes):** the theme that you select carries its shape, fonts, canvas pattern, user CSS and icons, and the phone can follow it. The fork app uses the Tick3d lightning icon.
 - **[Fork settings on mobile](docs/fork/features.md#fork-settings-on-mobile):** a Fork page in the mobile Settings.
-- **[Lightning icon](docs/fork/features.md#lightning-icon):** the fork app and the Android APK use their own icon.
 - **[Back and forward](docs/fork/features.md#back-and-forward):** back and forward buttons in the title bar, and a desktop back history that stays after a restart.
 - **[App context menu](docs/fork/features.md#app-context-menu):** right-click menus use the app's own menu with keyboard navigation, also in the desktop app.
 
