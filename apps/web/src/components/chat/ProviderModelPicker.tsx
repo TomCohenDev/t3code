@@ -17,8 +17,8 @@ import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./p
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
-import { ShortcutHint, ShortcutTrigger, useKeybindingProps } from "../focusLevels/ShortcutHint";
-import { KEYBINDING_COMMAND_ATTRIBUTE } from "../../keybindingsMenu";
+import { ShortcutHint, ShortcutTooltip, ShortcutTrigger } from "../focusLevels/ShortcutHint";
+import { composerTriggerCommands } from "./composerModelShortcuts";
 
 /** Holds the page still behind the open picker; its lifetime is the popup element's. */
 function lockBackgroundScroll(popup: HTMLElement | null) {
@@ -233,18 +233,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     .filter(Boolean)
     .join(" · ");
 
-  // Fork: the composer trigger has no tooltip, so its item menu ("Keybindings…") names its keys.
-  const composerKeybindingProps = useKeybindingProps(
-    props.isComposerOwned && props.keybindings ? "modelPicker.toggle" : null,
-  );
-  const composerTriggerProps = props.isComposerOwned
-    ? {
-        ...composerKeybindingProps,
-        [KEYBINDING_COMMAND_ATTRIBUTE]: ["modelPicker.toggle", props.triggerShortcuts]
-          .filter(Boolean)
-          .join(" "),
-      }
-    : {};
+  // Fork: the composer trigger names the keys of each command it runs in a tooltip.
+  const composerTriggerTooltip =
+    props.isComposerOwned && props.keybindings ? (
+      <ShortcutTooltip
+        command={composerTriggerCommands(props.triggerShortcuts)}
+        label={triggerTooltipContent}
+        side="top"
+        render={<button type="button" />}
+      />
+    ) : undefined;
 
   const triggerText = props.triggerLabel ?? multipleLabel ?? triggerTitle;
   const triggerTextProps = {
@@ -325,7 +323,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             size={size}
             data-chat-provider-model-picker="true"
             data-composer-shortcut={props.triggerShortcuts}
-            {...composerTriggerProps}
+            render={composerTriggerTooltip}
             onClick={(event) => {
               if (!isMenuOpen || !docked) return;
               const target = takeOpenTarget(triggerRef.current);
