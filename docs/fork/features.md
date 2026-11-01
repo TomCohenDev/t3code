@@ -591,6 +591,7 @@ Tooltips, menus and the command palette show the keys of an action as chips, suc
 - **Setting:** client settings `tooltipShortcuts` (on by default) and `tooltipShortcutLimit` (default 4, 1 to 9). Settings > Keybindings > Keyboard > "Shortcuts in tooltips" and "Keys per tooltip".
 - **Works on:** web, desktop.
 - Your own keys come first. More keys than the limit show as "+N".
+- Compaction keys: `chat.compactContext` (`mod+alt+shift+c`) runs "Compact context". `composer.toggleCompactBeforeSend` (`mod+alt+shift+k`) flips the "Compact" or "Keep" toggle, with the `when` condition `compactBeforeSendShown`.
 - **Limits:** a sidebar tab names no digit while focus levels are off. A sidebar row names the pin and settle keys only for the open thread.
 
 ### Keyboard cheat sheet
