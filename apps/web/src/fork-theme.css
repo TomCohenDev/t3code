@@ -138,6 +138,11 @@
   > :is([data-pressed], [data-checked]) {
   background-color: var(--accent);
   color: var(--accent-foreground);
+}
+/* Drops the stock raised shadow, but keeps the focus ring, which is also a box-shadow. */
+:root[data-theme-border-width]
+  :is([data-slot="toggle-group"][data-variant="segmented"], [data-segmented-control])
+  > :is([data-pressed], [data-checked]):not(:focus-visible) {
   box-shadow: none;
 }
 
