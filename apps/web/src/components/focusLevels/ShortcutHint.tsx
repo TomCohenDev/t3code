@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ClientSettings, KeybindingCommand, KeybindingShortcut } from "@t3tools/contracts";
-import type { ComponentProps, ReactNode } from "react";
+import { Fragment, type ComponentProps, type ReactNode } from "react";
 
 import { useClientSettings } from "../../hooks/useSettings";
 import {
@@ -22,30 +22,54 @@ const selectFocusLevels = (settings: ClientSettings) => settings.keyboardFocusLe
 
 const selectShortcutLimit = (settings: ClientSettings) => settings.tooltipShortcutLimit;
 
+/** One command, or the commands of a control that runs several, such as the composer model picker. */
+type Commands = KeybindingCommand | ReadonlyArray<KeybindingCommand> | null;
+
+/** A command of a control that runs several, with the name its tooltip shows before its keys. */
+export interface NamedCommand {
+  readonly command: KeybindingCommand;
+  readonly name: string;
+}
+
+function commandList(commands: Commands): ReadonlyArray<KeybindingCommand> {
+  if (commands === null) return [];
+  return typeof commands === "string" ? [commands] : commands;
+}
+
 /**
- * Every key that runs `command` where the tooltip shows. The last matching rule wins, so the
+ * Every key that runs each command where the tooltip shows. The last matching rule wins, so the
  * user's own rules, which come after the defaults, are listed first.
  */
 function useShortcuts(
-  command: KeybindingCommand | null,
+  commands: ReadonlyArray<KeybindingCommand>,
   context?: ShortcutContext,
-): ReadonlyArray<KeybindingShortcut> {
+): ReadonlyArray<ReadonlyArray<KeybindingShortcut>> {
   const levels = useClientSettings(selectFocusLevels);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  if (command === null) return [];
   // The level flags are always false while focus levels are off, so a key that needs one does nothing.
-  return effectiveShortcutsForCommand(keybindings, command, {
-    context: levels ? (context ?? {}) : { ...context, ...FOCUS_LEVELS_OFF },
-  });
+  const matchContext = levels ? (context ?? {}) : { ...context, ...FOCUS_LEVELS_OFF };
+  return commands.map((command) =>
+    effectiveShortcutsForCommand(keybindings, command, { context: matchContext }),
+  );
+}
+
+/** The key labels of each command, in the order of `commands`. */
+function useShortcutLabelLists(
+  commands: ReadonlyArray<KeybindingCommand>,
+  context?: ShortcutContext,
+): ReadonlyArray<ReadonlyArray<string>> {
+  const enabled = useClientSettings(selectTooltipShortcuts);
+  const shortcutLists = useShortcuts(enabled ? commands : [], context);
+  return commands.map((_, index) => [
+    ...new Set((shortcutLists[index] ?? []).map((shortcut) => formatShortcutLabel(shortcut))),
+  ]);
 }
 
 function useShortcutLabels(
   command: KeybindingCommand | null,
   context?: ShortcutContext,
 ): ReadonlyArray<string> {
-  const enabled = useClientSettings(selectTooltipShortcuts);
-  const shortcuts = useShortcuts(enabled ? command : null, context);
-  return [...new Set(shortcuts.map((shortcut) => formatShortcutLabel(shortcut)))];
+  return useShortcutLabelLists(commandList(command), context)[0] ?? [];
 }
 
 /** Keys beyond the `tooltipShortcutLimit` setting show as "+N"; Settings → Keybindings lists them all. */
@@ -97,16 +121,18 @@ export function useMenuItemShortcut(command: KeybindingCommand | undefined) {
 
 /**
  * Fork: the props of an element that runs `command`: its `aria-keyshortcuts`, and the mark that
- * gives it the item menu ("Keybindings…") on right-click and Shift+F10.
+ * gives it the item menu ("Keybindings…") on right-click and Shift+F10. With several commands,
+ * both list all of them.
  */
-export function useKeybindingProps(command: KeybindingCommand | null, context?: ShortcutContext) {
-  const shortcuts = useShortcuts(command, context);
-  if (command === null) return {};
+export function useKeybindingProps(command: Commands, context?: ShortcutContext) {
+  const commands = commandList(command);
+  const shortcuts = useShortcuts(commands, context).flat();
+  if (commands.length === 0) return {};
   return {
-    [KEYBINDING_COMMAND_ATTRIBUTE]: command,
+    [KEYBINDING_COMMAND_ATTRIBUTE]: commands.join(" "),
     "aria-keyshortcuts":
       shortcuts.length > 0
-        ? shortcuts.map((shortcut) => ariaShortcut(shortcut)).join(" ")
+        ? [...new Set(shortcuts.map((shortcut) => ariaShortcut(shortcut)))].join(" ")
         : undefined,
   };
 }
@@ -128,7 +154,8 @@ export function ShortcutTrigger({
 
 /**
  * Fork: a tooltip trigger for a control without a tooltip. The tooltip shows `label` and the key
- * of `command`, and only when the command has a key. Use it as the trigger or as its `render`.
+ * of `command`, and only when the command has a key. A control that runs several commands names
+ * each one that has a key, on its own line. Use it as the trigger or as its `render`.
  */
 export function ShortcutTooltip({
   command,
@@ -137,20 +164,38 @@ export function ShortcutTooltip({
   side,
   ...triggerProps
 }: ComponentProps<typeof TooltipTrigger> & {
-  command: KeybindingCommand | null;
+  command: KeybindingCommand | ReadonlyArray<NamedCommand> | null;
   context?: ShortcutContext;
   label: ReactNode;
   side?: ComponentProps<typeof TooltipPopup>["side"];
 }) {
-  const labels = useShortcutLabels(command, context);
-  const keybindingProps = useKeybindingProps(command, context);
+  const single = command === null || typeof command === "string";
+  const named = single ? null : command;
+  const commands = single ? command : command.map((entry) => entry.command);
+  const labelLists = useShortcutLabelLists(commandList(commands), context);
+  const keybindingProps = useKeybindingProps(commands, context);
+  const hasKeys = labelLists.some((labels) => labels.length > 0);
   return (
-    <Tooltip disabled={labels.length === 0}>
+    <Tooltip disabled={!hasKeys}>
       <TooltipTrigger {...keybindingProps} {...triggerProps} />
-      {labels.length > 0 ? (
+      {hasKeys ? (
         <TooltipPopup side={side}>
           {label}
-          <ShortcutChips labels={labels} />
+          {named ? (
+            <span className="mt-1 grid grid-cols-[auto_auto] items-center gap-x-0.5 gap-y-1">
+              {named.map((entry, index) => {
+                const labels = labelLists[index] ?? [];
+                return labels.length > 0 ? (
+                  <Fragment key={entry.command}>
+                    <span className="text-muted-foreground">{entry.name}</span>
+                    <ShortcutChips labels={labels} />
+                  </Fragment>
+                ) : null;
+              })}
+            </span>
+          ) : (
+            <ShortcutChips labels={labelLists[0] ?? []} />
+          )}
         </TooltipPopup>
       ) : null}
     </Tooltip>

@@ -214,7 +214,8 @@ Settings > Machines shows how to join this machine to kitshn, and the kitshn set
 A phone or a desktop app joins kitshn with its own device token (K-1601). On the kitshn map, "Add device" gives a one-time link `https://<kitshn>/join/device#code=…`. It works once and expires after 15 minutes.
 
 - **Phone:** scan the link in Add environment, or paste it in Address.
-- **Desktop:** paste the link in Settings > Machines > "Join with a device invite". The desktop app never uses the machine token of the kitshn daemon.
+- **Desktop:** on the kitshn invite page, press "Open in T3 Code desktop (fork)" and confirm the kitshn host. Or paste the link in Settings > Machines > "Join with a device invite". The desktop app never uses the machine token of the kitshn daemon.
+- Cloudflare Access refuses the CORS preflight of the app's requests to these machines. The desktop main process answers the preflight itself, only for the app's own page and for origins with request headers. The real request still goes through Access with the token.
 - The app keeps only the `t3.app` cards that the token opens, and pairs with each machine. It reads the list at start, when it comes back to the foreground, and on Settings > Fork > App token > Refresh machines (phone). The desktop app also reads it every 30 seconds, adds each new machine as an environment, and removes an environment that it added when the list drops the machine.
 - A refused machine pairs again with a backoff, because Access can take some seconds to accept a new token.
 - An empty or refused list disables or removes no saved machine. The machine shows the reason instead.
