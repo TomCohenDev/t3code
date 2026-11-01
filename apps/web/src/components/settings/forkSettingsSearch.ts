@@ -106,7 +106,7 @@ export const APPEARANCE_ITEMS = [
     to: "/settings/appearance",
     searchTerms: [
       "thread link chip chat url open app machine environment",
-      "copy message link scroll jump highlight anchor fragment",
+      "message link scroll jump highlight anchor fragment",
       "address browser tab slack github desktop app deep link",
     ],
     environmentOnly: true,
