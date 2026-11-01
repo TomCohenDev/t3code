@@ -1,15 +1,20 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { DEFAULT_SERVER_SETTINGS, type StorageCleanupReportEntry } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as Config from "../config.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { withRepositoryLease } from "../workspace/workspaceLease.ts";
 import * as Branches from "./ForkWorktreeBranches.ts";
 
 const layerGit = Git.layer.pipe(
@@ -100,6 +105,71 @@ it.effect("keeps every branch without an origin default branch", () =>
     assert.isFalse(outcome?.deleted);
     assert.isTrue(yield* f.exists("spare"));
   }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect.each(["succeeds", "fails"] as const)(
+  "branch cleanup cannot run between the branch creation and checkout of a worktree when the common folder lookup %s",
+  (lookup) =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const scope = yield* Scope.Scope;
+      // A failed lookup with no cached common folder falls back to the checkout key.
+      const leaseKey = yield* f.fs.realPath(
+        lookup === "succeeds" ? f.path.join(f.repository, ".git") : f.repository,
+      );
+      const live = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const order: string[] = [];
+      const cleanups: Array<Fiber.Fiber<number>> = [];
+      // At `worktree add`, the new branch exists but no worktree uses it yet. A cleanup that asks
+      // for the lease first must still wait, while a second creation shares the lease.
+      const git = yield* Git.make.pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make((command) =>
+            Effect.gen(function* () {
+              if (command._tag !== "StandardCommand") return yield* live.spawn(command);
+              const args = command.args;
+              if (lookup === "fails" && args.includes("--git-common-dir")) {
+                return yield* live.spawn(
+                  ChildProcess.make(
+                    command.command,
+                    ["rev-parse", "--verify", "--quiet", "refs/heads/no-such-branch"],
+                    command.options,
+                  ),
+                );
+              }
+              if (args.includes("worktree") && args.includes("add")) {
+                cleanups.push(
+                  yield* withRepositoryLease(
+                    leaseKey,
+                    "exclusive",
+                    Effect.sync(() => order.push("cleanup")),
+                  ).pipe(Effect.forkIn(scope)),
+                );
+                const otherCreation = yield* Deferred.make<void>();
+                yield* withRepositoryLease(
+                  leaseKey,
+                  "shared",
+                  Deferred.succeed(otherCreation, undefined),
+                ).pipe(Effect.forkIn(scope));
+                yield* Deferred.await(otherCreation);
+                order.push("checkout");
+              }
+              return yield* live.spawn(command);
+            }),
+          ),
+        ),
+      );
+      yield* git.createWorktree({
+        cwd: f.repository,
+        refName: "main",
+        newRefName: "fresh",
+        path: f.path.join(f.root, "fresh"),
+      });
+      assert.strictEqual(cleanups.length, 1);
+      yield* Fiber.join(cleanups[0]!);
+      assert.deepStrictEqual(order, ["checkout", "cleanup"]);
+    }).pipe(Effect.provide(layerGit)),
 );
 
 it.effect("the sweep reads resumable from the threads and skips folders that exist", () =>
