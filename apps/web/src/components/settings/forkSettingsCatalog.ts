@@ -165,7 +165,7 @@ const FORK_SETTING_GROUPS = [
       { ids: ["restore-worktrees-on-resume"], place: "worktrees-creation" },
       { ids: ["auto-settle-waits-for-background-commands"], place: "threads-auto-settle" },
       {
-        ids: ["worktree-artifact-eviction", "worktree-artifact-eviction-days"],
+        ids: ["worktree-artifact-eviction"],
         place: "worktrees-creation",
       },
       { ids: ["sidebar-tabs", "sidebar-tab-single-thread"], place: "general-sidebar" },

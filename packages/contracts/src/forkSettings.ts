@@ -329,10 +329,17 @@ export const MobileNewThreadProject = Schema.Literals(["picker", "last", "none"]
 export type MobileNewThreadProject = typeof MobileNewThreadProject.Type;
 
 export const ForkServerSettingsFields = {
-  worktreeArtifactEviction: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  worktreeArtifactEvictionDays: Schema.Int.check(
-    Schema.isBetween({ minimum: 1, maximum: 3650 }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed(14))),
+  /**
+   * Fork worktree lifecycle, "keep" stage: remove ignored build outputs and dependencies of a
+   * worktree after this many idle days. Null keeps them. See docs/fork/features.md.
+   */
+  worktreeArtifactsAfterDays: Schema.NullOr(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /**
+   * Fork worktree lifecycle, "restore" and "clean" stages: rebuild a missing worktree on resume,
+   * and let storage cleanup delete a branch that restore can rebuild.
+   */
   restoreWorktreesOnResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
    * Fork: auto-settle skips a thread while a background command of its agent runs. Settling
@@ -346,8 +353,8 @@ export const ForkServerSettingsFields = {
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   /**
-   * Fork: where new worktrees go, such as `{repoDir}/{branchLeaf}`. Empty
-   * keeps the `worktreesDirectory` layout. See docs/fork/features.md.
+   * Fork worktree lifecycle, "place" stage: where new worktrees go, such as
+   * `{repoDir}/{branchLeaf}`. Empty keeps the `worktreesDirectory` layout. See docs/fork/features.md.
    */
   worktreePathTemplate: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
@@ -472,9 +479,8 @@ export const ForkServerSettingsFields = {
 };
 
 export const ForkServerSettingsPatchFields = {
-  worktreeArtifactEviction: Schema.optionalKey(Schema.Boolean),
-  worktreeArtifactEvictionDays: Schema.optionalKey(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  worktreeArtifactsAfterDays: Schema.optionalKey(
+    Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 }))),
   ),
   restoreWorktreesOnResume: Schema.optionalKey(Schema.Boolean),
   autoSettleWaitsForBackgroundCommands: Schema.optionalKey(Schema.Boolean),
