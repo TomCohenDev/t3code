@@ -374,6 +374,9 @@ export const withLateConfigDiscovery = <E, R>(
             return [{ ...current, providers: event.payload.providers }, [event]];
           case "settingsUpdated":
             return [{ ...current, settings: event.payload.settings }, [event]];
+          // Fork label updates send full snapshots; later late snapshots must build on them.
+          case "snapshot":
+            return [event.config, [event]];
           // Themes and usage-limit sources survive snapshots because snapshots never include them.
           default:
             return [current, [event]];
