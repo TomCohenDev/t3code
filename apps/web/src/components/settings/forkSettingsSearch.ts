@@ -134,9 +134,11 @@ export const APPEARANCE_ITEMS = [
   },
   {
     id: "mobile-published-themes",
-    title: "Published themes on mobile",
+    title: "Themes on mobile",
     to: "/settings/appearance",
-    searchTerms: ["mobile phone android app theme published fonts shape radius canvas pattern"],
+    searchTerms: [
+      "mobile phone android app theme published default fonts shape radius canvas pattern",
+    ],
     environmentOnly: true,
   },
   {

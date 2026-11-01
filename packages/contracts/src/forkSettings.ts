@@ -452,9 +452,10 @@ export const ForkServerSettingsFields = {
    */
   previewLocalServerGroups: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: the mobile app offers the themes that this server publishes, with their fonts, shape
-   * and canvas pattern, and takes `defaultTheme`. A server setting, so the machine map syncs it
-   * and the mobile app reads it.
+   * Fork: the one switch of the Themes feature. The mobile app offers the themes that this server
+   * publishes, with their fonts, shape and canvas pattern, and takes `defaultTheme`. Web and
+   * desktop need no switch: the chosen theme carries its style and icons. A server setting, so
+   * the machine map syncs it and the mobile app reads it.
    */
   mobilePublishedThemes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: what "New thread" opens in the mobile app. See `MobileNewThreadProject`. */

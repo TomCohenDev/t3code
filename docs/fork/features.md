@@ -703,20 +703,31 @@ A phone gets thread notifications while the installed app is closed, from each s
 - A server pushes when a thread starts to wait for approval or input, or when a running thread completes or fails. A compaction that T3 Code starts on its own pushes only when it fails, like the page notification. A terminal thread also pushes for a new attention on its main terminal: Input needed, Program done or Program failed, like the page notification.
 - A push replaces the page notification of the same thread. No push shows when the window in front already shows that thread.
 
-### Theme style
+### Themes
+
+The theme that you select in Settings > Appearance is the one control. A published theme carries its colors and, in the fork, also its style and its icons. The mobile app follows the same themes while Themes on mobile is on.
+
+- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app > "Themes on mobile", or Fork > "Themes from your servers" in the mobile Settings. kitshn syncs it. Web and desktop have no switch: select a published theme in Settings > Appearance, or another theme to drop its style and icons. See [Appearance](../user/appearance.md) for published themes.
+- **Works on:** web, desktop, and mobile with Themes on mobile.
+- Off by default, because on the phone it replaces the theme that the user selected there with the default theme of the server.
+
+#### Style
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
-- **Setting:** none. Select a published theme in Settings > Appearance. See [Appearance](../user/appearance.md) for published themes.
-- **Works on:** web, desktop, and mobile with [Themes on mobile](#themes-on-mobile).
-- **Limits:** see [Themes on mobile](#themes-on-mobile) for the fields that mobile skips.
+#### Icons
 
-### Themes on mobile
+A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
 
-The mobile app uses the themes that its servers publish.
+- **Works on:** web, desktop.
+- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
+- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
+- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
-- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app, or Fork in the mobile Settings. kitshn syncs it.
-- **Works on:** mobile.
+#### On mobile
+
+With `mobilePublishedThemes` on, the mobile app uses the themes that its servers publish.
+
 - Appearance in the mobile app shows the published themes under "From your servers". A theme with colors for one appearance offers that appearance only.
 - The app takes the server setting `defaultTheme` once for each theme id, for the appearances that the theme has colors for. The color scheme mode stays as set on the phone.
 - The app stores the last published themes, so the theme shows before a server connects.
@@ -728,24 +739,24 @@ The mobile app uses the themes that its servers publish.
   - A theme that lists only `canvas` and `accent` gets only those two colors, because the palette generator lives in `apps/web/src/themePalette.ts`. Revisit when such a theme is in use on a phone, or when upstream moves the generator to `packages/shared`.
   - A pixel radius class that upstream adds later keeps its size under a theme until `fork-theme.css` gets a rule for it.
   - Other fonts keep the stock font. The composer takes the `sans` font, and the terminal and diff views keep the platform monospace font.
-  - `noise`, user CSS and icon packs have no mobile form. The text of the Android buttons keeps the system font.
+  - `noise`, user CSS and icons have no mobile form. The text of the Android buttons keeps the system font.
   - Setting the same `defaultTheme` again does not apply it again on the phone, because `defaultThemeSetAt` is local to each machine.
+
+#### App icon
+
+The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
+
+- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
+- **Limits:**
+  - The icon is part of the build, so no theme and no switch changes it. Revisit if a theme needs its own app icon.
+  - iOS builds keep the nightly icon.
 
 ### Fork settings on mobile
 
-Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips, message links and what New thread opens. Threads also shows the camera, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
+Fork in the mobile Settings holds the fork settings that apply to the mobile app: [themes](#themes), the camera in the composer, thread link chips, message links and what New thread opens. Threads also shows the camera, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
 
 - **Works on:** mobile.
 - **Limits:** a change on the phone is the own value of each server, not the shared value on kitshn. Set the shared value with "All environments" in T3 Settings.
-
-### Theme icon packs
-
-A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
-
-- **Works on:** web, desktop.
-- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
-- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
-- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
 ### Local server groups
 
@@ -764,13 +775,6 @@ A row shows "from <thread>" when the server knows for certain which other thread
   - A port with two owner processes, such as one on IPv4 and one on IPv6, gets no check. A project at the home folder or above it counts as no project.
   - A new project or thread worktree counts after up to 30 seconds. A worktree that no thread uses counts after up to 5 minutes.
   - A server whose shell exited has no "from" link on macOS, because macOS hides the environment of other processes. On Linux the server also reads `CLAUDE_CODE_SESSION_ID` and `CODEX_THREAD_ID` from the process environment. Windows has no "from" link for agent servers.
-
-### Lightning icon
-
-The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
-
-- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
-- **Limits:** iOS builds keep the nightly icon.
 
 ### Back and forward
 

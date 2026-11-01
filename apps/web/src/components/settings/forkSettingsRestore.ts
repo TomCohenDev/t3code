@@ -33,7 +33,7 @@ const FORK_RESTORED_SETTINGS = [
   ["threadLinksOpenDesktopApp", "Thread addresses open the desktop app"],
   ["messageLinks", "Message links"],
   ["previewLocalServerGroups", "All local servers in the browser"],
-  ["mobilePublishedThemes", "Published themes on mobile"],
+  ["mobilePublishedThemes", "Themes on mobile"],
   ["mobileNewThreadProject", "New thread on mobile"],
   ["mobileComposerCamera", "Camera on mobile"],
   ["mobileMessagePins", "Message pins on mobile"],

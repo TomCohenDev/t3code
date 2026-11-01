@@ -68,9 +68,9 @@ const FORK_MOBILE_SWITCHES = [
   {
     key: "mobilePublishedThemes",
     icon: "paintbrush",
-    label: "Published themes",
+    label: "Themes from your servers",
     subtitle:
-      "Offer the themes of your servers in Appearance, with their fonts, shape and canvas pattern, and take the default theme of the server.",
+      "Follow the themes of your servers: Appearance offers them, with their fonts, shape and canvas pattern, and the app takes the default theme of the server.",
   },
   {
     key: "mobileComposerCamera",
