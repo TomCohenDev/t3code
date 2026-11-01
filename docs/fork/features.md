@@ -287,10 +287,10 @@ One update policy for the desktop app and the server. Only the last step differs
   - A checksum. The server checks the archive against `SHA256SUMS`, and the desktop updater checks its download against the release feed.
   - When idle: no agent turn and no background shell runs. A program in a terminal thread holds the update for at most 6 hours (`TERMINAL_UPDATE_HOLD_MAX_HOURS` in `packages/contracts/src/forkTerminalThreads.ts`). Then its terminal shows a notice, and the update installs about 10 minutes later and ends the program.
   - The `t3` command follows: after the update, `t3 --version` names the new version.
-- **Setting:** server setting `forkUpdateMode`, `manual` (default) or `automatic`. Settings > Maintenance > Updates > "Automatic updates". With `automatic`, the server checks the fork releases every 5 minutes and installs when idle, and the desktop app installs each download when idle. The desktop app reads the setting of its own server.
+- **Setting:** server setting `forkUpdateMode`, `manual` (default) or `automatic`. Settings > Maintenance > Updates > "Automatic updates". With `automatic`, the server checks the fork releases every 5 minutes and installs when idle, and the desktop app installs each download when idle. A switch to `manual` cancels these waits, but not a wait from "Install when idle". The desktop app reads the setting of its own server. The old setting `forkAutoUpdate` is no longer read: set `forkUpdateMode` to `automatic` for automatic server updates.
 - **Start an update by hand:**
-  - Desktop: the update button. While agents or terminal programs run, it offers "Install when idle" next to "Install now".
-  - Server: `t3 update` on the machine.
+  - Desktop: the update button. While agents, background shells or terminal programs run, it offers "Install when idle" next to "Install now".
+  - Server: `t3 update` on the machine. It installs at once and does not wait for idle.
   - Agents and other machines: the kitshn command install-update of the T3 card (`machines_command` with `install-update`). It waits for idle with either setting.
 - **Install:** one command per OS family, see [Install the fork](operations.md#install-the-fork).
 - **Works on:** desktop (macOS, Windows, Linux) and the server of `t3 service install` on Linux. The fork publishes server archives only for Linux.

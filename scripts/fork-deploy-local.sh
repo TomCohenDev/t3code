@@ -111,8 +111,10 @@ install_mac() {
   # Drop an update the old app downloaded; macOS installs it on quit otherwise, so clear it before the quit.
   rm -rf "$HOME/Library/Caches/t3code-updater" "$HOME/Library/Caches/com.t3tools.t3code.ShipIt"
   osascript -e "quit app \"${app_name%.app}\"" || true
-  # Fixed-string match: pgrep -f reads "(Nightly)" in the path as a regex group.
-  running() { ps -axo command= | grep -qF "$installed/Contents/MacOS/"; }
+  # pgrep -f takes a regex and skips itself, so escape the "(Nightly)" and "." of the path.
+  local pattern
+  pattern="$(printf '%s' "$installed/Contents/MacOS/" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
+  running() { pgrep -qf "$pattern"; }
   for _ in $(seq 1 30); do running || break; sleep 1; done
   if running; then
     echo "$app_name did not quit; the install stopped." >&2
