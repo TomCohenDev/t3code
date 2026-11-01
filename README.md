@@ -71,8 +71,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Filters**
 
-- **[Repository owner filters](docs/fork/features.md#repository-owner-filters):** filter the pull request page and the sidebar by repository owner.
-- **[Pull request filter chips](docs/fork/features.md#pull-request-filter-chips):** the active pull request filters show as chips.
+- **[Pull request filters](docs/fork/features.md#pull-request-filters):** filter the pull request page and the sidebar by repository owner, and show the active pull request filters as chips.
 
 **Scripts and terminal**
 

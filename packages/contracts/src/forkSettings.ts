@@ -196,19 +196,15 @@ export const ForkClientSettingsFields = {
    */
   webPushEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
-   * Fork: filter by repository owner (`repositoryOwnerOf`) on the pull request page and in the
-   * sidebar. Remove when upstream T3 Code ships its own owner or organization filter.
+   * Fork: pull request filters. A filter by repository owner (`repositoryOwnerOf`) on the pull
+   * request page and in the sidebar, and the active pull request filters as chips above the list.
+   * Remove a part when upstream T3 Code ships its own owner filter or active-filter chips.
    */
-  repositoryOwnerFilters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /**
-   * Fork: the active pull request filters show as chips above the list, and an empty list names
-   * the filters that emptied it. Remove when upstream T3 Code shows its active filters itself.
-   */
-  pullRequestFilterChips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  pullRequestFilters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
    * Fork: the sidebar filter by repository owner. "is" shows only the projects of these owners,
    * and "is_not" hides them. Null stands for projects without an owner. No owners shows every
-   * project. Applies only while `repositoryOwnerFilters` is on.
+   * project. Applies only while `pullRequestFilters` is on.
    */
   sidebarOwnerFilter: SidebarOwnerFilter.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
@@ -304,8 +300,7 @@ export const ForkClientSettingsPatchFields = {
   checkNewerBeforeUpdateInstall: Schema.optionalKey(Schema.Boolean),
   installedAppEnabled: Schema.optionalKey(Schema.Boolean),
   webPushEnabled: Schema.optionalKey(Schema.Boolean),
-  repositoryOwnerFilters: Schema.optionalKey(Schema.Boolean),
-  pullRequestFilterChips: Schema.optionalKey(Schema.Boolean),
+  pullRequestFilters: Schema.optionalKey(Schema.Boolean),
   sidebarOwnerFilter: Schema.optionalKey(SidebarOwnerFilter),
   sidebarTabsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarTabSingleThreadOpens: Schema.optionalKey(Schema.Boolean),
