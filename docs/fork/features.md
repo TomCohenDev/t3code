@@ -278,31 +278,26 @@ A signed Android APK of fork main, on fork releases that changed the app. It ins
   - No over-the-air updates, because those come from the upstream Expo project. Update with Obtainium.
   - arm64 phones only.
 
-### Fork installers
+### Updates
 
-One command installs the fork from the fork releases on macOS, Windows or Linux, then names the kitshn join step. The installer does not build from source. Commands and options: [Install the fork](operations.md#install-the-fork).
+One update policy for the desktop app and the server. Only the last step differs: the desktop app replaces itself with its updater (Squirrel.Mac, NSIS on Windows, the AppImage on Linux), and the server switches its runtime through the service launcher. How it works for maintainers: [Update and install](operations.md#update-and-install).
 
-### Install when idle
-
-While agents or programs in terminal threads run, the desktop update button offers "Install when idle" next to "Install now". The app installs the update when no agent turn and no terminal thread program runs. A terminal thread program holds the update by the rules of [Server auto-update](#server-auto-update): at most 6 hours from the choice, then a notice in its terminal, and the install about 10 minutes later.
-
-- **Works on:** desktop.
-- **Limits:** the wait lives in the window, so a window reload drops it. Revisit if a reload during the wait loses an update in practice.
-
-### Server auto-update
-
-A headless server that runs as the background service installs each newer fork release when no agent turn, no background shell and no program in a terminal thread runs. A program in a terminal thread holds the update for at most 6 hours (`TERMINAL_UPDATE_HOLD_MAX_HOURS` in `packages/contracts/src/forkTerminalThreads.ts`). Then its terminal shows a notice, and the update installs about 10 minutes later and ends the program.
-
-- **Setting:** server setting `forkAutoUpdate` (off by default). Settings > Maintenance > Updates > "Server auto-update".
-- **Works on:** server (the background service of `t3 service install`). The desktop app updates itself.
-- **Limits:** the restart stops running turns. Turn on [Recover interrupted agents](#recover-interrupted-agents) to continue them. Details: [Server updates](operations.md#server-updates).
-
-### Newer update before install
-
-Before the desktop app installs a downloaded update, it checks for a newer release. If one exists, it asks "Download newer" or "Install this one". Install when idle and the kitshn install-update command take the newer release.
-
-- **Setting:** client setting `checkNewerBeforeUpdateInstall` (off by default). Settings > About > App > "Check for a newer update before install".
-- **Works on:** desktop.
+- **Policy:**
+  - The newest fork release. The server takes the newest release that has `SHA256SUMS`. Before the desktop app installs a downloaded update, it checks for a newer release and downloads that one instead.
+  - A checksum. The server checks the archive against `SHA256SUMS`, and the desktop updater checks its download against the release feed.
+  - When idle: no agent turn and no background shell runs. A program in a terminal thread holds the update for at most 6 hours (`TERMINAL_UPDATE_HOLD_MAX_HOURS` in `packages/contracts/src/forkTerminalThreads.ts`). Then its terminal shows a notice, and the update installs about 10 minutes later and ends the program.
+  - The `t3` command follows: after the update, `t3 --version` names the new version.
+- **Setting:** server setting `forkUpdateMode`, `manual` (default) or `automatic`. Settings > Maintenance > Updates > "Automatic updates". With `automatic`, the server checks the fork releases every 5 minutes and installs when idle, and the desktop app installs each download when idle. The desktop app reads the setting of its own server.
+- **Start an update by hand:**
+  - Desktop: the update button. While agents or terminal programs run, it offers "Install when idle" next to "Install now".
+  - Server: `t3 update` on the machine.
+  - Agents and other machines: the kitshn command install-update of the T3 card (`machines_command` with `install-update`). It waits for idle with either setting.
+- **Install:** one command per OS family, see [Install the fork](operations.md#install-the-fork).
+- **Works on:** desktop (macOS, Windows, Linux) and the server of `t3 service install` on Linux. The fork publishes server archives only for Linux.
+- **Limits:**
+  - An update restarts the server and stops running turns. Turn on [Recover interrupted agents](#recover-interrupted-agents) to continue them.
+  - The desktop wait lives in the window, so a window reload drops it. Revisit if a reload during the wait loses an update in practice.
+  - The installers download the desktop apps without a checksum check. Revisit if a release asset can change after its upload.
 
 ### Changelog
 
@@ -323,8 +318,7 @@ A timeline of fork releases and their commits, the upstream commits that fork ma
 
 These README lines are maintainer procedures:
 
-- Local deploy: [Deploy a local build](operations.md#deploy-a-local-build).
-- Local Mac build: [Local Mac build](operations.md#local-mac-build).
+- Local deploy of a server or the Mac app: [Deploy a local build](operations.md#deploy-a-local-build).
 - Fork Sync: [Fork Sync](operations.md#fork-sync).
 - Fork CI: [Fork CI](operations.md#fork-ci).
 - Repair agent: [Repair agent](operations.md#repair-agent).
