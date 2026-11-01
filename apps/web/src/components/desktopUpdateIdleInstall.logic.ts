@@ -55,3 +55,23 @@ export function idleInstallWorkTitle(agents: number, terminalPrograms: number): 
   ];
   return parts.length === 0 ? "Nothing running" : `${parts.join(" and ")} running`;
 }
+
+/** A wait for idle. "automatic" comes from `forkUpdateMode`, "user" from "Install when idle". */
+export interface IdleInstallArm {
+  readonly at: number;
+  readonly by: "user" | "automatic";
+}
+
+/**
+ * The arm after `forkUpdateMode` or the downloaded update changes. Automatic mode arms for a
+ * download. Manual mode cancels an automatic arm, and keeps a wait that the user chose.
+ */
+export function nextAutomaticArm(
+  current: IdleInstallArm | null,
+  automatic: boolean,
+  downloaded: boolean,
+  now: number,
+): IdleInstallArm | null {
+  if (automatic) return downloaded && current === null ? { at: now, by: "automatic" } : current;
+  return current?.by === "automatic" ? null : current;
+}

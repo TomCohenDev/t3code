@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   countRunningAgentTurns,
   countRunningTerminalPrograms,
+  nextAutomaticArm,
 } from "./desktopUpdateIdleInstall.logic";
 
 const primary = EnvironmentId.make("primary");
@@ -76,5 +77,21 @@ describe("countRunningTerminalPrograms", () => {
 
     expect(countRunningTerminalPrograms(threads, primary)).toBe(1);
     expect(countRunningTerminalPrograms(threads, null)).toBe(0);
+  });
+});
+
+describe("nextAutomaticArm", () => {
+  const automaticArm = { at: 1, by: "automatic" } as const;
+  const userArm = { at: 1, by: "user" } as const;
+
+  it("arms for a download in automatic mode and keeps a running wait", () => {
+    expect(nextAutomaticArm(null, true, true, 5)).toEqual({ at: 5, by: "automatic" });
+    expect(nextAutomaticArm(null, true, false, 5)).toBeNull();
+    expect(nextAutomaticArm(userArm, true, true, 5)).toBe(userArm);
+  });
+
+  it("cancels an automatic wait in manual mode, not a wait that the user chose", () => {
+    expect(nextAutomaticArm(automaticArm, false, true, 5)).toBeNull();
+    expect(nextAutomaticArm(userArm, false, true, 5)).toBe(userArm);
   });
 });
