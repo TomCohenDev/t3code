@@ -16,6 +16,13 @@ export const PULL_REQUEST_WATCH_NO_CHECKS_MS = 15 * 60_000;
 const LISTED_ITEMS = 10;
 const SNIPPET_LENGTH = 200;
 
+/** Fork: wake message IDs name their pull request, so an ended watch can drop its queued wakes. */
+export const pullRequestWakeMessagePrefix = (key: {
+  readonly host: string;
+  readonly repository: string;
+  readonly number: number;
+}) => `message:pr-watch:${key.host}/${key.repository}/${key.number}:`;
+
 export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
   | { readonly kind: "checks-passed"; readonly count: number; readonly required: boolean }
@@ -129,7 +136,8 @@ export function evaluatePullRequestWatch(
     );
   };
   const through = Date.parse(watch.remarksThrough);
-  const activeAt = (remark: PullRequestComment) => remark.editedAt ?? remark.createdAt;
+  // Fork: an edit is not news, so one remark wakes a thread once. Bots edit summary comments often.
+  const activeAt = (remark: PullRequestComment) => remark.createdAt;
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
   const fresh = (remarks ?? []).filter((remark) => {
     const at = Date.parse(activeAt(remark));
