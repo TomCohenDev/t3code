@@ -165,8 +165,8 @@ A kitshn link makes another machine a linked environment. Agents pass its `envir
 
 An agent runs a shell command on another machine with `machine_exec`. kitshn runs the command on that machine, as the user of its T3 provider, in the home directory or a given directory. T3 on that machine is not needed, so this also works to repair it. The result holds the exit code, stdout and stderr. In a shell, `t3 machine exec` runs a command like ssh: stdin goes in, stdout and stderr come back as the command writes them, and the exit code is the command's.
 
-- **Setting:** this machine reaches the `t3.app` card of the other machine, and the kitshn right "Runs commands" of this machine on that machine. "Ask" holds each run for the owner's approval; "Automatic" runs it at once. A terminal thread that another machine starts here needs "Runs commands" at "Automatic" too.
-- **Approval:** `machine_exec` waits up to 60 seconds for the owner, then answers "waiting". The run starts when the owner approves it, and its result shows in `machines_read` (`execResults`). `t3 machine exec` prints a waiting line and waits.
+- **Setting:** this machine reaches the `t3.app` card of the other machine, and the kitshn effect "runs" of this machine on that machine. "Automatic" runs each run at once, "ask" holds it for an approver circle (the owner by default), and "off" refuses it. A terminal thread that another machine starts here needs "runs" at "automatic" too.
+- **Approval:** `machine_exec` waits up to 60 seconds for the approval, then answers "waiting". The run starts when the owner approves it, and its result shows in `machines_read` (`execResults`). `t3 machine exec` prints a waiting line and waits.
 - **Who can:** a live full-access/default thread with the orchestration, worktree and pull-request tool capabilities. Restricted threads are refused. In an agent's shell, `t3 machine exec` acts as the agent's thread. Without a thread credential it is refused. No command list grants or refuses a command.
 - **Stop:** a lost connection to kitshn ends the run on both machines.
 - **In a shell:** in a checkout, use `node apps/server/src/bin.ts` instead of `t3`.
@@ -365,7 +365,8 @@ Agents publish a file or a folder of their workspace to kitshn, and give the car
 - A caller without a thread credential, such as an OAuth client, gets a refusal.
 - `path` is relative to the thread's worktree, or its project folder. The tool refuses a path outside that folder after links resolve, and a path in a dot folder or to a dotfile.
 - The server uses `~/.local/bin/kitshn`, else the first `kitshn` in an absolute PATH folder that is kitshn 2. The PATH is the one that the server reads from the login shell at start. The check runs without a credential. A binary is kitshn 2 when `kitshn version --json` prints `{"product":"kitshn","generation":2,…}`. KitSHn 1 never runs. When no binary is kitshn 2, the error names the paths that it found.
-- A call stops after 150 seconds, a little above the daemon's own 120-second call limit. kitshn refuses at once when a right is unset or set to "ask".
+- A call stops after 150 seconds, a little above the daemon's own 120-second call limit. kitshn refuses at once when the effect of the call is "off".
+- **Approval:** a publish has the effect "shares". When its mode is "ask", kitshn asks a circle (the owner by default) and the CLI waits. After 60 seconds, the server stops the CLI and the tool returns `{outcome: "waiting", proposalId, message}`. The approval runs nothing by itself. After it, the agent sends the same call again within 1 hour, and that call runs (kitshn K-1714, K-1776). A changed call asks again. A denied or expired proposal returns the kitshn refusal.
 - **Limits:**
   - The server checks a binary once per path and change time. A new install at the same path with the same change time is not checked again. Revisit if kitshn installs keep the change time.
   - While the server is not connected to kitshn, kitshn calls of its threads fail, because no server vouches for the thread.
