@@ -1738,7 +1738,9 @@ function OpenCommandPaletteDialog(props: {
               },
             ]
           : currentView?.groups[0]?.value === FORK_TERMINAL_NEW_THREAD_IN_GROUP
-            ? forkTerminal.newThreadInView.groups
+            ? forkTerminal.projectItemCount > 0
+              ? forkTerminal.newThreadInView.groups
+              : forkTerminalNewThreadInView([addProjectAction]).groups
             : currentView?.groups[0]?.value === "themes"
               ? changeThemeItem.groups
               : currentView?.groups[0]?.value === "appearance"
