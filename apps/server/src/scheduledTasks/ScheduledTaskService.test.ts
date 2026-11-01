@@ -503,6 +503,7 @@ it.effect("a run interrupted right after it reserves the task does not block the
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
           }),
+          ServerSettings.layerTest(),
           NodeCrypto.layer,
           Layer.succeed(Scheduler.Scheduler, { register: () => Effect.void }),
         ),

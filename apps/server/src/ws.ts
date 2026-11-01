@@ -3256,7 +3256,12 @@ export const layerWsRpc = (
               ).pipe(
                 Stream.merge(
                   ForkWs.environmentLabelUpdates(
-                    loadServerConfig({ usageLimitsCommand, workspaceSnapshotsOnDemand }),
+                    // A full snapshot replaces the client config, so it keeps the remote targets.
+                    loadServerConfig({
+                      usageLimitsCommand,
+                      workspaceSnapshotsOnDemand,
+                      deferRemoteOpenTargets: false,
+                    }),
                     config.environment.label,
                   ),
                 ),

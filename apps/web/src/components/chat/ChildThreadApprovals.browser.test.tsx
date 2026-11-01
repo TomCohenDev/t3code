@@ -8,7 +8,11 @@ import { render } from "../../../test/render";
 
 const state = vi.hoisted(() => ({ respond: vi.fn(), approvalsAtom: null as unknown }));
 
-vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
+// Fork: fork modules on this import path read other exports of the session module.
+vi.mock("../../state/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../state/session")>()),
+  useEnvironmentScope: () => true,
+}));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => state.respond }));
 vi.mock("../../state/threads", () => ({
   childThreadApprovalsAtom: () => state.approvalsAtom,
