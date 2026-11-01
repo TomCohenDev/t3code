@@ -4106,7 +4106,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const createWorktree = Effect.fn("createWorktree")(function* (
     input: VcsCreateWorktreeInput,
     options: GitVcsDriver.CreateWorktreeOptions | undefined,
-    gitCommonDir: string | null,
+    leaseKey: string,
   ) {
     yield* refuseOptionLikeRefName("GitVcsDriver.createWorktree", input.cwd, input.refName);
     yield* refuseOptionLikeRefName("GitVcsDriver.createWorktree", input.cwd, input.newRefName);
@@ -4212,10 +4212,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       },
     );
     // Branch cleanup must not delete the branch before `worktree add` checks it out.
-    const claim = Effect.andThen(createBranch, checkout);
-    yield* (
-      gitCommonDir === null ? claim : withRepositoryLease(gitCommonDir, "shared", claim)
-    ).pipe(Effect.ensuring(releaseTemplateName));
+    yield* withRepositoryLease(leaseKey, "shared", Effect.andThen(createBranch, checkout)).pipe(
+      Effect.ensuring(releaseTemplateName),
+    );
 
     if (progress?.onWorktreeClaimed) {
       yield* progress.onWorktreeClaimed(worktreePath);
@@ -4939,19 +4938,24 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ]),
       ),
     );
-  const invalidateWorktreeCreationCaches = Effect.fn(
-    "GitVcsDriverCore.invalidateWorktreeCreationCaches",
-  )(function* (cwd: string, readCommonDir: string | null) {
-    let gitCommonDir = readCommonDir;
-    if (gitCommonDir === null) {
-      gitCommonDir = yield* Cache.getOption(
+  const readOrCachedGitCommonDir = Effect.fn("GitVcsDriverCore.readOrCachedGitCommonDir")(
+    function* (cwd: string) {
+      const read = yield* readGitCommonDir(cwd).pipe(
+        Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
+      );
+      if (read !== null) return read;
+      return yield* Cache.getOption(
         repositoryPathsCache,
         normalizeRepositoryPathsCacheKey(cwd),
       ).pipe(
         Effect.map((cached) => Option.getOrNull(cached)?.gitCommonDir ?? null),
         Effect.orElseSucceed(() => null),
       );
-    }
+    },
+  );
+  const invalidateWorktreeCreationCaches = Effect.fn(
+    "GitVcsDriverCore.invalidateWorktreeCreationCaches",
+  )(function* (cwd: string, gitCommonDir: string | null) {
     yield* Effect.all([
       invalidateListRefsSnapshot(cwd, gitCommonDir).pipe(Effect.ignore),
       invalidateStatusStaticCaches(cwd, gitCommonDir).pipe(Effect.ignore),
@@ -4997,10 +5001,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     resolveBranchName,
     listRefs,
     createWorktree: Effect.fnUntraced(function* (input, options) {
-      const gitCommonDir = yield* readGitCommonDir(input.cwd).pipe(
-        Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
-      );
-      return yield* createWorktree(input, options, gitCommonDir).pipe(
+      const gitCommonDir = yield* readOrCachedGitCommonDir(input.cwd);
+      // Limit: cleanup keys by common folder, so it is not ordered here; revisit if a lookup fails.
+      const leaseKey =
+        gitCommonDir ??
+        (yield* fileSystem.realPath(input.cwd).pipe(Effect.orElseSucceed(() => input.cwd)));
+      return yield* createWorktree(input, options, leaseKey).pipe(
         Effect.ensuring(invalidateWorktreeCreationCaches(input.cwd, gitCommonDir)),
       );
     }),
