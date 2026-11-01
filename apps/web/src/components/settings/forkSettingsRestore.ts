@@ -12,8 +12,7 @@ import type { ScopedSettingsPatch } from "./scopedSettings";
 const FORK_RESTORED_SETTINGS = [
   ["restoreWorktreesOnResume", "Restore worktrees on resume"],
   ["autoSettleWaitsForBackgroundCommands", "Auto-settle waits for background commands"],
-  ["worktreeArtifactEviction", "Evict worktree artifacts"],
-  ["worktreeArtifactEvictionDays", "Artifact eviction inactivity days"],
+  ["worktreeArtifactsAfterDays", "Evict worktree artifacts"],
   ["installedAppEnabled", "Installed app"],
   ["inAppNotificationSeconds", "In-app notification time"],
   ["inAppNotificationCompletions", "Notify when a thread finishes"],
