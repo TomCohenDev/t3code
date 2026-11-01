@@ -62,10 +62,8 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Sidebar tabs](docs/fork/features.md#sidebar-tabs):** tabs above the sidebar list that hold threads, filled by drag or by rules. Mobile shows and edits them too.
 - **[Waiting shelf](docs/fork/features.md#waiting-shelf):** threads that wait on other threads or background work get their own shelf under Working.
 - **[Worktree path template](docs/fork/features.md#worktree-path-template):** a template decides where new worktrees go.
-- **[Thread link chips](docs/fork/features.md#thread-link-chips):** every thread link in chat shows as an attached-thread chip.
-- **[Message links](docs/fork/features.md#message-links):** copy a link from each message to open the thread at that message.
+- **[Thread addressing](docs/fork/features.md#thread-addressing):** thread links in chat show as attached-thread chips, each message has a link of its own, and a thread address from Slack or GitHub opens the desktop app (off by default).
 - **[Message pins](docs/fork/features.md#message-pins):** pin messages, and list the pins in thread details and in the sidebar.
-- **[Thread addresses open the desktop app](docs/fork/features.md#thread-addresses-open-the-desktop-app):** a thread address from Slack or GitHub opens the desktop app.
 - **[New thread on mobile](docs/fork/features.md#new-thread-on-mobile):** New thread in the mobile app opens the project list, the last project, or no project.
 - **[Camera in the mobile composer](docs/fork/features.md#camera-in-the-mobile-composer):** the plus button of the mobile composer can take a photo.
 - **[Android assistant panel](docs/fork/features.md#android-assistant-panel):** the Android assistant button starts a thread with the screen.
@@ -73,8 +71,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Filters**
 
-- **[Repository owner filters](docs/fork/features.md#repository-owner-filters):** filter the pull request page and the sidebar by repository owner.
-- **[Pull request filter chips](docs/fork/features.md#pull-request-filter-chips):** the active pull request filters show as chips.
+- **[Pull request filters](docs/fork/features.md#pull-request-filters):** filter the pull request page and the sidebar by repository owner, and show the active pull request filters as chips.
 
 **Scripts and terminal**
 
