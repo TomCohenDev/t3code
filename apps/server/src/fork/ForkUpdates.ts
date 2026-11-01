@@ -23,14 +23,19 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 
+import * as HostProcess from "@t3tools/shared/HostProcess";
+
 import packageJson from "../../package.json" with { type: "json" };
+import { pinnedRuntimePaths } from "../cloud/pinnedRuntime.ts";
 import * as ServiceLauncherClient from "../cloud/serviceLauncherClient.ts";
 import { parseServiceState, SERVICE_STATE_FILE } from "../cloud/serviceProtocol.ts";
 import * as ServerSelfUpdate from "../cloud/selfUpdate.ts";
 import * as ServerConfig from "../config.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+import * as ServerLifecycleEvents from "../serverLifecycleEvents.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import { relinkLaunchers } from "./forkLaunchers.ts";
 import { type ForkUpdateChannel, newerForkRelease } from "./forkReleases.ts";
 
 // Each check reads the GitHub release index once. Unauthenticated, GitHub
@@ -109,6 +114,8 @@ const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const platform = yield* HostProcess.Platform;
+  const lifecycle = yield* ServerLifecycleEvents.ServerLifecycleEvents;
   const scope = yield* Effect.scope;
 
   const available = config.mode !== "desktop" && launcher.managed;
@@ -236,6 +243,35 @@ const make = Effect.gen(function* () {
 
   if (available) {
     yield* check.pipe(Effect.repeat(Schedule.spaced(CHECK_INTERVAL)), Effect.forkScoped);
+    // "ready" follows the launcher's commit, so this runtime is the active one from then on. The
+    // layer builds before startup publishes "ready"; the snapshot covers a late subscription.
+    const ready = Stream.concat(
+      Stream.unwrap(
+        lifecycle.snapshot.pipe(Effect.map((state) => Stream.fromIterable(state.events))),
+      ),
+      lifecycle.stream,
+    ).pipe(
+      Stream.filter((event) => event.type === "ready"),
+      Stream.runHead,
+    );
+    yield* ready.pipe(
+      Effect.andThen(
+        relinkLaunchers({
+          baseDir: config.baseDir,
+          entryPath: pinnedRuntimePaths(path, config.baseDir, packageJson.version, platform)
+            .entryPath,
+        }),
+      ),
+      Effect.tap((relinked) =>
+        relinked.length === 0
+          ? Effect.void
+          : Effect.logInfo("Pointed the t3 launchers at this version.", { relinked }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Could not point the t3 launchers at this version.", { cause }),
+      ),
+      Effect.forkScoped,
+    );
   }
 
   const install: ForkUpdates["Service"]["install"] = Effect.fn("ForkUpdates.install")(function* ({
