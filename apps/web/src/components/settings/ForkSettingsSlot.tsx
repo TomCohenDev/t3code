@@ -51,11 +51,7 @@ import { TerminalKeyMappingsSettingsRow } from "./TerminalKeyMappingsSettingsRow
 import { TerminalThreadFontLimitsSettingsRow } from "./TerminalThreadFontLimitsSettingsRow";
 import { TerminalThreadsSettingsRow } from "./TerminalThreadsSettingsRow";
 import { ThreadCardLayoutSettingsRows } from "./ThreadCardLayoutSettings";
-import {
-  MessageLinksSettingsRow,
-  ThreadLinkChipsSettingsRow,
-  ThreadLinksOpenDesktopAppSettingsRow,
-} from "./ThreadLinkChipsSettings";
+import { ThreadAddressingSettingsRow } from "./ThreadAddressingSettingsRow";
 import { TunnelPairingSettingsRow } from "./TunnelPairingSettingsRow";
 import { WebPushSettingsRow } from "./WebPushSettingsRow";
 import { WorktreePathTemplateRow } from "./WorktreePathTemplateRow";
@@ -111,9 +107,7 @@ export const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>
   "settings-find": SettingsFindSettingsRow,
   "terminal-close-confirmation": TerminalCloseConfirmationSettingsRow,
   "thread-card-layout": ThreadCardLayoutSettingsRows,
-  "thread-link-chips": ThreadLinkChipsSettingsRow,
-  "thread-links-open-desktop-app": ThreadLinksOpenDesktopAppSettingsRow,
-  "message-links": MessageLinksSettingsRow,
+  "thread-addressing": ThreadAddressingSettingsRow,
   "preview-local-server-groups": PreviewLocalServerGroupsSettingsRow,
   "terminal-threads": TerminalThreadsSettingsRow,
   "current-project-terminal-opens-thread": CurrentProjectTerminalOpensThreadSettingsRow,

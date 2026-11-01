@@ -107,24 +107,14 @@ export const APPEARANCE_ITEMS = [
     searchTerms: ["thread card sidebar compact density rows builder layout mobile branch"],
   },
   {
-    id: "thread-link-chips",
-    title: "Thread link chips",
+    id: "thread-addressing",
+    title: "Thread addressing",
     to: "/settings/appearance",
-    searchTerms: ["thread link chip chat message url open app machine environment"],
-    environmentOnly: true,
-  },
-  {
-    id: "thread-links-open-desktop-app",
-    title: "Thread addresses open the desktop app",
-    to: "/settings/appearance",
-    searchTerms: ["thread link address url browser tab slack github desktop app deep link open"],
-    environmentOnly: true,
-  },
-  {
-    id: "message-links",
-    title: "Message links",
-    to: "/settings/appearance",
-    searchTerms: ["message link thread scroll jump highlight anchor fragment"],
+    searchTerms: [
+      "thread link chip chat url open app machine environment",
+      "copy message link scroll jump highlight anchor fragment",
+      "address browser tab slack github desktop app deep link",
+    ],
     environmentOnly: true,
   },
   {
