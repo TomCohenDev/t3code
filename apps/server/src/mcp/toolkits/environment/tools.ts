@@ -76,7 +76,7 @@ const EnvironmentPreferencesTool = Tool.make("t3_environment_preferences_update"
 const UsageSourceAddTool = Tool.make("t3_usage_source_add", {
   ...shared,
   description:
-    "Add a local CLIProxyAPI usage source to this T3 server. Use its loopback IP URL and exactly one of secretRef (from request_secret) or keyFile (an absolute, owner-only file on that server; POSIX only). The key is not returned. A linked environment can use keyFile on that machine. Remove the source in Settings.",
+    "Add a local CLIProxyAPI usage hub. Loopback URL; exactly one of secretRef or keyFile (owner-only POSIX file). The key is never returned.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     url: TrimmedNonEmptyString,
