@@ -31,6 +31,7 @@ import {
   type ReviewDiffPreviewInput,
   type ReviewDiffFileStat,
   type ReviewDiffPreviewSource,
+  type VcsCreateWorktreeInput,
   type VcsRef,
 } from "@t3tools/contracts";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
@@ -47,6 +48,7 @@ import { explicitBareRepositoryEnv, gitConfigEnv } from "./VcsProcess.ts";
 import { removeLinkedWorktree } from "./worktreeRemoval.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import { markT3CreatedWorktree, placeTemplateWorktree } from "../worktreePathTemplate.ts";
+import { withRepositoryLease } from "../workspace/workspaceLease.ts";
 import {
   parseRemoteNames,
   parseRemoteNamesInGitOrder,
@@ -4101,9 +4103,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
-  const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
-    "createWorktree",
-  )(function* (input, options) {
+  const createWorktree = Effect.fn("createWorktree")(function* (
+    input: VcsCreateWorktreeInput,
+    options: GitVcsDriver.CreateWorktreeOptions | undefined,
+    gitCommonDir: string | null,
+  ) {
     yield* refuseOptionLikeRefName("GitVcsDriver.createWorktree", input.cwd, input.refName);
     yield* refuseOptionLikeRefName("GitVcsDriver.createWorktree", input.cwd, input.newRefName);
     let newRefName = input.newRefName;
@@ -4170,20 +4174,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         releaseTemplateName = placed.release;
       }
     }
-    if (newRefName) {
-      // Kept apart from the checkout so the shared-config lock only covers the tracking write.
-      yield* createBranchAt(
-        "GitVcsDriver.createWorktree.createBranch",
-        { cwd: input.cwd, branch: newRefName, startPoint: input.refName },
-        "git worktree add failed",
-      );
-    }
     const args = ["worktree", "add", "--", worktreePath, newRefName ?? input.refName];
     const progress = options?.progress;
     const onCheckoutProgress = progress?.onCheckoutProgress;
 
     const checkoutWorkers = (yield* readConfigValue(input.cwd, "checkout.workers")) ?? "0";
-    yield* executeGitWithStableDiagnostics(
+    const createBranch = newRefName
+      ? // Kept apart from the checkout so the shared-config lock only covers the tracking write.
+        createBranchAt(
+          "GitVcsDriver.createWorktree.createBranch",
+          { cwd: input.cwd, branch: newRefName, startPoint: input.refName },
+          "git worktree add failed",
+        )
+      : Effect.void;
+    const checkout = executeGitWithStableDiagnostics(
       "GitVcsDriver.createWorktree",
       input.cwd,
       ["-c", `checkout.workers=${checkoutWorkers}`, ...args],
@@ -4206,6 +4210,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             }
           : {}),
       },
+    );
+    // Branch cleanup must not delete the branch before `worktree add` checks it out.
+    const claim = Effect.andThen(createBranch, checkout);
+    yield* (
+      gitCommonDir === null ? claim : withRepositoryLease(gitCommonDir, "shared", claim)
     ).pipe(Effect.ensuring(releaseTemplateName));
 
     if (progress?.onWorktreeClaimed) {
@@ -4932,10 +4941,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     );
   const invalidateWorktreeCreationCaches = Effect.fn(
     "GitVcsDriverCore.invalidateWorktreeCreationCaches",
-  )(function* (cwd: string) {
-    let gitCommonDir = yield* readGitCommonDir(cwd).pipe(
-      Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
-    );
+  )(function* (cwd: string, readCommonDir: string | null) {
+    let gitCommonDir = readCommonDir;
     if (gitCommonDir === null) {
       gitCommonDir = yield* Cache.getOption(
         repositoryPathsCache,
@@ -4990,8 +4997,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     resolveBranchName,
     listRefs,
     createWorktree: Effect.fnUntraced(function* (input, options) {
-      return yield* createWorktree(input, options).pipe(
-        Effect.ensuring(invalidateWorktreeCreationCaches(input.cwd)),
+      const gitCommonDir = yield* readGitCommonDir(input.cwd).pipe(
+        Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
+      );
+      return yield* createWorktree(input, options, gitCommonDir).pipe(
+        Effect.ensuring(invalidateWorktreeCreationCaches(input.cwd, gitCommonDir)),
       );
     }),
     fetchRefIntoBranch: Effect.fnUntraced(function* (input) {
