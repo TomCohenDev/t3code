@@ -34,15 +34,9 @@ export const WORKTREE_ITEMS = [
     to: "/settings/worktrees",
     scope: "environment-defaults",
     environmentOnly: true,
-    searchTerms: ["storage cleanup disk node_modules caches build dependencies worktrees"],
-  },
-  {
-    id: "worktree-artifact-eviction-days",
-    title: "Artifact eviction inactivity days",
-    to: "/settings/worktrees",
-    scope: "environment-defaults",
-    environmentOnly: true,
-    searchTerms: ["storage cleanup disk inactive days worktrees"],
+    searchTerms: [
+      "storage cleanup disk node_modules caches build dependencies worktrees inactive days",
+    ],
   },
   {
     id: "restore-worktrees-on-resume",
@@ -51,7 +45,7 @@ export const WORKTREE_ITEMS = [
     scope: "environment-defaults",
     environmentOnly: true,
     searchTerms: [
-      "missing folder restore recreate deleted branch checkout dependencies setup node_modules",
+      "missing folder restore recreate deleted branch checkout dependencies setup node_modules cleanup delete branches",
     ],
   },
   {

@@ -31,8 +31,7 @@ const FORK_PAGE_ROWS: Record<
 > = {
   restoreWorktreesOnResume: "restore-worktrees-on-resume",
   autoSettleWaitsForBackgroundCommands: "auto-settle-waits-for-background-commands",
-  worktreeArtifactEviction: "worktree-artifact-eviction",
-  worktreeArtifactEvictionDays: "worktree-artifact-eviction-days",
+  worktreeArtifactsAfterDays: "worktree-artifact-eviction",
   inAppNotificationSeconds: "in-app-notification-seconds",
   inAppNotificationCompletions: "in-app-notification-completions",
   inAppNotificationAttentionStays: "in-app-notification-attention-stays",
