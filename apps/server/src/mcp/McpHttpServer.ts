@@ -47,6 +47,7 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
+import { usageSourceHandlers } from "../fork/usageSourceTool.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import * as AttachmentHandlers from "./toolkits/attachment/handlers.ts";
@@ -1168,6 +1169,9 @@ const toolkitRegistrations = {
   device: layerDeviceToolkit,
   pullRequests: layerPullRequestsToolkit,
   html: layerHtmlToolkit,
+  usageSources: toolkitRegistration(McpToolkits.usageSources, usageSourceHandlers).pipe(
+    Layer.provide(ThreadCommandExecutor.layer),
+  ),
   // Fork: machine map tools.
   machineMap: toolkitRegistration(McpToolkits.machineMap, MachineMapHandlers.layer),
   // Fork: kitshn tools.

@@ -14,6 +14,7 @@ An agent with full access can add a local CLIProxyAPI hub to the server's usage 
 request the management key privately, or read an existing owner-only key file on macOS or Linux.
 The source belongs to that server; remove it in Settings > Providers > Usage providers.
 
+- **Setting:** no toggle: full-access tool that writes the existing usage source setting.
 - **Works on:** server, for web, desktop, mobile and agent tools.
 - **Limits:** the hub URL must use a loopback IP address. Windows supports a private key request;
   importing a key from a file requires a server on macOS or Linux.

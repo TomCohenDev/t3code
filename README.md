@@ -45,6 +45,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Agents**
 
+- **[Local usage hubs](docs/fork/features.md#local-usage-hubs):** full-access agents add a local CLIProxyAPI hub through the existing usage source settings.
 - **[Recover interrupted agents](docs/fork/features.md#recover-interrupted-agents):** after a restart, each cut-off thread gets a "Recover and continue" message.
 - **[Background work details](docs/fork/features.md#background-work-details):** background work notifications name their tasks and output files.
 - **[Pull requests from origin](docs/fork/features.md#pull-requests-from-origin):** a fork checkout uses the pull requests of its fork, not of upstream.

@@ -1,16 +1,15 @@
 import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
-  UsageLimitSourceId,
   UsageLimitSourceError,
   type UsageLimitSourceConsumeResetCreditInput,
   type ProviderConsumeResetCreditResult,
   type ServerSettings,
   type UsageLimitSourceConfig,
+  type UsageLimitSourceId,
   type UsageLimitSourceSnapshot,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -21,6 +20,7 @@ import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import { makeUsageSourceAdd, type AddUsageSource } from "../fork/usageSourceAdd.ts";
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as Settings from "../serverSettings.ts";
 import { makeCliproxyApi } from "./cliproxyApi.ts";
@@ -31,11 +31,7 @@ export class UsageLimitSources extends Context.Service<
     readonly current: Effect.Effect<ReadonlyArray<UsageLimitSourceSnapshot>>;
     readonly streamChanges: Stream.Stream<ReadonlyArray<UsageLimitSourceSnapshot>>;
     readonly refresh: Effect.Effect<void>;
-    readonly add: (input: {
-      readonly url: string;
-      readonly label?: string;
-      readonly managementKey: string;
-    }) => Effect.Effect<{ readonly id: UsageLimitSourceId }, UsageLimitSourceError>;
+    readonly add: AddUsageSource;
     readonly consumeResetCredit: (
       input: UsageLimitSourceConsumeResetCreditInput,
     ) => Effect.Effect<ProviderConsumeResetCreditResult, UsageLimitSourceError>;
@@ -55,7 +51,7 @@ function sourceLabel(id: string, config: UsageLimitSourceConfig): string {
 /** @public */
 export const make = Effect.gen(function* () {
   const api = yield* makeCliproxyApi;
-  const crypto = yield* Crypto.Crypto;
+  const add = yield* makeUsageSourceAdd;
   const settingsService = yield* Settings.ServerSettingsService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
   const stateRef = yield* Ref.make<ReadonlyArray<UsageLimitSourceSnapshot>>([]);
@@ -106,54 +102,6 @@ export const make = Effect.gen(function* () {
     );
     yield* publish(snapshots);
   }).pipe(refreshLock.withPermits(1), Effect.ignoreCause({ log: true }));
-
-  const addLock = yield* Semaphore.make(1);
-  const add = Effect.fn("UsageLimitSources.add")(function* (input: {
-    readonly url: string;
-    readonly label?: string;
-    readonly managementKey: string;
-  }) {
-    const managementKey = input.managementKey.trim();
-    if (
-      !managementKey ||
-      new TextEncoder().encode(managementKey).byteLength > 4096 ||
-      /[\r\n\0]/.test(managementKey)
-    )
-      return yield* new UsageLimitSourceError({
-        detail: "The management key is empty or invalid.",
-      });
-    const current = yield* settingsService.getSettings.pipe(
-      Effect.mapError(() => new UsageLimitSourceError({ detail: "Could not read hub settings." })),
-    );
-    const existing = Object.entries(current.usageLimitSources).find(
-      ([, source]) => source.url === input.url,
-    );
-    if (existing) {
-      const [id, source] = existing;
-      if (source.enabled && source.managementKey === managementKey && source.label === input.label)
-        return { id: UsageLimitSourceId.make(id) };
-      return yield* new UsageLimitSourceError({
-        detail: "That hub URL is already configured. Change it in Settings.",
-      });
-    }
-    const id = UsageLimitSourceId.make(
-      `cliproxy-${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
-    );
-    yield* settingsService
-      .updateSettings({
-        usageLimitSources: {
-          [id]: {
-            kind: "cliproxy",
-            url: input.url,
-            ...(input.label ? { label: input.label } : {}),
-            managementKey,
-            enabled: true,
-          },
-        },
-      })
-      .pipe(Effect.mapError(() => new UsageLimitSourceError({ detail: "Could not add the hub." })));
-    return { id };
-  }, addLock.withPermits(1));
 
   // Shares the refresh lock so a stale in-flight read cannot overwrite a redemption.
   const consumeResetCredit = Effect.fn("UsageLimitSources.consumeResetCredit")(function* (

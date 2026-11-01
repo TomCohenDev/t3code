@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-const MAX_KEY_BYTES = 4096;
+export const MAX_USAGE_SOURCE_KEY_BYTES = 4096;
 
 export async function readUsageSourceKey(
   path: string,
@@ -27,14 +27,14 @@ export async function readUsageSourceKey(
     if (!stat.isFile() || stat.uid !== host.userId || (stat.mode & 0o077) !== 0) {
       throw new Error("The key file must be owned by the server user and private.");
     }
-    const buffer = Buffer.alloc(MAX_KEY_BYTES + 1);
+    const buffer = Buffer.alloc(MAX_USAGE_SOURCE_KEY_BYTES + 1);
     let length = 0;
     while (length < buffer.length) {
       const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
       if (bytesRead === 0) break;
       length += bytesRead;
     }
-    if (length === 0 || length > MAX_KEY_BYTES) throw new Error("Invalid key length.");
+    if (length === 0 || length > MAX_USAGE_SOURCE_KEY_BYTES) throw new Error("Invalid key length.");
     return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, length));
   } finally {
     await file.close();
