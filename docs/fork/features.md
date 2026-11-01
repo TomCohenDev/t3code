@@ -449,28 +449,31 @@ A template decides where new worktrees go, for example next to `main/` in a `.ba
 - With a template, an auto-named thread names its branch from the first six words of its first message, so the folder and the branch keep the same name. The static branch naming mode adds its prefix. A taken name gets a `-1`, `-2` suffix. Storage cleanup keeps branches, so a repeated message such as a scheduled task can use up all 100 suffixes; the thread then keeps its temporary `t3/<id>` branch. When a branch such as `t3` blocks `t3/x`, the name becomes `t3-x`.
 - **Limits:** a branch that you type, and a pull request branch, keep their names. If their folder exists, the launch fails and names the folder. Use `{branch}` when different branches end in the same last part.
 
-### Thread link chips
+### Thread addressing
 
-Upstream shows every `t3-thread://` link in chat as the chip of an attached thread. With this setting, thread addresses and app links become chips too, and open the thread in T3 Code.
+Thread links in chat open the thread in T3 Code, each message has a link of its own, and a thread address from another app opens the desktop app.
 
-- **Setting:** server setting `threadLinkChips` (off by default). Settings > Appearance > Thread links > "Thread link chips". In the mobile Settings: Threads, or Fork.
+- **Setting:** server setting `threadAddressing` (off by default). Settings > Appearance > Thread links > "Thread addressing". In the mobile Settings: Threads, or Fork.
 - **Works on:** web, desktop, mobile. Mobile reads the setting of the server of the thread, and has no switch of its own.
-- The chip reads `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
-- An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
-- A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
-- A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile. See [Message links](#message-links).
-- **Limits:** on mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
-
-### Message links
-
-A thread link that names a message opens the thread at that message. Use **Copy message link** beside a message on web and desktop, or hold its copy button on mobile. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
-
-- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". In the mobile Settings: Threads, or Fork. Off: **Copy message link** is hidden. A link that names a message still opens the thread at that message.
-- **Works on:** web, desktop, mobile.
-- **Forms:** `t3-thread://v2/<environmentId>/<threadId>#<messageId>`, `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
-- A message that the thread does not have shows "Message not found", and the thread stays open.
-- **History:** on web and desktop, each jump to a message is a history entry. This includes links, pins and citations. Back and Forward return to where you were in each entry. A scroll by hand adds no entry. No setting turns this off.
-- **Limits:** the app keeps the position of each entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
+- **On:**
+  - Upstream shows every `t3-thread://` link in chat as the chip of an attached thread. Thread addresses and app links become chips too, and open the thread in T3 Code.
+  - **Copy message link** shows beside each message on web and desktop. On mobile, hold the copy button of a message. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed.
+  - A thread address opened from outside T3 Code, for example from Slack or GitHub, hands the thread to the desktop app. The browser tab then shows "Continue here" and "Open in desktop app".
+- **Off:** links render as upstream renders them, and **Copy message link** is hidden. A link that names a message still opens the thread at that message.
+- **Chips:**
+  - The chip reads `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
+  - An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
+  - A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
+  - A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile.
+- **Message links:** a thread link that names a message opens the thread at that message. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
+  - **Forms:** `t3-thread://v2/<environmentId>/<threadId>#<messageId>`, `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
+  - A message that the thread does not have shows "Message not found", and the thread stays open.
+  - **History:** on web and desktop, each jump to a message is a history entry. This includes links, pins and citations. Back and Forward return to where you were in each entry. A scroll by hand adds no entry. No setting turns this off.
+- **Desktop app:** only web browser tabs redirect. The desktop app, the installed web app and app.t3.codes never redirect.
+- **Limits:**
+  - On mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
+  - The app keeps the position of each history entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
+  - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
 
 ### Message pins
 
@@ -480,16 +483,6 @@ Pin a message with the pin button beside its copy buttons, or with the command p
 - **Works on:** web and desktop. Mobile: Pin and Unpin, and Settings > Fork > "Pinned messages", which lists the pins of the environments with `mobileMessagePins` on. A tap opens the thread at the message, and the pin button unpins it. The row shows only while one pin or more exists.
 - **Storage:** the server setting `pinnedMessages` of the environment, so all its clients show the same pins. Restore defaults keeps the pins. kitshn does not sync them, because thread ids belong to one environment.
 - **Limits:** an environment keeps 200 pins. A pin keeps a 160-character excerpt and the thread title from the time of the pin. A pin of a thread that the sidebar does not list shows "Thread archived or deleted". "Message deleted" shows only for the open thread, when all its history is loaded. Agents have no MCP tool for pins.
-
-### Thread addresses open the desktop app
-
-A thread address opened from outside T3 Code, for example from Slack or GitHub, hands the thread to the desktop app. The browser tab then shows "Continue here" and "Open in desktop app".
-
-- **Setting:** server setting `threadLinksOpenDesktopApp` (off by default). Settings > Appearance > Thread links > "Thread addresses open the desktop app".
-- **Works on:** web browser tabs. The desktop app, the installed web app and app.t3.codes never redirect.
-- **Limits:**
-  - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
-  - With `threadLinkChips` off, a thread address clicked in T3 web chat opens a new tab that counts as a link from outside, so it goes to the desktop app too. Revisit if users keep `threadLinkChips` off while this setting is on.
 
 ### New thread on mobile
 
@@ -543,26 +536,18 @@ Build the thread card from its elements, for desktop and web and for mobile.
 
 ## Filters
 
-### Repository owner filters
+### Pull request filters
 
-Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization.
+Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization. The active pull request filters show as chips above the list.
 
-- **Setting:** client setting `repositoryOwnerFilters` (on by default). Settings > General > Sidebar > "Repository owner filters". The sidebar choice is the client setting `sidebarOwnerFilter`.
+- **Setting:** client setting `pullRequestFilters` (on by default). Settings > General > Sidebar > "Pull request filters". One switch turns the owner filter and the chips on or off together. The sidebar owner choice is the client setting `sidebarOwnerFilter`, a sidebar state and not a switch.
 - **Works on:** web, desktop.
 - Pull request page: open Filters > Owner, pick "Show only selected" or "Hide selected", then pick the owners. In the search, type `org:` or `owner:` to show an owner, and `-org:` or `-owner:` to hide one.
 - Sidebar: click the building icon next to the project scope. A chip under the header names the filter, counts the hidden projects, and shows how many hidden threads need you.
 - A fork checkout counts under the owner of the fork in the sidebar, and under the upstream owner on the pull request page. A project without a remote has no owner: pick "No repository owner" for it.
-- **Limits:** the mobile app has no owner filter. Revisit when the mobile parity work reaches filters.
-
-### Pull request filter chips
-
-The active pull request filters show as chips above the list.
-
-- **Setting:** client setting `pullRequestFilterChips` (on by default). Settings > General > Sidebar > "Pull request filter chips".
-- **Works on:** web, desktop.
-- Click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
+- Chips: click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
 - When no pull request matches, the empty list names the filters and offers "Clear filters".
-- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has its own filter menu. Revisit when the mobile parity work reaches filters.
+- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has no owner filter. Its filter pills already show each active filter, so it needs no chips. Revisit the owner filter when the mobile parity work reaches filters.
 
 ## Scripts and terminal
 
@@ -606,6 +591,7 @@ Tooltips, menus and the command palette show the keys of an action as chips, suc
 - **Setting:** client settings `tooltipShortcuts` (on by default) and `tooltipShortcutLimit` (default 4, 1 to 9). Settings > Keybindings > Keyboard > "Shortcuts in tooltips" and "Keys per tooltip".
 - **Works on:** web, desktop.
 - Your own keys come first. More keys than the limit show as "+N".
+- Compaction keys: `chat.compactContext` (`mod+alt+shift+c`) runs "Compact context". `composer.toggleCompactBeforeSend` (`mod+alt+shift+k`) flips the "Compact" or "Keep" toggle, with the `when` condition `compactBeforeSendShown`.
 - **Limits:** a sidebar tab names no digit while focus levels are off. A sidebar row names the pin and settle keys only for the open thread.
 
 ### Keyboard cheat sheet
@@ -703,20 +689,31 @@ A phone gets thread notifications while the installed app is closed, from each s
 - A server pushes when a thread starts to wait for approval or input, or when a running thread completes or fails. A compaction that T3 Code starts on its own pushes only when it fails, like the page notification. A terminal thread also pushes for a new attention on its main terminal: Input needed, Program done or Program failed, like the page notification.
 - A push replaces the page notification of the same thread. No push shows when the window in front already shows that thread.
 
-### Theme style
+### Themes
+
+The theme that you select in Settings > Appearance is the one control. A published theme carries its colors and, in the fork, also its style and its icons. The mobile app follows the same themes while Themes on mobile is on.
+
+- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app > "Themes on mobile", or Fork > "Themes from your servers" in the mobile Settings. kitshn syncs it. Web and desktop have no switch: select a published theme in Settings > Appearance, or another theme to drop its style and icons. See [Appearance](../user/appearance.md) for published themes.
+- **Works on:** web, desktop, and mobile with Themes on mobile.
+- Off by default, because on the phone it replaces the theme that the user selected there with the default theme of the server.
+
+#### Style
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
-- **Setting:** none. Select a published theme in Settings > Appearance. See [Appearance](../user/appearance.md) for published themes.
-- **Works on:** web, desktop, and mobile with [Themes on mobile](#themes-on-mobile).
-- **Limits:** see [Themes on mobile](#themes-on-mobile) for the fields that mobile skips.
+#### Icons
 
-### Themes on mobile
+A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
 
-The mobile app uses the themes that its servers publish.
+- **Works on:** web, desktop.
+- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
+- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
+- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
-- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app, or Fork in the mobile Settings. kitshn syncs it.
-- **Works on:** mobile.
+#### On mobile
+
+With `mobilePublishedThemes` on, the mobile app uses the themes that its servers publish.
+
 - Appearance in the mobile app shows the published themes under "From your servers". A theme with colors for one appearance offers that appearance only.
 - The app takes the server setting `defaultTheme` once for each theme id, for the appearances that the theme has colors for. The color scheme mode stays as set on the phone.
 - The app stores the last published themes, so the theme shows before a server connects.
@@ -728,24 +725,24 @@ The mobile app uses the themes that its servers publish.
   - A theme that lists only `canvas` and `accent` gets only those two colors, because the palette generator lives in `apps/web/src/themePalette.ts`. Revisit when such a theme is in use on a phone, or when upstream moves the generator to `packages/shared`.
   - A pixel radius class that upstream adds later keeps its size under a theme until `fork-theme.css` gets a rule for it.
   - Other fonts keep the stock font. The composer takes the `sans` font, and the terminal and diff views keep the platform monospace font.
-  - `noise`, user CSS and icon packs have no mobile form. The text of the Android buttons keeps the system font.
+  - `noise`, user CSS and icons have no mobile form. The text of the Android buttons keeps the system font.
   - Setting the same `defaultTheme` again does not apply it again on the phone, because `defaultThemeSetAt` is local to each machine.
+
+#### App icon
+
+The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
+
+- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
+- **Limits:**
+  - The icon is part of the build, so no theme and no switch changes it. Revisit if a theme needs its own app icon.
+  - iOS builds keep the nightly icon.
 
 ### Fork settings on mobile
 
-Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, message pins, sidebar tabs, terminal threads, thread link chips, message links and what New thread opens. It also has "Pinned messages", see [Message pins](#message-pins). Threads also shows the camera, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
+Fork in the mobile Settings holds the fork settings that apply to the mobile app: [themes](#themes), the camera in the composer, message pins, sidebar tabs, terminal threads, thread addressing and what New thread opens. It also has "Pinned messages", see [Message pins](#message-pins). Threads also shows the camera, message pins, thread addressing and what New thread opens. A change writes the setting to each selected environment.
 
 - **Works on:** mobile.
 - **Limits:** a change on the phone is the own value of each server, not the shared value on kitshn. Set the shared value with "All environments" in T3 Settings.
-
-### Theme icon packs
-
-A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
-
-- **Works on:** web, desktop.
-- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
-- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
-- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
 ### Local server groups
 
@@ -764,13 +761,6 @@ A row shows "from <thread>" when the server knows for certain which other thread
   - A port with two owner processes, such as one on IPv4 and one on IPv6, gets no check. A project at the home folder or above it counts as no project.
   - A new project or thread worktree counts after up to 30 seconds. A worktree that no thread uses counts after up to 5 minutes.
   - A server whose shell exited has no "from" link on macOS, because macOS hides the environment of other processes. On Linux the server also reads `CLAUDE_CODE_SESSION_ID` and `CODEX_THREAD_ID` from the process environment. Windows has no "from" link for agent servers.
-
-### Lightning icon
-
-The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
-
-- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
-- **Limits:** iOS builds keep the nightly icon.
 
 ### Back and forward
 
