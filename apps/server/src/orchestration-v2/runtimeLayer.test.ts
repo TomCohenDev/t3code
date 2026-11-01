@@ -3045,7 +3045,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         const first = { ...started, headSha: "old", failedChecks: ["lint"] };
         yield* sync("first", first);
         const held = yield* sync("second", { ...first, conflicting: true }).pipe(Effect.flip);
-        assert.equal(held._tag, "OrchestratorDispatchError");
+        assert.equal(held._tag, "OrchestratorPullRequestWakeHeldError");
         assert.deepEqual(
           (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch,
           first,

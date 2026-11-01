@@ -332,6 +332,16 @@ export class OrchestratorCommandIdConflictError extends Schema.TaggedError<Orche
   }
 }
 
+/** Fork: an earlier wake for the same pull request still waits in the thread's queue. */
+export class OrchestratorPullRequestWakeHeldError extends Schema.TaggedError<OrchestratorPullRequestWakeHeldError>()(
+  "OrchestratorPullRequestWakeHeldError",
+  { commandId: CommandId, threadId: ThreadId },
+) {
+  override get message(): string {
+    return "An earlier wake for this pull request still waits in the queue.";
+  }
+}
+
 export const OrchestratorV2Error = Schema.Union([
   OrchestratorDispatchError,
   OrchestratorThreadAlreadyExistsError,
@@ -343,6 +353,7 @@ export const OrchestratorV2Error = Schema.Union([
   OrchestratorCommandIdConflictError,
   OrchestratorSubagentThreadReadOnlyError,
   OrchestratorThreadAboveModeLimitError,
+  OrchestratorPullRequestWakeHeldError,
 ]);
 export type OrchestratorV2Error = typeof OrchestratorV2Error.Type;
 
@@ -2928,13 +2939,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       // An open watch keeps its news until the queued wake runs, so the next wake tells all of it.
-      // Limit: until then the reactor logs this refusal and rereads the pull request each sweep.
+      // Limit: until then the reactor rereads the pull request each sweep.
       // Revisit if busy threads with many watches strain the host quota.
       if (command.wake !== undefined && command.watch !== null && queued.runs.length > 0) {
-        return yield* new OrchestratorDispatchError({
+        return yield* new OrchestratorPullRequestWakeHeldError({
           commandId: command.commandId,
-          commandType: command.type,
-          cause: "An earlier wake for this pull request still waits in the queue.",
+          threadId: command.threadId,
         });
       }
       yield* dispatchThreadMutation(command, events, effects);

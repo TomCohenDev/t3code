@@ -136,8 +136,11 @@ export function evaluatePullRequestWatch(
     );
   };
   const through = Date.parse(watch.remarksThrough);
-  // Fork: an edit is not news, so one remark wakes a thread once. Bots edit summary comments often.
-  const activeAt = (remark: PullRequestComment) => remark.createdAt;
+  // Fork: bots edit summary comments often, so a bot's edit is not news. A person's edit is.
+  const byBot = (remark: PullRequestComment) =>
+    remark.author?.isBot === true || remark.author?.login.endsWith("[bot]") === true;
+  const activeAt = (remark: PullRequestComment) =>
+    byBot(remark) ? remark.createdAt : (remark.editedAt ?? remark.createdAt);
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
   const fresh = (remarks ?? []).filter((remark) => {
     const at = Date.parse(activeAt(remark));
