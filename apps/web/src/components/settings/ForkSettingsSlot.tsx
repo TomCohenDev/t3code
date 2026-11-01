@@ -41,10 +41,9 @@ import {
 } from "./MobileAppSettings";
 import { PreferOriginRemoteSettingsRow } from "./PreferOriginRemoteSettings";
 import { PreviewLocalServerGroupsSettingsRow } from "./PreviewLocalServerGroupsSettingsRow";
-import { PullRequestFilterChipsSettingsRow } from "./PullRequestFilterChipsSettingsRow";
+import { PullRequestFiltersSettingsRow } from "./PullRequestFiltersSettingsRow";
 import { PullRequestWatchSettingsRows } from "./PullRequestWatchSettings";
 import { RecoverInterruptedTurnsSettings } from "./RecoverInterruptedTurnsSettings";
-import { RepositoryOwnerFiltersSettingsRow } from "./RepositoryOwnerFiltersSettingsRow";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { SidebarTabsSettingsRow } from "./SidebarTabsSettingsRow";
 import { TerminalHistorySettingsRows } from "./TerminalHistorySettingsRows";
@@ -101,8 +100,7 @@ export const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>
   "agent-session-import-window": AgentSessionImportSettingsRows,
   "sidebar-tabs": SidebarTabsSettingsRow,
   "storage-worktree-path-template": WorktreePathTemplateRow,
-  "repository-owner-filters": RepositoryOwnerFiltersSettingsRow,
-  "pull-request-filter-chips": PullRequestFilterChipsSettingsRow,
+  "pull-request-filters": PullRequestFiltersSettingsRow,
   "global-scripts": GlobalScriptsSettingsRows,
   "app-toggle-shortcuts": AppToggleShortcutsSettingsRow,
   "terminal-app-shortcuts-first": TerminalAppShortcutsFirstSettingsRow,

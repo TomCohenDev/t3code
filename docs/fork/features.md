@@ -543,26 +543,18 @@ Build the thread card from its elements, for desktop and web and for mobile.
 
 ## Filters
 
-### Repository owner filters
+### Pull request filters
 
-Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization.
+Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization. The active pull request filters show as chips above the list.
 
-- **Setting:** client setting `repositoryOwnerFilters` (on by default). Settings > General > Sidebar > "Repository owner filters". The sidebar choice is the client setting `sidebarOwnerFilter`.
+- **Setting:** client setting `pullRequestFilters` (on by default). Settings > General > Sidebar > "Pull request filters". One switch turns the owner filter and the chips on or off together. The sidebar owner choice is the client setting `sidebarOwnerFilter`, a sidebar state and not a switch.
 - **Works on:** web, desktop.
 - Pull request page: open Filters > Owner, pick "Show only selected" or "Hide selected", then pick the owners. In the search, type `org:` or `owner:` to show an owner, and `-org:` or `-owner:` to hide one.
 - Sidebar: click the building icon next to the project scope. A chip under the header names the filter, counts the hidden projects, and shows how many hidden threads need you.
 - A fork checkout counts under the owner of the fork in the sidebar, and under the upstream owner on the pull request page. A project without a remote has no owner: pick "No repository owner" for it.
-- **Limits:** the mobile app has no owner filter. Revisit when the mobile parity work reaches filters.
-
-### Pull request filter chips
-
-The active pull request filters show as chips above the list.
-
-- **Setting:** client setting `pullRequestFilterChips` (on by default). Settings > General > Sidebar > "Pull request filter chips".
-- **Works on:** web, desktop.
-- Click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
+- Chips: click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
 - When no pull request matches, the empty list names the filters and offers "Clear filters".
-- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has its own filter menu. Revisit when the mobile parity work reaches filters.
+- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has no owner filter. Its filter pills already show each active filter, so it needs no chips. Revisit the owner filter when the mobile parity work reaches filters.
 
 ## Scripts and terminal
 
