@@ -1,6 +1,6 @@
 /**
  * Fork: installs fork releases through the upstream self-update of a `t3 service install` server.
- * With `forkAutoUpdate`, a check every 5 minutes installs when no turn, background shell or
+ * With `forkUpdateMode` "automatic", a check every 5 minutes installs when no turn, background shell or
  * terminal thread program runs. A program holds it at most TERMINAL_HOLD_MAX, gets a notice, and
  * the update installs TERMINAL_HOLD_NOTICE_LEAD later. Desktop "Install when idle": `terminalHold`.
  */
@@ -220,8 +220,8 @@ const make = Effect.gen(function* () {
     );
 
   const check = Effect.gen(function* () {
-    const { forkAutoUpdate } = yield* settings.getSettings;
-    if (!(forkAutoUpdate || (yield* Ref.get(installWhenIdle)))) return;
+    const { forkUpdateMode } = yield* settings.getSettings;
+    if (!(forkUpdateMode === "automatic" || (yield* Ref.get(installWhenIdle)))) return;
     const work = yield* runningWork;
     if (work.agents) return;
     const version = yield* newerRelease;

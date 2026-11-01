@@ -129,9 +129,8 @@ const FORK_SETTING_GROUPS = [
         change:
           "Fork: installs fork releases, never downgrades, and offers Install when idle while agents or terminal programs run.",
       },
-      { ids: ["fork-auto-update"], place: "maintenance-updates" },
+      { ids: ["fork-update-mode"], place: "maintenance-updates" },
       { ids: ["fork-changelog"], place: "about-app" },
-      { ids: ["check-newer-before-update-install"], place: "about-app" },
     ],
   },
   {

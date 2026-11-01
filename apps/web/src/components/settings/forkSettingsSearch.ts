@@ -325,17 +325,13 @@ export const ABOUT_ITEMS = [
     searchTerms: ["changelog release notes versions upstream fork sync workflow"],
   },
   {
-    id: "check-newer-before-update-install",
-    title: "Check for a newer update before install",
-    to: "/settings/about",
-    searchTerms: ["desktop update install newer release download restart"],
-  },
-  {
-    id: "fork-auto-update",
-    title: "Server auto-update",
+    id: "fork-update-mode",
+    title: "Automatic updates",
     to: "/settings/maintenance",
     scope: "environment-defaults",
-    searchTerms: ["fork release install update idle background service headless server automatic"],
+    searchTerms: [
+      "fork release install update idle background service headless server desktop automatic manual",
+    ],
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
