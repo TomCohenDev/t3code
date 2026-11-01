@@ -278,8 +278,8 @@ const OBTAINIUM_FORK_APP =
   "https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.yardenzamir.t3code%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FYarden-zamir%2Ft3code%22%2C%22author%22%3A%22Yarden-zamir%22%2C%22name%22%3A%22T3%20Code%20fork%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%2C%5C%22fallbackToOlderReleases%5C%22%3Atrue%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22android%5C%5C%5C%5C.apk%24%5C%22%7D%22%7D";
 
 /**
- * The apps that open a kitshn device invite; they fill Settings > Connections > New with it.
- * The store app has no `inviteUrl` deep link, so only the fork app is listed.
+ * K-720: the apps that open a kitshn device invite. The phone fills Settings > Connections > New
+ * with it; the desktop app joins as in Settings > Machines. The store apps have no invite link.
  */
 const CLIENT_APPS: ReadonlyArray<ProviderClient> = [
   {
@@ -287,6 +287,12 @@ const CLIENT_APPS: ReadonlyArray<ProviderClient> = [
     name: "T3 Code (fork)",
     open: "t3code-preview://connections/new?inviteUrl={inviteUrl}",
     install: [{ label: "Install with Obtainium", url: OBTAINIUM_FORK_APP }],
+  },
+  {
+    id: "t3code-fork-desktop",
+    name: "T3 Code desktop (fork)",
+    open: "t3code://join-device?inviteUrl={inviteUrl}",
+    install: [{ label: "Download", url: "https://github.com/Yarden-zamir/t3code/releases" }],
   },
 ];
 

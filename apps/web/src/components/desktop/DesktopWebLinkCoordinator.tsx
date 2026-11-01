@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { readDeviceInviteAppLink } from "@t3tools/client-runtime/fork/deviceInvite";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import { readPairingAppLink, resolveRemotePairingTarget } from "@t3tools/shared/remote";
@@ -22,6 +23,7 @@ import { useComposerDraftStore } from "../../composerDraftStore";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useClientSettings } from "../../hooks/useSettings";
+import { useJoinWithDeviceInvite } from "../../machineMap/desktopDevice";
 import { useOpenChangeRequestLink } from "../../lib/openPullRequestLink";
 import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
@@ -94,6 +96,7 @@ export function DesktopWebLinkCoordinator() {
   const httpBaseUrl = useEnvironmentHttpBaseUrl(primaryEnvironment?.environmentId ?? null);
   const queueRef = useRef(Promise.resolve());
   const pairedUrlsRef = useRef(new Set<string>());
+  const joinWithDeviceInvite = useJoinWithDeviceInvite();
   const webLinks = window.desktopBridge?.webLinks;
   // A sync IPC read; the setting only changes across a relaunch.
   const [localEnvironmentDisabled] = useState(isLocalEnvironmentDisabled);
@@ -144,6 +147,29 @@ export function DesktopWebLinkCoordinator() {
       title: "Backend added",
       description: "The environment is saved and will reconnect on app startup.",
     });
+  };
+
+  // Any page can open the kitshn invite link, so the user confirms the kitshn host before the join.
+  const joinFromLink = async (inviteUrl: string) => {
+    // The invite works once, so a repeated click would only fail.
+    if (pairedUrlsRef.current.has(inviteUrl)) return;
+    const host = new URL(inviteUrl).host;
+    const confirmed =
+      (await requestConfirmDialog(`Join the kitshn at ${host} with this desktop app?`)) ?? false;
+    if (!confirmed) return;
+    const result = await joinWithDeviceInvite(inviteUrl);
+    if (!result.joined) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not join kitshn",
+          description: result.message,
+        }),
+      );
+      return;
+    }
+    pairedUrlsRef.current.add(inviteUrl);
+    toastManager.add({ type: "success", title: "Joined kitshn", description: result.message });
   };
 
   const startThread = async (url: string): Promise<ScopedThreadRef | null> => {
@@ -201,6 +227,11 @@ export function DesktopWebLinkCoordinator() {
   });
 
   const openLink = useEffectEvent(async (url: string) => {
+    const inviteUrl = readDeviceInviteAppLink(url);
+    if (inviteUrl !== null) {
+      await joinFromLink(inviteUrl);
+      return;
+    }
     const pairingUrl = readPairingAppLink(url);
     if (pairingUrl !== null) {
       await pairFromLink(pairingUrl);
