@@ -93,6 +93,13 @@ const FORK_MOBILE_SWITCHES = [
     subtitle: "The thread list shows the tabs of the web sidebar. Tap a tab to show its threads.",
   },
   {
+    key: "terminalThreads",
+    icon: "terminal",
+    label: "Terminal threads",
+    subtitle:
+      "A new thread draft offers Terminal: a thread whose screen is a live shell on the server.",
+  },
+  {
     key: "threadLinkChips",
     icon: "link",
     label: "Thread link chips",
