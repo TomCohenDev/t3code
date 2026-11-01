@@ -10,12 +10,13 @@ const RUNNING_AGENT_STATUSES: ReadonlySet<OrchestrationV2ShellThreadStatus> = ne
 ]);
 
 /**
- * Counts the threads, subagents included, whose agent turn runs on the
- * environment that a desktop update restarts.
+ * Counts the threads, subagents included, whose agent turn or background command runs on the
+ * environment that a desktop update restarts. The same rule as the server update in
+ * `apps/server/src/fork/ForkUpdates.ts`: the restart kills a background command.
  */
 export function countRunningAgentTurns(
   threads: ReadonlyArray<
-    Pick<EnvironmentThreadShell, "environmentId"> & {
+    Pick<EnvironmentThreadShell, "environmentId" | "pendingBackgroundTasks"> & {
       readonly source: Pick<EnvironmentThreadShell["source"], "status">;
     }
   >,
@@ -24,7 +25,9 @@ export function countRunningAgentTurns(
   if (environmentId === null) return 0;
   return threads.filter(
     (thread) =>
-      thread.environmentId === environmentId && RUNNING_AGENT_STATUSES.has(thread.source.status),
+      thread.environmentId === environmentId &&
+      (RUNNING_AGENT_STATUSES.has(thread.source.status) ||
+        thread.pendingBackgroundTasks.some((task) => task.kind === "command")),
   ).length;
 }
 

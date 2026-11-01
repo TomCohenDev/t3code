@@ -1,4 +1,8 @@
-import { EnvironmentId, type OrchestrationV2ShellThreadStatus } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type OrchestrationV2PendingBackgroundTask,
+  type OrchestrationV2ShellThreadStatus,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -9,8 +13,12 @@ import {
 const primary = EnvironmentId.make("primary");
 const remote = EnvironmentId.make("remote");
 
-function thread(environmentId: EnvironmentId, status: OrchestrationV2ShellThreadStatus) {
-  return { environmentId, source: { status } };
+function thread(
+  environmentId: EnvironmentId,
+  status: OrchestrationV2ShellThreadStatus,
+  pendingBackgroundTasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask> = [],
+) {
+  return { environmentId, source: { status }, pendingBackgroundTasks };
 }
 
 describe("countRunningAgentTurns", () => {
@@ -32,6 +40,19 @@ describe("countRunningAgentTurns", () => {
     ).map((status) => thread(primary, status));
 
     expect(countRunningAgentTurns(threads, primary)).toBe(4);
+  });
+
+  it("counts a finished turn whose background command runs, as the server update does", () => {
+    const threads = [
+      thread(primary, "completed", [{ taskId: "typecheck", kind: "command" }]),
+      // The restart continuation resumes these, so they do not hold the update.
+      thread(primary, "completed", [
+        { taskId: "watch", kind: "monitor" },
+        { taskId: "child", kind: "subagent" },
+      ]),
+    ];
+
+    expect(countRunningAgentTurns(threads, primary)).toBe(1);
   });
 
   it("counts only the environment that the update restarts", () => {
