@@ -31,7 +31,7 @@ const FORK_RESTORED_SETTINGS = [
   ["preferOriginRemote", "Prefer origin remote"],
   ["threadAddressing", "Thread addressing"],
   ["previewLocalServerGroups", "All local servers in the browser"],
-  ["mobilePublishedThemes", "Published themes on mobile"],
+  ["mobilePublishedThemes", "Themes on mobile"],
   ["mobileNewThreadProject", "New thread on mobile"],
   ["mobileComposerCamera", "Camera on mobile"],
   ["mobileMessagePins", "Message pins on mobile"],

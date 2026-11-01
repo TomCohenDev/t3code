@@ -227,6 +227,12 @@ const FORK_SETTING_GROUPS = [
       { ids: ["thread-card-layout"], place: "appearance-thread-cards" },
       { ids: ["thread-addressing"], place: "appearance-thread-links" },
       { ids: ["preview-local-server-groups"], place: "browser-browsing" },
+      {
+        ids: ["theme"],
+        change:
+          "Fork: a published theme can also set shape, fonts, a canvas pattern, user CSS and icons. Themes on mobile lets the phone follow it.",
+        linkOnly: true,
+      },
       { ids: ["mobile-published-themes"], place: "appearance-mobile-app" },
       { ids: ["back-forward-buttons"], place: "appearance-interface" },
       { ids: ["remember-back-forward-history"], place: "general-display" },
