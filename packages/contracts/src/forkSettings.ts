@@ -418,20 +418,11 @@ export const ForkServerSettingsFields = {
    */
   preferOriginRemote: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: thread links render as the attached-thread chip, and an https thread address of an
-   * environment that the client knows opens inside T3. A server setting, so the mobile app reads it.
+   * Fork: thread addresses and app links render as the attached-thread chip and open in T3, each
+   * message offers Copy message link, and a thread address from outside T3 Code in a browser tab
+   * opens the app (`t3code://threads/...`). A server setting, so the mobile app reads it.
    */
-  threadLinkChips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /**
-   * Fork: a thread address opened from outside T3 Code in a plain browser tab hands the thread to
-   * the desktop app (`t3code://threads/...`) as soon as the page loads.
-   */
-  threadLinksOpenDesktopApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /**
-   * Fork: a thread link with `#<messageId>` opens the thread at that message, scrolls to it and
-   * highlights it. Off: the link opens the thread only.
-   */
-  messageLinks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  threadAddressing: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: user-built thread card layouts. See `ThreadCardLayouts`. */
   threadCardLayouts: ThreadCardLayouts.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
@@ -514,9 +505,7 @@ export const ForkServerSettingsPatchFields = {
   agentSessionImportWindowDays: Schema.optionalKey(AgentSessionImportWindowDays),
   agentSessionImportMaxMessages: Schema.optionalKey(AgentSessionImportMaxMessages),
   preferOriginRemote: Schema.optionalKey(Schema.Boolean),
-  threadLinkChips: Schema.optionalKey(Schema.Boolean),
-  threadLinksOpenDesktopApp: Schema.optionalKey(Schema.Boolean),
-  messageLinks: Schema.optionalKey(Schema.Boolean),
+  threadAddressing: Schema.optionalKey(Schema.Boolean),
   keybindingSync: Schema.optionalKey(Schema.Boolean),
   previewLocalServerGroups: Schema.optionalKey(Schema.Boolean),
   mobilePublishedThemes: Schema.optionalKey(Schema.Boolean),

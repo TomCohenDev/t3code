@@ -93,18 +93,11 @@ const FORK_MOBILE_SWITCHES = [
     subtitle: "The thread list shows the tabs of the web sidebar. Tap a tab to show its threads.",
   },
   {
-    key: "threadLinkChips",
+    key: "threadAddressing",
     icon: "link",
-    label: "Thread link chips",
-    subtitle: "Thread links in chat look like an attached thread and open the thread here.",
-    place: "threads",
-  },
-  {
-    key: "messageLinks",
-    icon: "text.bubble",
-    label: "Message links",
+    label: "Thread addressing",
     subtitle:
-      "Holding the copy button of a message copies a link to it. A link that names a message always opens it.",
+      "Thread links in chat look like an attached thread and open the thread here. Holding the copy button of a message copies a link to it.",
     place: "threads",
   },
 ] as const satisfies ReadonlyArray<{
