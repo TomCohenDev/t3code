@@ -63,6 +63,8 @@ const project: ProjectStore.ProjectRow = {
   defaultThreadEnvMode: null,
   autoPull: false,
   scripts: [],
+  pinnedAt: null,
+  archivedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
   deletedAt: null,

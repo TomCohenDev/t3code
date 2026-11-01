@@ -1017,9 +1017,11 @@ export const layer = Layer.effect(
         // writing the next run computed from it. The origin is read first: it reads
         // files, and the transaction holds SQLite's writer lock.
         const origin = yield* readWebhookOrigin;
+        const projectDefaultModel = yield* readProjectDefaultModel;
         const record = Effect.gen(function* () {
           const [row] = yield* getRows(task.id);
-          const current = row === undefined ? null : yield* decodeRow(row, origin);
+          const current =
+            row === undefined ? null : yield* decodeRow(row, projectDefaultModel, origin);
           const scheduleSource = current ?? task;
           const completed: ScheduledTask = {
             ...scheduleSource,

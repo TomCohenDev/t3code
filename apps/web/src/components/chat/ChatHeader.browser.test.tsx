@@ -36,6 +36,8 @@ function header(title: string) {
         onOpenThread={() => {}}
         rightPanelOpen={false}
         onNewThreadInProject={() => {}}
+        projectScripts={[]}
+        onRunPinnedScript={undefined}
       />
       <div tabIndex={0}>Outside rename</div>
     </>

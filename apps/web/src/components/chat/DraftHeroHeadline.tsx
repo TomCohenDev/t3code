@@ -5,9 +5,12 @@ import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/c
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { FolderPlusIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
 import { useRef, useState } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
+import { shortcutLabelForCommand } from "~/keybindings";
+import { primaryServerKeybindingsAtom } from "~/state/server";
 import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useOrderWhileOpen } from "~/hooks/useOrderWhileOpen";
@@ -93,6 +96,7 @@ export function DraftHeroHeadline({
   const openAddProject = () => openCommandPalette({ open: "add-project" });
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const openProjectDraft = useNewThreadHandler();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   // Fork: a draft in Terminal mode opens a shell, it builds nothing yet.
   const terminalMode = useDraftTerminalShell(draftId) !== undefined;
   const [pickerOpen, setPickerOpen] = useState(false);

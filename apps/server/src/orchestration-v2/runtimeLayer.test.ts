@@ -3808,7 +3808,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         let reads = 0;
         const host = Layer.mergeAll(
           NodeServices.layer,
+          ServerSettings.layerTest(),
           Layer.mock(PullRequestService.PullRequestService)({
+            withSharedProjectReads: (effect) => effect,
             // The host reports the same fingerprint throughout, so only the deadline can prompt a read.
             watchFingerprint: () =>
               Effect.succeed(fingerprinted ? { status: "quiet", remarks: "none" } : null),
