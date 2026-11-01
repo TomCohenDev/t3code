@@ -569,6 +569,7 @@ function SpeedControl(props: { traits: TraitsSelectionInput }) {
     <div
       role="radiogroup"
       aria-label={speedSelect?.label ?? fastToggle?.label}
+      data-segmented-control
       className="flex rounded-lg bg-input/40 p-0.5"
     >
       {speedSelect
