@@ -298,7 +298,7 @@ it.layer(
         protocol: 2,
         provider: "t3",
         instance: "environment:kitshn",
-        clients: [{ id: "t3code-fork" }],
+        clients: [{ id: "t3code-fork" }, { id: "t3code-fork-desktop" }],
       });
       const kinds = (register.kinds as ReadonlyArray<{ id: string }>).map((kind) => kind.id);
       expect(kinds).toEqual(["t3.app", "t3.thread", "t3.settings"]);
