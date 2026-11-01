@@ -60,8 +60,8 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Worktree lifecycle](docs/fork/features.md#worktree-lifecycle):** a path template places new worktrees, idle worktrees lose ignored build outputs and dependencies, cleanup deletes branches that restore can rebuild, and resume recreates a missing checkout with project setup (each part off by default).
 - **[Sidebar tabs](docs/fork/features.md#sidebar-tabs):** tabs above the sidebar list that hold threads, filled by drag or by rules. Mobile shows and edits them too.
 - **[Waiting shelf](docs/fork/features.md#waiting-shelf):** threads that wait on other threads or background work get their own shelf under Working.
+- **[Message pins](docs/fork/features.md#message-pins):** pin messages, and list the pins in thread details, in the sidebar and in the mobile Settings.
 - **[Thread addressing](docs/fork/features.md#thread-addressing):** thread links in chat show as attached-thread chips, each message has a link of its own, and a thread address from Slack or GitHub opens the desktop app (off by default).
-- **[Message pins](docs/fork/features.md#message-pins):** pin messages, and list the pins in thread details and in the sidebar.
 - **[New thread on mobile](docs/fork/features.md#new-thread-on-mobile):** New thread in the mobile app opens the project list, the last project, or no project.
 - **[Camera in the mobile composer](docs/fork/features.md#camera-in-the-mobile-composer):** the plus button of the mobile composer can take a photo.
 - **[Android assistant panel](docs/fork/features.md#android-assistant-panel):** the Android assistant button starts a thread with the screen.
