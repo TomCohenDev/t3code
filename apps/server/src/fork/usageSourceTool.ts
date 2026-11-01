@@ -7,11 +7,13 @@ import {
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../mcp/McpToolAccess.ts";
+import type { toolkitRegistration } from "../mcp/McpHttpServer.ts";
 import { readCaller } from "../mcp/threadAccess.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
@@ -123,3 +125,8 @@ export const UsageSourceToolkit = Toolkit.make(UsageSourceAddTool);
 export const usageSourceHandlers = McpToolAccess.toLayer(UsageSourceToolkit, {
   t3_usage_source_add: usageSourceAddHandler,
 });
+
+export const registerUsageSource = (register: typeof toolkitRegistration) =>
+  register(UsageSourceToolkit, usageSourceHandlers).pipe(
+    Layer.provide(ThreadCommandExecutor.layer),
+  );
