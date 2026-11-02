@@ -300,7 +300,14 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
       task.useProjectDefaultModel === true ? { _tag: "projectDefault" } : task.modelSelection,
     nextRunAt: task.nextRunAt,
     lastRunStatus: task.lastRunStatus,
-    ...(task.webhook?.url == null || !mayRun ? {} : { webhookUrl: task.webhook.url }),
+    ...(task.webhook?.url == null || !mayRun
+      ? {}
+      : {
+          webhookUrl: task.webhook.url,
+          ...(task.webhook.urlNeedsAccessToken === true
+            ? { webhookNeeds: "Cloudflare Access service token" as const }
+            : {}),
+        }),
     ...(task.webhook === undefined
       ? {}
       : { webhookSignature: task.webhook.hasSecret ? "set" : "none" }),

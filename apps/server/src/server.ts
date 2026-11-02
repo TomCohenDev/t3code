@@ -581,13 +581,16 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
   ScheduledTaskWebhookOrigin,
   Effect.gen(function* () {
     const secrets = yield* ServerSecretStore.ServerSecretStore;
+    const kitshnGrants = yield* KitshnGrants.KitshnGrants;
     return Effect.gen(function* () {
       const [relayUrl, tunnelConfig] = yield* Effect.all([
         secrets.get(RELAY_URL_SECRET),
         secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG),
       ]).pipe(Effect.orElseSucceed(() => [Option.none(), Option.none()] as const));
+      // Fork: a kitshn-joined machine without T3 Connect still has a public site.
+      const kitshnSiteOrigin = yield* kitshnGrants.siteOrigin;
       if (Option.isNone(relayUrl) || Option.isNone(tunnelConfig)) {
-        return { relayHookBaseUrl: null };
+        return { relayHookBaseUrl: null, kitshnSiteOrigin };
       }
       const config = decodeRuntimeConfig(new TextDecoder().decode(tunnelConfig.value));
       return {
@@ -595,6 +598,7 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
           relayUrl: new TextDecoder().decode(relayUrl.value),
           tunnelName: Option.isSome(config) ? config.value.tunnelName : undefined,
         }),
+        kitshnSiteOrigin,
       };
     });
   }),

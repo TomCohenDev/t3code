@@ -100,6 +100,8 @@ const LEGACY_DELIVERY_OUTCOMES: ReadonlySet<string> = new Set([
 
 interface WebhookOrigin {
   readonly relayHookBaseUrl: string | null;
+  /** The `https://` origin of this machine's kitshn site, behind Cloudflare Access. */
+  readonly kitshnSiteOrigin: string | null;
 }
 
 const ENDPOINT_KEY = /^[0-9a-f]{16}$/;
@@ -119,7 +121,7 @@ export function relayHookBaseUrl(input: {
 export class ScheduledTaskWebhookOrigin extends Context.Reference<Effect.Effect<WebhookOrigin>>(
   "t3/scheduledTasks/ScheduledTaskWebhookOrigin",
   {
-    defaultValue: () => Effect.succeed({ relayHookBaseUrl: null }),
+    defaultValue: () => Effect.succeed({ relayHookBaseUrl: null, kitshnSiteOrigin: null }),
   },
 ) {}
 
@@ -354,12 +356,21 @@ function webhookEndpoint(
   origin: WebhookOrigin | null,
 ): ScheduledTask["webhook"] {
   if (row.webhook_token === null) return undefined;
-  const base = origin?.relayHookBaseUrl ?? null;
-  return {
-    path: webhookPath(row.task_id, row.webhook_token),
-    url: base === null ? null : `${base}/${encodeURIComponent(row.task_id)}/${row.webhook_token}`,
-    hasSecret: row.webhook_secret !== null,
-  };
+  const path = webhookPath(row.task_id, row.webhook_token);
+  const hasSecret = row.webhook_secret !== null;
+  const relay = origin?.relayHookBaseUrl ?? null;
+  if (relay !== null) {
+    return {
+      path,
+      url: `${relay}/${encodeURIComponent(row.task_id)}/${row.webhook_token}`,
+      hasSecret,
+    };
+  }
+  const site = origin?.kitshnSiteOrigin ?? null;
+  if (site !== null) {
+    return { path, url: `${site}${path}`, urlNeedsAccessToken: true, hasSecret };
+  }
+  return { path, url: null, hasSecret };
 }
 
 // Runs per task row; list and lookup operations already own the span.

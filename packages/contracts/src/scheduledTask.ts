@@ -220,6 +220,8 @@ export type ScheduledTaskRunStatus = typeof ScheduledTaskRunStatus.Type;
 export const ScheduledTaskWebhookEndpoint = Schema.Struct({
   path: TrimmedNonEmptyString,
   url: Schema.NullOr(TrimmedNonEmptyString),
+  /** `url` is the kitshn site of this machine: a caller needs a Cloudflare Access service token. */
+  urlNeedsAccessToken: Schema.optional(Schema.Literal(true)),
   hasSecret: Schema.Boolean,
 });
 export type ScheduledTaskWebhookEndpoint = typeof ScheduledTaskWebhookEndpoint.Type;
