@@ -25,7 +25,7 @@ import {
   readRequestHeaders as readRequestHeadersAtom,
   saveRequestHeaders as saveRequestHeadersAtom,
 } from "../connection/onboarding";
-import { pairSiblingWhenDue } from "../connection/siblingEnvironments";
+import { pairSiblingOrigin } from "../connection/siblingEnvironments";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import { useMachineMapState } from "../state/machineMap";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -36,16 +36,18 @@ import {
   deviceSyncStep,
   type DeviceSyncTrigger,
   listedOrigins,
+  type PairFailure,
+  pairsDue,
   planDeviceMachines,
   type SavedEnvironment,
 } from "./deviceMachines.logic";
 
 const CLIENT_KEY = "t3code:kitshn:device-client";
 const MANAGED_KEY = "t3code:kitshn:device-origins";
-/** The least time between two pairings of one machine. */
-const PAIR_AFTER_SUCCESS_MS = 30_000;
-/** How often a visible window checks if a list read or a pairing retry is due. */
-const TICK_MS = 30_000;
+/** How often the window checks if a sync is due. The check alone contacts nothing. */
+const CHECK_MS = 30_000;
+/** Per machine origin, for `pairsDue`. The join and the sync share it. */
+const pairFailures = new Map<string, PairFailure>();
 
 const DeviceClient = Schema.Struct({ machinesUrl: Schema.String, clientId: Schema.String });
 const decodeClient = Schema.decodeUnknownOption(Schema.fromJsonString(DeviceClient));
@@ -103,15 +105,15 @@ function useDeviceSteps() {
     });
     if (saved._tag === "Failure") throw new Error(`Could not save the token for ${origin}.`);
   };
-  /** Pairs with the backoff of sibling pairing; throws with the reason when it fails. */
-  const pair = async (origin: string) => {
-    const outcome = await pairSiblingWhenDue(origin, connectPairing, {
-      credentials: "omit",
-      afterSuccessMs: PAIR_AFTER_SUCCESS_MS,
-    });
-    if (outcome !== "skipped" && outcome.error !== null) {
-      throw outcome.error instanceof Error ? outcome.error : new Error(String(outcome.error));
+  /** Pairs now and keeps the failure for `pairsDue`; throws with the reason when it fails. */
+  const pair = async (origin: string, nowMs: number) => {
+    const error = await pairSiblingOrigin(origin, connectPairing, "omit");
+    if (error === null) {
+      pairFailures.delete(origin);
+      return;
     }
+    pairFailures.set(origin, { count: (pairFailures.get(origin)?.count ?? 0) + 1, atMs: nowMs });
+    throw error instanceof Error ? error : new Error(String(error));
   };
   return { tokenOf, saveToken, pair, removeEnvironment };
 }
@@ -136,7 +138,7 @@ export function useJoinWithDeviceInvite() {
       pair: async (machine) => {
         managed.add(machine.origin);
         writeManaged(managed);
-        await steps.pair(machine.origin);
+        await steps.pair(machine.origin, Date.now());
       },
     }).then(
       (enrolled) => enrolled,
@@ -200,7 +202,7 @@ export function DeviceInviteSettingsRow() {
 /**
  * K-1617: keeps one saved environment per `t3.app` card of the device's machine list. A refused
  * machine pairs again with a backoff, because Access can take seconds to accept a new token.
- * Each list read wakes kitshn, so it runs only as `deviceSyncStep` allows.
+ * Each list read and pairing wakes kitshn, so they run only as `deviceSyncStep` and `pairsDue` allow.
  */
 export function DesktopDeviceMachines() {
   const primaryEnvironmentId = usePrimaryEnvironment()?.environmentId ?? null;
@@ -209,7 +211,9 @@ export function DesktopDeviceMachines() {
   const { isReady, environments } = useEnvironments();
   const steps = useDeviceSteps();
   const running = useRef(false);
-  const lastListAtMs = useRef<number | null>(null);
+  const lastSyncAtMs = useRef<number | null>(null);
+  // The listed machines that kitshn shows offline, from the last list read.
+  const offline = useRef<ReadonlySet<string>>(new Set());
 
   const saved = environments
     .filter((environment) => environment.environmentId !== primaryEnvironmentId)
@@ -219,18 +223,21 @@ export function DesktopDeviceMachines() {
       phase: environment.connection.phase,
     }));
 
-  const pairAll = async (origins: ReadonlyArray<string>) => {
-    for (const origin of origins) {
-      await steps.pair(origin).catch((error: unknown) => {
+  // Managed machines from the last list (or a join) that are not saved, or saved and refused.
+  const pairWaiting = async (nowMs: number) => {
+    const managed = readManaged();
+    const due = pairsDue({
+      waiting: planDeviceMachines({ listed: [...managed], managed, saved }).pair,
+      offline: offline.current,
+      failures: pairFailures,
+      nowMs,
+    });
+    if (due.length > 0) lastSyncAtMs.current = nowMs;
+    for (const origin of due) {
+      await steps.pair(origin, nowMs).catch((error: unknown) => {
         console.warn("kitshn: could not add a machine.", origin, error);
       });
     }
-  };
-
-  // Managed machines from the last list (or a join) that are not saved, or saved and refused.
-  const waitingPairs = () => {
-    const managed = readManaged();
-    return planDeviceMachines({ listed: [...managed], managed, saved }).pair;
   };
 
   const syncList = async (nowMs: number) => {
@@ -240,10 +247,15 @@ export function DesktopDeviceMachines() {
     if (client === null || listOrigin === null || ownMachineId === null) return;
     const token = await steps.tokenOf(listOrigin);
     if (token === null) return;
-    lastListAtMs.current = nowMs;
+    lastSyncAtMs.current = nowMs;
     const list = await readDeviceMachines(client.machinesUrl, token, desktopTransport);
     // A refused or unreadable list removes nothing; the token may only be new.
     if (list._tag !== "machines") return;
+    offline.current = new Set(
+      list.machines.flatMap((machine) =>
+        machine.online === false ? (requestHeaderOrigin(machine.origin) ?? []) : [],
+      ),
+    );
     const managed = readManaged();
     const plan = planDeviceMachines({
       listed: listedOrigins(list.machines, ownMachineId, requestHeaderOrigin),
@@ -267,25 +279,24 @@ export function DesktopDeviceMachines() {
         await steps.saveToken(origin, token);
       }
     }
-    await pairAll(plan.pair);
   };
 
   const runStep = async (trigger: DeviceSyncTrigger) => {
     const nowMs = Date.now();
-    const pairs = waitingPairs();
     const step = deviceSyncStep({
       trigger,
       hidden: document.visibilityState === "hidden",
       running: running.current,
-      lastListAtMs: lastListAtMs.current,
+      lastSyncAtMs: lastSyncAtMs.current,
       nowMs,
-      pairsWaiting: pairs.length > 0,
     });
     if (step === "none") return;
     running.current = true;
-    await (step === "list" ? syncList(nowMs) : pairAll(pairs)).catch((error: unknown) => {
-      console.error("kitshn: could not sync the device machines.", error);
-    });
+    await syncList(nowMs)
+      .then(() => pairWaiting(nowMs))
+      .catch((error: unknown) => {
+        console.error("kitshn: could not sync the device machines.", error);
+      });
     running.current = false;
   };
 
@@ -296,7 +307,7 @@ export function DesktopDeviceMachines() {
     });
   });
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads kitshn's machine list on visibility, focus and a timer, outside React.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- syncs with kitshn on visibility, focus and a timer, outside React.
   useEffect(() => {
     if (isReady) sync("event");
     const onVisibility = () => {
@@ -305,7 +316,7 @@ export function DesktopDeviceMachines() {
     const onFocus = () => sync("event");
     document.addEventListener("visibilitychange", onVisibility);
     globalThis.addEventListener("focus", onFocus);
-    const timer = globalThis.setInterval(() => sync("tick"), TICK_MS);
+    const timer = globalThis.setInterval(() => sync("tick"), CHECK_MS);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       globalThis.removeEventListener("focus", onFocus);
