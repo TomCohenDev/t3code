@@ -84,6 +84,8 @@ async function apk(name, request, env, ctx) {
       "content-length": upstream.headers.get("content-length") ?? String(asset.size),
       "cache-control": "public, max-age=31536000, immutable",
       "accept-ranges": "bytes",
+      // Cloudflare's cache answers Range requests only for a response with an ETag.
+      etag: `"${name}"`,
     },
   });
   ctx.waitUntil(caches.default.put(key, response.clone()));
