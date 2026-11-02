@@ -69,7 +69,7 @@ The fork rules for upstream's linked environments:
 - The release builds macOS arm64 (signed), Windows x64 (unsigned), and Linux x64 and arm64 AppImages (unsigned) in parallel, on GitHub-hosted runners. Each platform publishes when its build is done.
 - The desktop jobs take the Rust helpers (resource monitor, Linux capture helpers) from the Actions cache while their crate sources stay the same. A new Rust version alone builds no new helpers. To force a build, delete the `resource-monitor-*` and `linux-capture-helpers-*` caches.
 - Each Linux build also publishes the server archive `t3-<version>-linux-<arch>.tar.gz`. It holds the `t3` single executable, the web client and the native packages, so `t3 serve` runs without Node.
-- When both Linux archives are on the release, the job "Server checksums" uploads `SHA256SUMS` last. The server updaters (`t3 update`, `t3 service install`, "Update everything") verify the archives against it. "Update everything" and `t3 update` skip a release without `SHA256SUMS`.
+- When both Linux archives are on the release, the job "Server checksums" uploads `SHA256SUMS` last. The server updaters (`t3 update`, `t3 service install`, "Update everything") verify the archives against it. `t3 update` skips a release without `SHA256SUMS`. For "Update everything", each server installs the newest release that has it. If the offered release has no `SHA256SUMS` yet and no other newer release has it, that server's update fails with a checksum error, so try again after the upload.
 - The release carries `nightly-mac.yml`, `nightly.yml` (Windows), `nightly-linux.yml` (x64) and `nightly-linux-arm64.yml` for electron-updater. Until a platform adds its file, its apps find no update in the new release.
 - A manual run from a branch other than main publishes no release. It uploads the files of each platform as workflow artifacts.
 - `CLI_RELEASE_REPOSITORY` in `packages/shared/src/cliRelease.ts` points the server updaters at the fork releases.
@@ -107,6 +107,16 @@ Each day at 09:00 Israel time, the VPS task "Fork daily release" promotes a nigh
 - The Lint job also fetches upstream main and runs `scripts/fork-check-migrations.ts`. See [Migrations](#migrations).
 - The Lint job also fetches the commits of HEAD without their files and runs `node scripts/fork-adopted-prs.ts check`. See [Adopted upstream pull requests](#adopted-upstream-pull-requests).
 - Fork runs skip the upstream tests in `apps/server/src/fork/excludedUpstreamTests.ts` and `apps/web/src/forkExcludedUpstreamTests.ts`, each with its reason. The web list holds browser tests that the smaller runner of Fork CI cannot run in time.
+- The job "kitshn contract" builds the server bundle and runs `scripts/fork-kitshn-contract.ts`: kitshn's provider scenarios against this T3 server. It takes the daemon and the tests of the kitshn release that `pnpm-workspace.yaml` pins for `@kitshn/local`, and checks them against that release's `SHA256SUMS`.
+
+### Move the kitshn pin
+
+T3 depends on one kitshn release. Its `@kitshn/local` line in the `catalog` of `pnpm-workspace.yaml` names it, and the "kitshn contract" job uses the same release.
+
+1. Replace the release tag in that line, for example `edge-<sha12>` of a kitshn commit on main.
+2. Run `vp i`, so `pnpm-lock.yaml` gets the new tarball and its checksum.
+3. Run `vp run --filter t3 build:bundle && node scripts/fork-kitshn-contract.ts`.
+4. Commit `pnpm-workspace.yaml` and `pnpm-lock.yaml` together. Update kitshn on the machines with the T3 release that holds the pin.
 
 ### Repair agent
 
@@ -243,48 +253,28 @@ security find-identity -v -p codesigning
 
 The last command must list "Yarden Zamir T3 Fork".
 
-## Local Mac build
+## Update and install
 
-A local build is the fast way to test a change on this Mac. It does not replace the normal flow: merge the change to main, and its CI release reaches every machine.
+The desktop app and the server follow one update policy, see [Updates](features.md#updates). Each OS family has one install script, and one script deploys a local build. Only the last step differs between the two programs.
 
-| Command                                 | Result                                                                                                                        |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/fork-desktop-mac.sh`           | Writes the signed ZIP and `nightly-mac.yml` to `release/`. It skips the DMG, which only a first manual install uses.          |
-| `scripts/fork-desktop-mac.sh --install` | Quits T3, keeps the previous app in `_shared/backup/`, installs the new build and starts it. The next CI release replaces it. |
-| `scripts/fork-desktop-mac.sh --publish` | Push the commit first. Creates a prerelease on the fork. Installed fork apps offer it as an update.                           |
-
-## Server updates
-
-A headless server that runs as the upstream background service (`t3 service install`) updates from the fork releases. The install is the upstream self-update. It unpacks the release into `<T3 home>/runtime/versions/<version>`, and the service launcher starts it on trial. If the new version does not start, the launcher goes back to the old version.
+| Step                     | Desktop app                                                      | Server (`t3 service install`, Linux)                                                 |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| First install            | `scripts/fork-install/install.sh` or `install.ps1`               | `scripts/fork-install/install.sh` on Linux without a display                         |
+| Newest release and check | electron-updater, against the `nightly*.yml` feed of the release | the newest release with `SHA256SUMS`, against `SHA256SUMS`                           |
+| When idle                | the window waits, with `terminalHold` of its server              | `ForkUpdates` checks every 5 minutes                                                 |
+| Last step                | electron-updater quits the app and installs the new one          | the service launcher starts the new runtime on trial, then the `t3` launchers follow |
+| Local build              | `scripts/fork-deploy-local.sh --mac`                             | `scripts/fork-deploy-local.sh <ssh-host>`                                            |
 
 - Keep a release on each code push to main; never slow the update path. See [Fork Release](#fork-release) for the docs-only exception.
-- Servers install updates only when idle.
 - Ask the owner before migrating Oracle-VPS or VPS to another install path. Routine version-directory updates are not install-path migrations.
-- The user setting is [Server auto-update](features.md#server-auto-update). It checks the fork releases every 5 minutes.
-- A release is ready when it has `SHA256SUMS`. A version that rolled back or failed is not tried again. A newer release is tried.
-- The kitshn command install-update of the T3 card works on such a server too. It waits for no running agent turn or background shell, even with `forkAutoUpdate` off. A program in a terminal thread holds it for at most 6 hours, then the update ends the program after a notice in its terminal.
-- The `updateChannel` setting of the T3 card picks the feed: `nightly` (default) takes each nightly, `daily` takes only the releases that [Daily release](#daily-release) promoted. A server never installs an older build when the feed changes.
+- The server install is the upstream self-update. It unpacks the release into `<T3 home>/runtime/versions/<version>`, and the service launcher starts it on trial. If the new version does not start, the launcher goes back to the old version. A version that rolled back or failed is not tried again. A newer release is tried.
+- When the new server is ready, it points each `t3` launcher of its T3 home at its runtime: the launchers in `<T3 home>/runtime/launchers` and `~/.local/bin/t3` (`T3CODE_INSTALL_BIN_DIR`). Only a link into `runtime/versions` changes (`apps/server/src/fork/forkLaunchers.ts`).
+- The kitshn command install-update of the T3 card waits for idle also with `forkUpdateMode` `manual`. On the desktop app it takes the newest release, as the update button does.
+- The `updateChannel` setting of the T3 card picks the feed of the server: `nightly` (default) takes each nightly, `daily` takes only the releases that [Daily release](#daily-release) promoted. A server never installs an older build when the feed changes.
 - A restart stops the running turns. "Continue threads after restarts" (`continueThreadsAfterServerUpdate`) and [Recover interrupted agents](features.md#recover-interrupted-agents) continue them.
 - "Update everything" and `t3 update` also install fork releases. A self-update request for a version without a fork release installs the newest fork release instead. The Play Store app checks upstream releases, so its "Check for updates" installs the newest fork release.
 
-## Deploy a local build
-
-To try a change on a headless server before a release, deploy a build of your checkout over SSH. The server must run as the background service.
-
-```sh
-scripts/fork-deploy-local.sh <ssh-host>
-```
-
-- The script reads the system of the server with `ssh <ssh-host> uname -sm`. It supports Linux x64 and arm64.
-- It builds the web client and the `t3` executable here. It takes the native packages and the resource monitor from the newest fork release that has `SHA256SUMS`.
-- If the checkout changes `apps/server/package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` or `patches` since that release, the script stops. Such a change needs a release.
-- The version follows the rule of the local Mac build in [Versions](#versions), so `forkAutoUpdate` replaces it with the next release.
-- On the server, the script unpacks the build into `<T3 home>/runtime/versions/<version>` and runs `t3 update <version> --yes`. The service restarts at once, and the restart stops running agent turns.
-- After the switch, the script waits up to 90 seconds until `/.well-known/t3/environment` of the server reports the new version. If it does not, the script runs `t3 update <previous version> --yes --allow-downgrade` on the server and fails. If that rollback fails, it prints the command to run on the server. The earlier version is still in `runtime/versions`.
-- `<T3 home>` is `~/.t3` of the SSH user, or `T3CODE_HOME` of the SSH session.
-- To build only, run `scripts/fork-deploy-local.sh --archive linux-x64` or `--archive linux-arm64`. The archive is in `release/`.
-
-## Install the fork
+### Install the fork
 
 `scripts/fork-install/` installs the fork on a new machine. Then join the machine to kitshn: `kitshn join <code> --server <address>`. "Add machine" on the kitshn map gives the code.
 
@@ -297,14 +287,34 @@ curl -fsSL https://raw.githubusercontent.com/Yarden-zamir/t3code/main/scripts/fo
 ```
 
 - On macOS, `install.sh` downloads the newest nightly `.dmg`, copies the app to `/Applications` and opens it.
-- On Windows, `install.ps1` downloads and runs the newest nightly `.exe`.
+- On Windows, `install.ps1` downloads and runs the newest nightly `.exe`. The NSIS installer replaces an installed app.
 - On Linux with a display (`DISPLAY` or `WAYLAND_DISPLAY`), `install.sh` downloads the newest nightly AppImage to `~/Applications/T3-Code.AppImage`, adds a menu entry and starts it. AppImages need FUSE 2, for example `sudo apt install libfuse2t64`.
 - The macOS and Linux desktop installs keep an installed app, because the app updates itself. `--force` replaces it.
-- On Linux without a display, `install.sh` runs `scripts/install.sh`, the upstream installer pointed at the fork releases. It unpacks the newest release into `~/.t3/runtime/versions/<version>` and links `~/.local/bin/t3` to it. Then it runs `t3 service install`. The machine needs no Node.
+- On Linux without a display, `install.sh` runs `scripts/install.sh`, the upstream installer pointed at the fork releases. It unpacks the newest release into `~/.t3/runtime/versions/<version>`, checks it against `SHA256SUMS` and links `~/.local/bin/t3` to it. Then it runs `t3 service install`. The machine needs no Node.
 - The drop-in file `~/.config/systemd/user/t3code.service.d/fork.conf` keeps the headless server on `127.0.0.1:3773` with the PATH of the installer shell.
 - `t3 service install` turns on lingering, so the server keeps running after logout. If that needs an administrator, it says so. See [background-service.md](../user/background-service.md#troubleshooting).
 - The installers read the release list of the GitHub API, because the nightlies are prereleases and `releases/latest` skips them.
 - Run `install.sh --help` for the options.
+
+### Deploy a local build
+
+A local build is the fast way to try a change before a release. It does not replace the normal flow: merge the change to main, and its CI release reaches every machine. The version follows [Versions](#versions), so the next CI release replaces a local build.
+
+| Command                                         | Result                                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/fork-deploy-local.sh <ssh-host>`       | Builds the server, installs it on the headless Linux server and switches its service. The server must run as the service. |
+| `scripts/fork-deploy-local.sh --archive <arch>` | Builds only the server archive for `linux-x64` or `linux-arm64` into `release/`.                                          |
+| `scripts/fork-deploy-local.sh --mac`            | Writes the signed ZIP and `nightly-mac.yml` to `release/`. It skips the DMG, which only a first manual install uses.      |
+| `scripts/fork-deploy-local.sh --mac --install`  | Quits T3, keeps the previous app in `_shared/backup/`, installs the new build and starts it.                              |
+| `scripts/fork-deploy-local.sh --mac --publish`  | Push the commit first. Creates a prerelease on the fork. Installed fork apps offer it as an update.                       |
+
+- The CI number of the version is the highest build number of the fork releases, not the first release in the list. The daily release moves to the top of the list.
+- Server: the script reads the system of the server with `ssh <ssh-host> uname -sm`. It supports Linux x64 and arm64.
+- Server: it builds the web client and the `t3` executable here. It takes the native packages and the resource monitor from the newest fork release that has `SHA256SUMS`.
+- Server: if the checkout changes `apps/server/package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` or `patches` since that release, the script stops. Such a change needs a release.
+- Server: the script unpacks the build into `<T3 home>/runtime/versions/<version>` and runs `t3 update <version> --yes`. The service restarts at once, and the restart stops running agent turns.
+- Server: after the switch, the script waits up to 90 seconds until `/.well-known/t3/environment` of the server reports the new version. If it does not, the script runs `t3 update <previous version> --yes --allow-downgrade` on the server and fails. If that rollback fails, it prints the command to run on the server. The earlier version is still in `runtime/versions`.
+- Server: `<T3 home>` is `~/.t3` of the SSH user, or `T3CODE_HOME` of the SSH session. Connect as the user that runs the service. On the VPS, this user is `t3`, not root.
 
 ### Set up a headless Linux machine
 
@@ -322,7 +332,7 @@ These steps set up a Linux server without a display, for example an Oracle Cloud
 
 - The tunnel connects outbound, and the server listens only on `127.0.0.1`, so the cloud firewall needs no change. On Oracle Cloud, keep the default security list and the `iptables` rules of the image.
 - To check the server, run `t3 service status` and `systemctl --user status t3code.service`.
-- To update the server by hand, run `t3 update`. See [Server updates](#server-updates).
+- To update the server by hand, run `t3 update`. See [Update and install](#update-and-install).
 
 ### Set up the tunnel by hand
 
@@ -338,15 +348,13 @@ T3 does not make the tunnel of a machine. Until kitshn makes it from the `site` 
    sudo cloudflared service install <tunnel-token>
    ```
 
-4. Give the server its tunnel hostname and the Cloudflare Access login. Copy the Access values from the server environment of the VPS. The kitshn grants decide who gets in. `t3 service install` and `t3 update` replace only the unit file, so this drop-in file stays after an update.
+4. Give the server its tunnel hostname. kitshn decides who gets in. `t3 service install` and `t3 update` replace only the unit file, so this drop-in file stays after an update.
 
    ```sh
    mkdir -p ~/.config/systemd/user/t3code.service.d
    cat > ~/.config/systemd/user/t3code.service.d/tunnel.conf <<'EOF'
    [Service]
    Environment=T3CODE_TUNNEL_PAIRING_URL=https://t3-oracle.yarden-zamir.com
-   Environment=T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com
-   Environment=T3CODE_CLOUDFLARE_ACCESS_AUD=<audience tag of the Access app>
    EOF
    systemctl --user daemon-reload && systemctl --user restart t3code.service
    ```
@@ -363,7 +371,7 @@ The script stops if kitshn did not take the address: the CNAME record must point
 
 Do these steps for one machine at a time. The example uses `mac`.
 
-1. Install a T3 release with the kitshn provider on the machine, and check that it registers with kitshn: Settings > Machines shows "Connected to kitshn". kitshn refuses "Take the address…" until the daemon reports `access`. Until the handover, the host keeps its portal path: the portal Access application, the portal tunnel, and on `oracle-vps` the tunnel that T3 runs from `machine-map-tunnel.json`.
+1. Install a T3 release with the kitshn provider on the machine, and check that it registers with kitshn: Settings > Machines shows "Connected to kitshn". Until the handover, the host keeps its portal path: the portal Access application and a portal tunnel that its own cloudflared service runs. T3 runs no portal tunnel.
 2. Give each phone that used a portal app token a kitshn device invite, see [Device invites](features.md#device-invites). Its saved sessions keep working, but a new pairing needs the device token.
 3. Before the `oracle-vps` handover, check what `t3-oracle-vps.yarden-zamir.com` serves. Its DNS record comment says "T3 machine map".
 4. In kitshn, open the T3 card of the machine and select "Take the address…". Wait until the card shows the address.
@@ -390,7 +398,7 @@ To undo the part of the portal, run the script with `--undo`. It puts the host b
 CLOUDFLARE_HANDOVER_TOKEN_FILE=<token file> node scripts/fork-host-handover.ts mac --undo
 ```
 
-On `oracle-vps`, T3 runs the portal tunnel only while kitshn does not serve the host. It stops the tunnel when kitshn lists the host in `served`, after the DNS record moved to kitshn's tunnel, and starts it again when a give-back drops the host from that list. `machine-map-tunnel.json` stays.
+T3 no longer runs a portal tunnel or reads `machine-map-tunnel.json`; kitshn names and serves the host. `T3CODE_TUNNEL_PAIRING_URL` is optional: guest links use its host when T3 Connect does not serve the machine, and `t3 pair` prints links on it. Without it, a server has no guest links and `t3 pair` prints its local address.
 
 Do not remove a handed-over machine in the portal. The portal then deletes the DNS record that it made, and kitshn uses that record now.
 
@@ -440,7 +448,7 @@ Change the guest applications and the rate limit rule in the Cloudflare Zero Tru
    ```
 
 - If the page says that the link is not valid after the Access login, open the guest link again. The Access login can drop the part of the link after `#`.
-- A guest Access login does not open the owner paths. Access checks each application on its own, and the server accepts only the audience tag of the owner login (`T3CODE_CLOUDFLARE_ACCESS_*`) and the kitshn grants.
+- A guest Access login does not open the owner paths. Access checks each application on its own, and on the server only the kitshn grants open them.
 
 ## Central build caches
 

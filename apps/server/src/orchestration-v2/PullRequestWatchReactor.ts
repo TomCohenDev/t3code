@@ -36,7 +36,12 @@ import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import { evaluatePullRequestWatch, pullRequestWatchMessage } from "./pullRequestWatch.ts";
+import {
+  evaluatePullRequestWatch,
+  PULL_REQUEST_WATCH_NO_CHECKS_MS,
+  pullRequestWakeMessagePrefix,
+  pullRequestWatchMessage,
+} from "./pullRequestWatch.ts";
 
 /** Checks take minutes; faster sweeps waste the account's shared host quota. */
 const SWEEP_MINUTES = 2;
@@ -56,6 +61,10 @@ const isRateLimited = (cause: Cause.Cause<PullRequestService.PullRequestError>) 
       isProviderError(error.cause) &&
       error.cause.reason === "rate-limited",
   });
+
+const isWakeHeldError = Schema.is(Orchestrator.OrchestratorPullRequestWakeHeldError);
+const isWakeHeld = <E>(cause: Cause.Cause<E>) =>
+  Option.match(Cause.findErrorOption(cause), { onNone: () => false, onSome: isWakeHeldError });
 
 const logFailure =
   (message: string, fields: Record<string, unknown>) =>
@@ -141,19 +150,28 @@ function planRead(
   if (last === undefined || group.targets.some((target) => !last.watches.has(watchKey(target)))) {
     return { detail: true, activity: true };
   }
+  // Nothing on the host changes when the no-checks deadline passes, so it alone prompts a read.
+  const checksDue = group.targets.some(
+    ({ watch }) =>
+      watch.checksAwaitedSince != null &&
+      now - Date.parse(watch.checksAwaitedSince) >= PULL_REQUEST_WATCH_NO_CHECKS_MS,
+  );
   if (fingerprint === null) {
     const read =
       last.inFlight ||
       !last.remarksComplete ||
       last.fingerprint !== group.fingerprint ||
       now - last.at >= QUIET_REREAD_MS;
-    return { detail: read, activity: read };
+    return { detail: read || checksDue, activity: read };
   }
   const activity =
     last.remarks !== fingerprint.remarks ||
     !last.remarksComplete ||
     now - last.at >= FINGERPRINT_REREAD_MS;
-  return { detail: activity || last.status !== fingerprint.status || last.inFlight, activity };
+  return {
+    detail: activity || checksDue || last.status !== fingerprint.status || last.inFlight,
+    activity,
+  };
 }
 
 function watchesEqual(left: ThreadPullRequestWatch, right: ThreadPullRequestWatch): boolean {
@@ -277,7 +295,14 @@ export const make = Effect.gen(function* () {
       ...(endedWatch === undefined ? {} : { endedWatch }),
       ...(wake === undefined
         ? {}
-        : { wake: { ...wake, messageId: MessageId.make(`message:pr-watch:${uuid}`) } }),
+        : {
+            wake: {
+              ...wake,
+              messageId: MessageId.make(
+                `${pullRequestWakeMessagePrefix(normalizeThreadPullRequestKey(identityOf(target.link)))}${uuid}`,
+              ),
+            },
+          }),
     });
   });
 
@@ -415,10 +440,13 @@ export const make = Effect.gen(function* () {
         Effect.as(true),
         Effect.catchCause((cause) => {
           lastReads.delete(group.key);
-          return logFailure("pull request watch update failed", {
-            threadId: target.thread.id,
-            pullRequest: group.key,
-          })(cause).pipe(Effect.as(false));
+          const fields = { threadId: target.thread.id, pullRequest: group.key };
+          // Fork: a held wake is expected while the thread works; the next sweep reads again.
+          return (
+            isWakeHeld(cause)
+              ? Effect.logDebug("pull request watch wake held behind a queued wake", fields)
+              : logFailure("pull request watch update failed", fields)(cause)
+          ).pipe(Effect.as(false));
         }),
       ),
     ).pipe(Effect.map((landed) => landed.every(Boolean)));
@@ -625,6 +653,8 @@ export const make = Effect.gen(function* () {
       { concurrency: 4, discard: true },
     );
   }).pipe(
+    // Fork: the fingerprint reads run in parallel, so they share one project listing per sweep.
+    pullRequests.withSharedProjectReads,
     Effect.catchCause(logFailure("pull request watch sweep failed", {})),
     Effect.withSpan("PullRequestWatchReactor.sweep"),
   );

@@ -12,7 +12,6 @@ import * as NodeHttp from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
@@ -48,7 +47,7 @@ import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewG
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as DelegatedTaskAnalytics from "./telemetry/DelegatedTaskAnalytics.ts";
-import * as ProviderEventIngestor from "./orchestration-v2/ProviderEventIngestor.ts";
+import * as ProviderUsageAnalytics from "./telemetry/ProviderUsageAnalytics.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ResetCreditCoordinator from "./provider/resetCreditCoordinator.ts";
 import * as EventNdjsonLogger from "./provider/EventNdjsonLogger.ts";
@@ -60,11 +59,13 @@ import * as ProviderHostLive from "./provider/ProviderHostLive.ts";
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as SourceControlBuiltInDrivers from "./sourceControl/builtInDrivers.ts";
 import * as SourceControlSignIn from "./sourceControl/SourceControlSignIn.ts";
 import { BUILT_IN_SOURCE_CONTROL_DRIVER_LIST } from "./sourceControl/sourceControlDefinitions.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+import * as SecretResolver from "./secrets/SecretResolver.ts";
 import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceRegistryHydration.ts";
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
@@ -94,6 +95,8 @@ import * as ServerOwnership from "./serverOwnership.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as ManagedLimits from "./policy/managedLimits.ts";
+import * as ManagedPolicy from "./policy/ManagedPolicy.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as NativeAppIconResolver from "./assets/NativeAppIconResolver.ts";
 import * as AntigravityInstallation from "./provider/AntigravityInstallation.ts";
@@ -150,6 +153,7 @@ import {
   RELAY_URL_SECRET,
 } from "./cloud/config.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as EnvironmentAuthPolicy from "./auth/EnvironmentAuthPolicy.ts";
 import * as CloudHttp from "./cloud/http.ts";
 import * as GuestHttp from "./guest/http.ts";
 import * as CloudLink from "./cloud/CloudLink.ts";
@@ -190,15 +194,13 @@ import * as AbandonedTerminalDrafts from "./fork/AbandonedTerminalDrafts.ts";
 import * as TerminalThreadMove from "./fork/TerminalThreadMove.ts";
 import * as ForkChangelog from "./fork/ForkChangelog.ts";
 import * as ForkPreviewServerGroups from "./fork/PreviewServerGroups.ts";
-import { layerPortalTunnel } from "./fork/portalTunnelFile.ts";
 import * as ForkUpdates from "./fork/ForkUpdates.ts";
 import * as MachineExec from "./fork/machineMap/MachineExec.ts";
 import * as MachineExecRoute from "./fork/machineMap/machineExecRoute.ts";
-import * as ThreadIdentityRoute from "./fork/threadIdentityRoute.ts";
-import * as KitshnAttester from "./fork/kitshn/KitshnAttester.ts";
+import * as ThreadIdentity from "./fork/ThreadIdentity.ts";
 import * as KitshnCli from "./fork/kitshn/KitshnCli.ts";
 import * as KitshnGrants from "./fork/kitshn/KitshnGrants.ts";
-import * as KitshnAudit from "./fork/kitshn/KitshnAudit.ts";
+import * as KitshnConnection from "./fork/kitshn/KitshnConnection.ts";
 import * as KitshnProvider from "./fork/kitshn/KitshnProvider.ts";
 import * as KitshnSettingsSync from "./fork/kitshn/KitshnSettingsSync.ts";
 import * as MachineHost from "./fork/machineMap/MachineHost.ts";
@@ -222,7 +224,12 @@ import * as OrchestrationHttp from "./orchestration-v2/http.ts";
 import * as ProjectHttp from "./project/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
-import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
+import {
+  disableTailscaleServe,
+  ensureTailscaleServe,
+  readTailscaleServeRoutesTo,
+  readTailscaleStatus,
+} from "@t3tools/tailscale";
 import * as ServerActivation from "./serverActivation.ts";
 
 // Escaped MCP handoff provenance can exceed find-my-way's 100-character segment default.
@@ -264,6 +271,7 @@ const layerPtyAdapter = NodePtyAdapter.layer;
 
 const layerServerSettings = ServerSettings.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
+  Layer.provideMerge(ManagedPolicy.layer),
   Layer.provideMerge(SqlitePersistence.layerConfig),
 );
 
@@ -318,13 +326,42 @@ const layerResourceDiagnostics = Layer.mergeAll(
 const layerRelayClient = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
-    return RelayClient.layerCloudflared({ baseDir: config.baseDir });
+    const policy = yield* ManagedPolicy.ManagedPolicy;
+    const layerCloudflared = RelayClient.layerCloudflared({ baseDir: config.baseDir });
+    if (ManagedLimits.allowsConnect(policy)) return layerCloudflared;
+    // The connector only carries T3 Connect, so a policy without Connect never installs one.
+    const refused = Effect.fn("RelayClient.installRefusedByPolicy")(function* () {
+      return yield* new RelayClient.RelayClientInstallError({
+        reason: "managed_by_policy",
+        message: ManagedLimits.refuseConnect(policy).message,
+      });
+    });
+    return Layer.effect(
+      RelayClient.RelayClient,
+      Effect.gen(function* () {
+        const relayClient = yield* RelayClient.RelayClient;
+        return RelayClient.RelayClient.of({
+          ...relayClient,
+          install: refused(),
+          installWithProgress: refused,
+        });
+      }),
+    ).pipe(Layer.provide(layerCloudflared));
   }),
-);
+).pipe(Layer.provide(ManagedPolicy.layer));
 
 const layerHttpServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
+    // Before binding: a host the policy does not allow must never listen, not even briefly.
+    const policy = yield* ManagedPolicy.ManagedPolicy;
+    const bindHost = yield* ManagedLimits.checkServerReachability(policy, {
+      authPolicy: EnvironmentAuthPolicy.resolveServerAuthPolicy(config),
+      host: config.host,
+      tailscaleServeEnabled: config.tailscaleServeEnabled,
+      privateNetworkOnly: config.privateNetworkOnly,
+    });
+    yield* ManagedLimits.closeTailscaleServeTo(policy, { host: bindHost, port: config.port });
     return NodeHttpServer.layer(
       () => {
         const server = rejectRequestsUntilServing(
@@ -340,7 +377,7 @@ const layerHttpServer = Layer.unwrap(
         return server;
       },
       {
-        host: config.host ?? "127.0.0.1",
+        host: bindHost,
         port: config.port,
         gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
         // Context takeover stays enabled (ws default) so the compression
@@ -351,7 +388,7 @@ const layerHttpServer = Layer.unwrap(
       },
     );
   }),
-);
+).pipe(Layer.provide(ManagedPolicy.layer));
 
 const layerPlatformServices = DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -528,10 +565,11 @@ const layerProjectFaviconResolver = ProjectFaviconResolver.layer.pipe(
   Layer.provide(T3ProjectFileLoader.layer),
 );
 
-// Fork: kitshn provider (K-706). One instance: the auth hooks, the guest routes and the provider
-// read the same tables. It shares the session store of the auth layer, so a revocation closes
-// the WebSockets of that session.
+// Fork: kitshn provider (K-721). One instance of the connection and of the grants: the auth hooks,
+// the guest routes, exec and the provider share them. It shares the session store of the auth
+// layer, so a revocation closes the WebSockets of that session.
 const layerKitshnGrants = KitshnGrants.layer.pipe(
+  Layer.provideMerge(KitshnConnection.layer),
   Layer.provide(SessionStore.layer),
   Layer.provide(layerPersistence),
   Layer.provide(ServerEnvironment.layerIdentity),
@@ -549,21 +587,17 @@ const layerServerSelfUpdate = ServerSelfUpdate.layer.pipe(Layer.provide(layerDes
 
 // Fork: kitshn is the only way this server joins other machines (K-704 to K-1610).
 const layerMachineMap = MachineExec.layer.pipe(
-  // Fork: the portal tunnel of an older join serves the host until its handover to kitshn.
-  Layer.provideMerge(
-    layerPortalTunnel.pipe(Layer.provide(ServerSecretStore.layer), Layer.provide(layerRelayClient)),
-  ),
   Layer.provideMerge(KitshnSettingsSync.layer),
   Layer.provideMerge(MachinePeers.layer),
-  Layer.provideMerge(KitshnAudit.layer),
   // The kitshn provider connection; the machine tools send their kitshn requests over it.
   Layer.provideMerge(KitshnProvider.layer),
+  // K-1752: the provider attests the thread tokens that agents send with kitshn commands.
+  Layer.provideMerge(ThreadIdentity.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
   Layer.provideMerge(KitshnCli.layer),
   Layer.provideMerge(MachineHost.layer),
   // Fork: updates from the fork releases.
   Layer.provideMerge(ForkUpdates.layer.pipe(Layer.provide(layerServerSelfUpdate))),
   Layer.provide(ProcessRunner.layer),
-  Layer.provide(NodeSocket.layerWebSocketConstructor),
 );
 
 const layerAuth = EnvironmentAuth.layer.pipe(
@@ -586,13 +620,16 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
   ScheduledTaskWebhookOrigin,
   Effect.gen(function* () {
     const secrets = yield* ServerSecretStore.ServerSecretStore;
+    const kitshnGrants = yield* KitshnGrants.KitshnGrants;
     return Effect.gen(function* () {
       const [relayUrl, tunnelConfig] = yield* Effect.all([
         secrets.get(RELAY_URL_SECRET),
         secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG),
       ]).pipe(Effect.orElseSucceed(() => [Option.none(), Option.none()] as const));
+      // Fork: a kitshn-joined machine without T3 Connect still has a public site.
+      const kitshnSiteOrigin = yield* kitshnGrants.siteOrigin;
       if (Option.isNone(relayUrl) || Option.isNone(tunnelConfig)) {
-        return { relayHookBaseUrl: null };
+        return { relayHookBaseUrl: null, kitshnSiteOrigin };
       }
       const config = decodeRuntimeConfig(new TextDecoder().decode(tunnelConfig.value));
       return {
@@ -600,6 +637,7 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
           relayUrl: new TextDecoder().decode(relayUrl.value),
           tunnelName: Option.isSome(config) ? config.value.tunnelName : undefined,
         }),
+        kitshnSiteOrigin,
       };
     });
   }),
@@ -607,7 +645,7 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
 
 const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
   Layer.provide(layerScheduledTaskWebhookOrigin),
-  Layer.provide(ProviderEventIngestor.layerAnalytics),
+  Layer.provide(ProviderUsageAnalytics.layer),
   Layer.provide(layerCheckpointStore),
   Layer.provide(layerGitWorkflow),
   Layer.provide(
@@ -619,10 +657,10 @@ const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
   ),
 );
 
-const layerOrchestrationApplication = CheckpointDiffQuery.layer.pipe(
-  Layer.provideMerge(layerCheckpointStore),
-  Layer.provideMerge(layerOrchestrationV2Runtime),
-);
+const layerOrchestrationApplication = Layer.merge(
+  CheckpointDiffQuery.layer,
+  NativeChildWorkQuery.layer,
+).pipe(Layer.provideMerge(layerCheckpointStore), Layer.provideMerge(layerOrchestrationV2Runtime));
 
 const layerThreadSettlementWorker = Layer.effectDiscard(
   ThreadSettlementService.make.pipe(Effect.flatMap((service) => service.start())),
@@ -726,6 +764,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+  Layer.provideMerge(SecretResolver.layer),
   Layer.provideMerge(layerServerSettings),
   Layer.provideMerge(layerSourceControlProviderRegistry),
   Layer.provideMerge(layerGit),
@@ -799,7 +838,8 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(TriageService.layer.pipe(Layer.provide(GitVcsDriver.layer))),
-  Layer.provideMerge(AnalyticsService.layer),
+  // Layers memoize by reference, so this is the same policy the settings layer reads.
+  Layer.provideMerge(AnalyticsService.layer.pipe(Layer.provide(ManagedPolicy.layer))),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(DirectEndpoints.layer),
@@ -842,12 +882,7 @@ const layerMakeRoutes = Layer.mergeAll(
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),
   // Fork: machine map, the stream of `t3 machine exec` (MM-1919).
-  MachineExecRoute.layer.pipe(
-    Layer.provide(McpOAuth.layerMcpClientAuthenticator),
-    Layer.provide(NodeSocket.layerWebSocketConstructor),
-  ),
-  // Fork: thread attestation for kitshn, with the MCP credential of a thread.
-  ThreadIdentityRoute.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
+  MachineExecRoute.layer.pipe(Layer.provide(McpOAuth.layerMcpClientAuthenticator)),
   // Follows delegated tasks running in linked environments, including after a restart.
   Layer.effectDiscard(
     RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
@@ -920,6 +955,7 @@ const layerMakeServer = Layer.unwrap(
           config,
           port: address.port,
           serviceManaged: launcher.managed,
+          managedPolicy: yield* ManagedPolicy.loadedPolicy(yield* ManagedPolicy.ManagedPolicy),
         });
         yield* ownership
           .publish(state)
@@ -943,12 +979,17 @@ const layerMakeServer = Layer.unwrap(
               }
 
               const localPort = address.port;
+              const localHost = loopbackUrlHostForAddress(address);
               return yield* ensureTailscaleServe({
                 localPort,
                 servePort: config.tailscaleServePort,
-                localHost: loopbackUrlHostForAddress(address),
+                localHost,
               }).pipe(
-                Effect.as({ localPort, servePort: config.tailscaleServePort }),
+                Effect.as({
+                  localPort,
+                  localHost: localHost.replace(/^\[|\]$/gu, ""),
+                  servePort: config.tailscaleServePort,
+                }),
                 Effect.tap(() =>
                   Effect.logInfo("Tailscale Serve configured", {
                     localPort,
@@ -966,11 +1007,44 @@ const layerMakeServer = Layer.unwrap(
             }),
             (configured) =>
               configured
-                ? disableTailscaleServe({ servePort: configured.servePort }).pipe(
-                    Effect.tap(() =>
-                      Effect.logInfo("Tailscale Serve disabled", {
-                        servePort: configured.servePort,
+                ? Effect.all(
+                    [
+                      readTailscaleServeRoutesTo({
+                        host: configured.localHost,
+                        port: configured.localPort,
                       }),
+                      readTailscaleStatus,
+                    ],
+                    { concurrency: 2 },
+                  ).pipe(
+                    // Another service may hold the root route by now, or it may sit under a
+                    // former name, where `off` would act on the current one; only ours goes.
+                    Effect.map(([routes, status]) =>
+                      routes.some(
+                        (route) =>
+                          route.servePort === configured.servePort &&
+                          route.mount === "/" &&
+                          route.owner === undefined &&
+                          route.ambiguous === undefined &&
+                          route.host?.toLowerCase() === status.magicDnsName?.toLowerCase(),
+                      ),
+                    ),
+                    Effect.orElseSucceed(() => false),
+                    Effect.flatMap((ours) =>
+                      ours
+                        ? disableTailscaleServe({ servePort: configured.servePort }).pipe(
+                            Effect.tap(() =>
+                              Effect.logInfo("Tailscale Serve disabled", {
+                                servePort: configured.servePort,
+                              }),
+                            ),
+                          )
+                        : Effect.logInfo(
+                            "Tailscale Serve left on; its root route is not known to be ours",
+                            {
+                              servePort: configured.servePort,
+                            },
+                          ),
                     ),
                     Effect.catch((cause) =>
                       Effect.logWarning("Failed to disable Tailscale Serve", {
@@ -983,16 +1057,6 @@ const layerMakeServer = Layer.unwrap(
           ),
         )
       : Layer.empty;
-    // Fork: registers the T3 attester of the kitshn daemon once this server is active.
-    const layerKitshnAttester = Layer.effectDiscard(
-      ServerActivation.forkParked(
-        Effect.gen(function* () {
-          const address = (yield* HttpServer.HttpServer).address;
-          if (typeof address === "string" || !("port" in address)) return;
-          yield* (yield* KitshnAttester.KitshnAttester).register(address);
-        }),
-      ),
-    ).pipe(Layer.provide(KitshnAttester.layer.pipe(Layer.provide(KitshnCli.layer))));
     // Fork: runs `kitshn provider` for the life of the server (K-712: without kitshn 2, it only logs).
     const layerKitshnProvider = Layer.effectDiscard(
       ServerActivation.forkParked(
@@ -1010,6 +1074,11 @@ const layerMakeServer = Layer.unwrap(
     const layerCloudDesiredLinkReconcile = Layer.effectDiscard(
       Effect.gen(function* () {
         const cloudLink = yield* CloudLink.CloudLink;
+        // CloudLink unlinks on startup when the policy turns Connect off; nothing to restore.
+        if (!ManagedLimits.allowsConnect(yield* ManagedPolicy.ManagedPolicy)) {
+          yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
+          return;
+        }
         const releaseManagedTunnel = cloudLink.releaseManagedTunnelOnShutdown().pipe(
           Effect.timeout("10 seconds"),
           Effect.tap((released) =>
@@ -1215,7 +1284,6 @@ const layerMakeServer = Layer.unwrap(
       layerRuntimeState.pipe(Layer.provide(layerLauncher)),
       layerTailscaleServe,
       layerCloudDesiredLinkReconcile,
-      layerKitshnAttester,
       layerKitshnProvider,
       HeapSnapshot.layer,
     );
@@ -1225,7 +1293,9 @@ const layerMakeServer = Layer.unwrap(
       Layer.provideMerge(layerRuntimeServices),
       Layer.provideMerge(McpSessionRegistry.layer.pipe(Layer.provide(layerServerEnvironment))),
       Layer.provide(layerActivation),
-      Layer.provideMerge(RelayTracing.layerServerRelayBroker),
+      Layer.provideMerge(
+        RelayTracing.layerServerRelayBroker.pipe(Layer.provide(ManagedPolicy.layer)),
+      ),
       Layer.provideMerge(layerHttpServer),
       Layer.provide(layerApplicationObservability),
       Layer.provideMerge(FetchHttpClient.layer),

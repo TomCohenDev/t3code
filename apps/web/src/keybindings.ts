@@ -15,14 +15,20 @@ import {
   matchesKeybindingShortcutModifiers,
   normalizeEventKey,
   resolveEventKeys,
-  type ShortcutEventLike,
+  type ShortcutEventLike as SharedShortcutEventLike,
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
+import { isEditableFocused } from "./lib/editableFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
-export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
+export type { ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
 export { shortcutKeyFromEvent } from "@t3tools/shared/keybindings";
+import { KEYBINDING_COMMAND_ATTRIBUTE } from "./keybindingsMenu";
+
+export interface ShortcutEventLike extends SharedShortcutEventLike {
+  target?: EventTarget | null;
+}
 
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
@@ -177,6 +183,9 @@ export function resolveShortcutCommand(
 ): KeybindingCommand | null {
   const platform = resolvePlatform(options);
   const context = resolveContext(options);
+  if (options?.context?.editableFocus === undefined && typeof document !== "undefined") {
+    context.editableFocus = isEditableFocused(event.target ?? document.activeElement);
+  }
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];
@@ -238,6 +247,48 @@ export function formatShortcutLabel(
   if (showMeta) parts.push("Meta");
   parts.push(keyLabel);
   return parts.join("+");
+}
+
+const ARIA_KEY_NAMES: Partial<Record<string, string>> = {
+  escape: "Escape",
+  arrowup: "ArrowUp",
+  arrowdown: "ArrowDown",
+  arrowleft: "ArrowLeft",
+  arrowright: "ArrowRight",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+};
+
+/** The `aria-keyshortcuts` form of a shortcut, such as `Meta+Shift+N`. */
+export function ariaShortcut(shortcut: KeybindingShortcut, platform = navigator.platform): string {
+  const useMetaForMod = isMacPlatform(platform);
+  const parts: string[] = [];
+  if (shortcut.ctrlKey || (shortcut.modKey && !useMetaForMod)) parts.push("Control");
+  if (shortcut.altKey) parts.push("Alt");
+  if (shortcut.shiftKey) parts.push("Shift");
+  if (shortcut.metaKey || (shortcut.modKey && useMetaForMod)) parts.push("Meta");
+  parts.push(ARIA_KEY_NAMES[shortcut.key] ?? formatShortcutKeyLabel(shortcut.key));
+  return parts.join("+");
+}
+
+/**
+ * Fork: the props of an element that runs `command` and shows its key itself, such as a menu item
+ * with a `MenuShortcut`: its `aria-keyshortcuts` and the item menu mark (`keybindingsMenu.ts`).
+ */
+export function keybindingItemProps(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand | null,
+  options?: ShortcutMatchOptions,
+) {
+  if (command === null) return {};
+  const shortcuts = effectiveShortcutsForCommand(keybindings, command, options);
+  return {
+    [KEYBINDING_COMMAND_ATTRIBUTE]: command,
+    "aria-keyshortcuts":
+      shortcuts.length > 0
+        ? shortcuts.map((shortcut) => ariaShortcut(shortcut, resolvePlatform(options))).join(" ")
+        : undefined,
+  };
 }
 
 export function shortcutLabelForCommand(
@@ -474,10 +525,6 @@ export function terminalNavigationShortcutData(
       return moveLine;
     }
     return null;
-  }
-
-  if (event.ctrlKey && !event.metaKey && !event.altKey) {
-    return moveWord;
   }
 
   if (event.altKey && !event.metaKey && !event.ctrlKey) {

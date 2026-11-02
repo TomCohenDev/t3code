@@ -12,9 +12,16 @@ import * as DateTime from "effect/DateTime";
 /** Bounds consecutive comment-only wakes to stop bot reply loops; check, conflict, or push news resets it. */
 export const PULL_REQUEST_WATCH_WAKE_LIMIT = 10;
 /** How long a head may go without any check before the agent is told none reported. */
-const PULL_REQUEST_WATCH_NO_CHECKS_MS = 15 * 60_000;
+export const PULL_REQUEST_WATCH_NO_CHECKS_MS = 15 * 60_000;
 const LISTED_ITEMS = 10;
 const SNIPPET_LENGTH = 200;
+
+/** Fork: wake message IDs name their pull request, so an ended watch can drop its queued wakes. */
+export const pullRequestWakeMessagePrefix = (key: {
+  readonly host: string;
+  readonly repository: string;
+  readonly number: number;
+}) => `message:pr-watch:${key.host}/${key.repository}/${key.number}:`;
 
 export type PullRequestWatchChange =
   | { readonly kind: "checks-failed"; readonly failed: ReadonlyArray<PullRequestCheck> }
@@ -129,7 +136,11 @@ export function evaluatePullRequestWatch(
     );
   };
   const through = Date.parse(watch.remarksThrough);
-  const activeAt = (remark: PullRequestComment) => remark.editedAt ?? remark.createdAt;
+  // Fork: bots edit summary comments often, so a bot's edit is not news. A person's edit is.
+  const byBot = (remark: PullRequestComment) =>
+    remark.author?.isBot === true || remark.author?.login.endsWith("[bot]") === true;
+  const activeAt = (remark: PullRequestComment) =>
+    byBot(remark) ? remark.createdAt : (remark.editedAt ?? remark.createdAt);
   // Hosts can stamp remarks to the second, so remarks at the boundary time are told apart by ID.
   const fresh = (remarks ?? []).filter((remark) => {
     const at = Date.parse(activeAt(remark));

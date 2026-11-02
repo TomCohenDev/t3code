@@ -33,7 +33,7 @@ export interface McpThreadCaller {
   /**
    * Fork: the `Authorization` value of a request that this thread's own MCP credential made. It
    * lives on the thread, so a scope rebuilt for another thread drops it. The kitshn tools pass it
-   * to the kitshn daemon, which asks `/api/thread-identity` about it.
+   * to the kitshn daemon as `KITSHN_ATTEST`, and the daemon asks this server about it (K-1752).
    */
   readonly authorization?: Redacted.Redacted<string> | undefined;
 }
@@ -100,6 +100,31 @@ export const clientModeCeiling = (client: McpClientCaller | undefined): ClientMo
       interactionModeRank[asked.interactionMode] < interactionModeRank[approved.interactionMode]
         ? asked.interactionMode
         : approved.interactionMode,
+  };
+};
+
+/**
+ * A client approved above an administrator's runtime-mode ceiling acts as if it had narrowed
+ * itself to the ceiling, so what it starts and schedules is not refused for a mode it never chose.
+ */
+export const withRuntimeModeCeiling = (
+  scope: McpInvocationScope,
+  ceiling: RuntimeMode | undefined,
+): McpInvocationScope => {
+  if (ceiling === undefined || scope.client === undefined) return scope;
+  const asked = scope.client.narrowedTo;
+  return {
+    ...scope,
+    client: {
+      ...scope.client,
+      narrowedTo: {
+        runtimeMode:
+          asked !== undefined && runtimeModeRank[asked.runtimeMode] < runtimeModeRank[ceiling]
+            ? asked.runtimeMode
+            : ceiling,
+        interactionMode: asked?.interactionMode ?? "default",
+      },
+    },
   };
 };
 

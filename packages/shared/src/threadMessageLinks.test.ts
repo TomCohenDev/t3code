@@ -4,9 +4,11 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { formatThreadLink, parseThreadLinkHref, relabelThreadLinks } from "./threadLinks.ts";
 import {
   isLinkedMessage,
+  linkedMessageLoadId,
   messageLinkFromLocation,
   messageLinkStep,
   threadLinkMessageId,
+  withoutMessageLink,
 } from "./threadMessageLinks.ts";
 
 describe("message links", () => {
@@ -27,6 +29,10 @@ describe("message links", () => {
     expect(isLinkedMessage("msg%3A2", "msg:3")).toBe(false);
     expect(isLinkedMessage("bad%", "bad%")).toBe(true);
     expect(isLinkedMessage("bad%", "bad")).toBe(false);
+    // History loads through the stored id, so an encoded link still finds an old message.
+    expect(linkedMessageLoadId("msg%3A2")).toBe("msg:2");
+    expect(linkedMessageLoadId("msg:2")).toBe("msg:2");
+    expect(linkedMessageLoadId("bad%")).toBe("bad%");
   });
 
   it("reads no message from app state in the fragment", () => {
@@ -52,6 +58,13 @@ describe("messageLinkFromLocation", () => {
 
   it("reads no message from a fragment that holds app state", () => {
     expect(messageLinkFromLocation("assistant-citation=abc", "")).toBeNull();
+  });
+
+  it("drops the message link of an address and keeps app state", () => {
+    expect(withoutMessageLink("http://h/e/t?x=1&message=m2#m1")).toBe("http://h/e/t?x=1");
+    expect(withoutMessageLink("http://h/e/t#assistant-citation=abc")).toBe(
+      "http://h/e/t#assistant-citation=abc",
+    );
   });
 });
 

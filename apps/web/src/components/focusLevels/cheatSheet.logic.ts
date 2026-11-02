@@ -22,7 +22,8 @@ export type CheatSheetAreaId =
   | "general";
 
 export interface CheatSheetRow {
-  readonly command: KeybindingCommand;
+  /** Null for a fixed key that no keybinding sets. */
+  readonly command: KeybindingCommand | null;
   readonly label: string;
   readonly keys: ReadonlyArray<string>;
 }
@@ -118,6 +119,7 @@ function areaOf(command: KeybindingCommand): CheatSheetAreaId {
 const EXTRA_CONTEXT: Partial<Record<KeybindingCommand, Record<string, boolean>>> = {
   "composer.sendAlternate": { turnRunning: true },
   "composer.sendBackground": { draftThreadRoute: true },
+  "composer.toggleCompactBeforeSend": { compactBeforeSendShown: true },
   "approval.approve": { approvalPending: true },
   "approval.alwaysAllow": { approvalPending: true },
   "approval.decline": { approvalPending: true },
@@ -179,6 +181,7 @@ const LABELS: Partial<Record<KeybindingCommand, string>> = {
   "composer.mode": "Choose access mode",
   "composer.workspace": "Choose workspace",
   "composer.branch": "Choose branch",
+  "composer.toggleCompactBeforeSend": "Compact before send or keep full history",
   "modelPicker.toggle": "Choose model",
   "sidebar.toggle": "Toggle sidebar",
   "sidebar.search": "Search threads",
@@ -221,6 +224,7 @@ const LABELS: Partial<Record<KeybindingCommand, string>> = {
   "chat.newTerminal": "New terminal thread",
   "chat.newTerminalLocal": "New terminal thread in current project",
   "chat.find": "Find in thread",
+  "chat.compactContext": "Compact context",
   "settings.open": "Open settings",
   "settings.find": "Find in settings",
   "usage.cost": "Usage page: show cost",
@@ -246,6 +250,23 @@ function keyLabels(
 ): string[] {
   const shortcuts = effectiveShortcutsForCommand(keybindings, command, { context, platform });
   return [...new Set(shortcuts.map((shortcut) => formatShortcutLabel(shortcut, platform)))];
+}
+
+/** `isItemMenuKey` in `keybindingsMenu.ts` reads this key; no keybinding sets it. */
+function itemMenuRow(platform: string): CheatSheetRow {
+  const shiftF10 = {
+    key: "f10",
+    shiftKey: true,
+    modKey: false,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+  };
+  return {
+    command: null,
+    label: "Open the item's menu",
+    keys: [formatShortcutLabel(shiftF10, platform)],
+  };
 }
 
 /**
@@ -279,6 +300,7 @@ export function buildCheatSheet(input: {
         rows.push({ command: first, label: family.label, keys: [`${firstKey} – ${lastKey}`] });
       }
     }
+    if (area.id === "general") rows.push(itemMenuRow(input.platform));
     return { id: area.id, title: area.title, needsFocusLevels: area.needsFocusLevels, rows };
   }).filter((area) => area.rows.length > 0);
   return input.here === null

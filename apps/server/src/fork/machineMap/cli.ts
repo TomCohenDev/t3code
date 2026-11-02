@@ -66,7 +66,7 @@ const execCommand = Command.make("exec", {
   ),
 }).pipe(
   Command.withDescription(
-    "Run a command on another machine linked through kitshn, like ssh. Stdin goes to the command, stdout and stderr come back as they are written, and the exit code is the command's. A timeout exits 124. A refusal, a lost connection, or a kitshn grant that stops allowing exec exits 255. In an agent's shell it acts as the agent's thread, with the limits of that thread; without a thread credential it is refused. That machine's kitshn grants must give this one t3.agents at exec and t3.app at standard or higher.",
+    'Run a command on another machine linked through kitshn, like ssh. Stdin goes to the command, stdout and stderr come back as they are written, and the exit code is the command\'s. A timeout exits 124. A refusal or a lost connection exits 255. In an agent\'s shell it acts as the agent\'s thread, with the limits of that thread; without a thread credential it is refused. It needs a link to the T3 app card of that machine and the kitshn effect "runs" of this machine there. With "ask", it prints a waiting line and waits for the approval.',
   ),
   Command.withExamples([
     { command: "t3 machine exec vps -- uname -a", description: "Run one command." },

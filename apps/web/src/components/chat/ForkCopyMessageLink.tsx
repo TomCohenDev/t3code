@@ -6,8 +6,9 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { readThreadShell } from "../../state/entities";
 import { runRegisteredFocusLevelCommand } from "../focusLevels/useFocusLevelShortcuts";
 import { toastManager } from "../ui/toast";
-import { useForkMessageLinks } from "./ForkMessageLinkTarget";
+import { useForkThreadAddressing } from "./ForkMessageLinkTarget";
 import { ForkPinMessageButton, useForkMessagePinsEnabled } from "./ForkMessagePins";
+import { objectMenuActionsProps } from "../../objectMenu";
 import { MessageCopyButton } from "./MessageCopyButton";
 
 /**
@@ -28,7 +29,7 @@ export function ForkCopyMessageLink(props: {
   readonly text?: string | undefined;
   readonly standalone?: boolean;
 }) {
-  const enabled = useForkMessageLinks(props.threadRef?.environmentId ?? null);
+  const enabled = useForkThreadAddressing(props.threadRef?.environmentId ?? null);
   const pins = useForkMessagePinsEnabled();
   if ((!enabled && !pins) || !props.threadRef) return null;
   const buttons = (
@@ -38,6 +39,7 @@ export function ForkCopyMessageLink(props: {
           text={messageLinkMarkdown(props.threadRef, props.messageId)}
           label="Copy message link"
           icon={Link}
+          keybindingCommand="timeline.copyMessageLink"
           variant="ghost"
         />
       ) : null}
@@ -51,7 +53,10 @@ export function ForkCopyMessageLink(props: {
     </>
   );
   return props.standalone ? (
-    <div className="mt-1.5 flex items-center gap-0.5 opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100 has-[[data-fork-pinned]]:opacity-100">
+    <div
+      {...objectMenuActionsProps}
+      className="mt-1.5 flex items-center gap-0.5 opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100 has-[[data-fork-pinned]]:opacity-100"
+    >
       {buttons}
     </div>
   ) : (
@@ -60,7 +65,7 @@ export function ForkCopyMessageLink(props: {
 }
 
 export function useForkCopyMessageLink(threadRef: ScopedThreadRef | null) {
-  const enabled = useForkMessageLinks(threadRef?.environmentId ?? null);
+  const enabled = useForkThreadAddressing(threadRef?.environmentId ?? null);
   const { copyToClipboard } = useCopyToClipboard({
     target: "message link",
     onCopy: () => toastManager.add({ type: "success", title: "Message link copied" }),

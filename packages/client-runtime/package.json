@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./assembly-highlighting": {
+      "types": "./src/assemblyHighlighting.ts",
+      "default": "./src/assemblyHighlighting.ts"
+    },
     "./zip/bounded-zip": {
       "types": "./src/zip/boundedZip.ts",
       "default": "./src/zip/boundedZip.ts"
@@ -207,6 +211,10 @@
       "types": "./src/state/orchestration.ts",
       "default": "./src/state/orchestration.ts"
     },
+    "./state/thread-history-merge": {
+      "types": "./src/state/threadHistoryMerge.ts",
+      "default": "./src/state/threadHistoryMerge.ts"
+    },
     "./state/orchestration-v2-projection": {
       "types": "./src/state/orchestrationV2Projection.ts",
       "default": "./src/state/orchestrationV2Projection.ts"
@@ -242,6 +250,10 @@
     "./fork/sharedClientSettings": {
       "types": "./src/fork/sharedClientSettings.ts",
       "default": "./src/fork/sharedClientSettings.ts"
+    },
+    "./fork/syncTimings": {
+      "types": "./src/fork/syncTimings.ts",
+      "default": "./src/fork/syncTimings.ts"
     },
     "./fork/worktreeRecreate": {
       "types": "./src/fork/worktreeRecreate.ts",
@@ -450,6 +462,10 @@
     "./thread-reference": {
       "types": "./src/threadReference.ts",
       "default": "./src/threadReference.ts"
+    },
+    "./pull-request-project-filter": {
+      "types": "./src/pullRequestProjectFilter.ts",
+      "default": "./src/pullRequestProjectFilter.ts"
     },
     "./thread-pull-request-compatibility": {
       "types": "./src/threadPullRequestCompatibility.ts",

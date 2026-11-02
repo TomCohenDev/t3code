@@ -22,6 +22,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import * as DesktopManagedPolicy from "../app/DesktopManagedPolicy.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopNetworkInterfaces from "./DesktopNetworkInterfaces.ts";
@@ -296,9 +297,6 @@ export const TunnelPairingInput = Schema.Struct({
   url: Schema.NullOr(Schema.String),
   // Fork: comma or newline separated https origins; null or blank clears them.
   trustedBrowserOrigins: Schema.NullOr(Schema.String),
-  // Fork: Cloudflare Access login; null or blank clears a value.
-  cloudflareAccessTeamDomain: Schema.NullOr(Schema.String),
-  cloudflareAccessAud: Schema.NullOr(Schema.String),
 });
 
 export const DesktopServerExposureSetModeError = Schema.Union([
@@ -325,10 +323,6 @@ export interface DesktopServerExposureBackendConfig {
   // Fork: set only while tunnel pairing is on.
   readonly tunnelPairingUrl: Option.Option<string>;
   readonly trustedBrowserOrigins: Option.Option<string>;
-  readonly cloudflareAccess: Option.Option<{
-    readonly teamDomain: string;
-    readonly aud: string;
-  }>;
 }
 
 export interface DesktopServerExposureChange {
@@ -373,7 +367,6 @@ interface RuntimeState {
   readonly tunnelPairingEnabled: boolean;
   readonly tunnelPairingUrl: Option.Option<string>;
   readonly trustedBrowserOrigins: Option.Option<string>;
-  readonly cloudflareAccess: DesktopAppSettings.CloudflareAccessSettings;
 }
 
 interface ResolvedRuntimeState {
@@ -402,7 +395,6 @@ const toContractState = (state: RuntimeState): DesktopServerExposureState => ({
   tunnelPairingEnabled: state.tunnelPairingEnabled,
   tunnelPairingUrl: Option.getOrNull(state.tunnelPairingUrl),
   trustedBrowserOrigins: Option.getOrNull(state.trustedBrowserOrigins),
-  ...state.cloudflareAccess,
 });
 
 // Fork: the tunnel URL reaches the backend and the endpoint list only while
@@ -411,22 +403,6 @@ const activeTunnelPairingUrl = (state: RuntimeState): Option.Option<string> =>
   state.tunnelPairingEnabled ? state.tunnelPairingUrl : Option.none();
 const activeTrustedBrowserOrigins = (state: RuntimeState): Option.Option<string> =>
   state.tunnelPairingEnabled ? state.trustedBrowserOrigins : Option.none();
-// The server fails startup on a partial set, so only a full set reaches it.
-const activeCloudflareAccess = (
-  state: RuntimeState,
-): DesktopServerExposureBackendConfig["cloudflareAccess"] => {
-  const { cloudflareAccessTeamDomain, cloudflareAccessAud } = state.cloudflareAccess;
-  return state.tunnelPairingEnabled &&
-    cloudflareAccessTeamDomain !== null &&
-    cloudflareAccessAud !== null
-    ? Option.some({ teamDomain: cloudflareAccessTeamDomain, aud: cloudflareAccessAud })
-    : Option.none();
-};
-const sameCloudflareAccess = (previous: RuntimeState, next: RuntimeState) => {
-  const left = Option.getOrNull(activeCloudflareAccess(previous));
-  const right = Option.getOrNull(activeCloudflareAccess(next));
-  return left?.teamDomain === right?.teamDomain && left?.aud === right?.aud;
-};
 
 const toBackendConfig = (state: RuntimeState): DesktopServerExposureBackendConfig => ({
   port: state.port,
@@ -436,7 +412,6 @@ const toBackendConfig = (state: RuntimeState): DesktopServerExposureBackendConfi
   tailscaleServePort: state.tailscaleServePort,
   tunnelPairingUrl: activeTunnelPairingUrl(state),
   trustedBrowserOrigins: activeTrustedBrowserOrigins(state),
-  cloudflareAccess: activeCloudflareAccess(state),
 });
 
 const toResolvedExposure = (state: RuntimeState): ResolvedDesktopServerExposure => ({
@@ -469,10 +444,6 @@ function runtimeStateFromResolvedExposure(input: {
     tunnelPairingEnabled: input.settings.tunnelPairingEnabled,
     tunnelPairingUrl: Option.fromNullishOr(input.settings.tunnelPairingUrl),
     trustedBrowserOrigins: Option.fromNullishOr(input.settings.trustedBrowserOrigins),
-    cloudflareAccess: {
-      cloudflareAccessTeamDomain: input.settings.cloudflareAccessTeamDomain,
-      cloudflareAccessAud: input.settings.cloudflareAccessAud,
-    },
   };
 }
 
@@ -518,6 +489,30 @@ function resolveRuntimeState(input: {
     unavailable,
   };
 }
+
+// A network-accessible backend binds every interface, so a new Wi-Fi network
+// or DHCP lease changes only the address worth advertising, not the binding.
+const withCurrentAdvertisedHost = (
+  state: RuntimeState,
+  networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
+  advertisedHostOverride: Option.Option<string>,
+): RuntimeState => {
+  if (state.mode !== "network-accessible") {
+    return state;
+  }
+  const override = Option.getOrUndefined(advertisedHostOverride);
+  const exposure = resolveDesktopServerExposure({
+    mode: state.mode,
+    port: state.port,
+    networkInterfaces,
+    ...(override ? { advertisedHostOverride: override } : {}),
+  });
+  return {
+    ...state,
+    endpointUrl: Option.fromNullishOr(exposure.endpointUrl),
+    advertisedHost: Option.fromNullishOr(exposure.advertisedHost),
+  };
+};
 
 const tailscaleIpv4AddressKey = (
   networkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces,
@@ -568,7 +563,29 @@ export const make = Effect.gen(function* () {
 
   const readNetworkInterfaces = networkInterfaces.read;
 
-  const getState = Ref.get(stateRef).pipe(Effect.map(toContractState));
+  // The server refuses to bind wider than the policy's clients allow, so network access or Serve
+  // saved before the policy would keep the backend from starting. The backend runs without them;
+  // the saved choice stays for when the policy allows it.
+  const remoteAllowed = yield* (yield* DesktopManagedPolicy.DesktopManagedPolicy).read.pipe(
+    Effect.map((found) => found?.document.limits?.clients?.includes("remote") ?? true),
+    Effect.orElseSucceed(() => false),
+  );
+  const withinPolicy = (settings: DesktopAppSettings.DesktopSettings) =>
+    remoteAllowed
+      ? settings
+      : { ...settings, serverExposureMode: "local-only" as const, tailscaleServeEnabled: false };
+
+  const readCurrentState = (currentNetworkInterfaces: DesktopNetworkInterfaces.NetworkInterfaces) =>
+    Ref.get(stateRef).pipe(
+      Effect.map((state) =>
+        withCurrentAdvertisedHost(state, currentNetworkInterfaces, config.desktopLanHostOverride),
+      ),
+    );
+
+  const getState = readNetworkInterfaces.pipe(
+    Effect.flatMap(readCurrentState),
+    Effect.map(toContractState),
+  );
   const backendConfig = Ref.get(stateRef).pipe(Effect.map(toBackendConfig));
 
   const configureFromSettings = Effect.fn("desktop.serverExposure.configureFromSettings")(
@@ -577,8 +594,8 @@ export const make = Effect.gen(function* () {
       const settings = yield* desktopSettings.get;
       const currentNetworkInterfaces = yield* readNetworkInterfaces;
       const resolved = resolveRuntimeState({
-        requestedMode: settings.serverExposureMode,
-        settings,
+        requestedMode: withinPolicy(settings).serverExposureMode,
+        settings: withinPolicy(settings),
         port,
         networkInterfaces: currentNetworkInterfaces,
         advertisedHostOverride: config.desktopLanHostOverride,
@@ -600,8 +617,8 @@ export const make = Effect.gen(function* () {
     };
     const currentNetworkInterfaces = yield* readNetworkInterfaces;
     const resolved = resolveRuntimeState({
-      requestedMode: mode,
-      settings: nextSettings,
+      requestedMode: withinPolicy(nextSettings).serverExposureMode,
+      settings: withinPolicy(nextSettings),
       port: previous.port,
       networkInterfaces: currentNetworkInterfaces,
       advertisedHostOverride: config.desktopLanHostOverride,
@@ -652,7 +669,7 @@ export const make = Effect.gen(function* () {
 
       const nextState = yield* Ref.updateAndGet(stateRef, (current) => ({
         ...current,
-        tailscaleServeEnabled: result.settings.tailscaleServeEnabled,
+        tailscaleServeEnabled: withinPolicy(result.settings).tailscaleServeEnabled,
         tailscaleServePort: result.settings.tailscaleServePort,
       }));
 
@@ -683,23 +700,8 @@ export const make = Effect.gen(function* () {
     if (trustedBrowserOrigins === undefined) {
       return yield* new DesktopTunnelPairingInvalidUrlError({ url: input.trustedBrowserOrigins });
     }
-    const cloudflareAccessTeamDomain = DesktopAppSettings.normalizeCloudflareAccessTeamDomain(
-      input.cloudflareAccessTeamDomain,
-    );
-    if (
-      cloudflareAccessTeamDomain === null &&
-      DesktopAppSettings.normalizeSettingText(input.cloudflareAccessTeamDomain) !== null
-    ) {
-      return yield* new DesktopTunnelPairingInvalidUrlError({
-        url: input.cloudflareAccessTeamDomain,
-      });
-    }
-    const cloudflareAccess = {
-      cloudflareAccessTeamDomain,
-      cloudflareAccessAud: DesktopAppSettings.normalizeSettingText(input.cloudflareAccessAud),
-    };
     const result = yield* desktopSettings
-      .setTunnelPairing({ enabled: input.enabled, url, trustedBrowserOrigins, cloudflareAccess })
+      .setTunnelPairing({ enabled: input.enabled, url, trustedBrowserOrigins })
       .pipe(
         Effect.mapError(
           (cause) => new DesktopTunnelPairingPersistenceError({ enabled: input.enabled, cause }),
@@ -711,10 +713,6 @@ export const make = Effect.gen(function* () {
       tunnelPairingEnabled: result.settings.tunnelPairingEnabled,
       tunnelPairingUrl: Option.fromNullishOr(result.settings.tunnelPairingUrl),
       trustedBrowserOrigins: Option.fromNullishOr(result.settings.trustedBrowserOrigins),
-      cloudflareAccess: {
-        cloudflareAccessTeamDomain: result.settings.cloudflareAccessTeamDomain,
-        cloudflareAccessAud: result.settings.cloudflareAccessAud,
-      },
     }));
     return {
       state: toContractState(nextState),
@@ -723,14 +721,13 @@ export const make = Effect.gen(function* () {
         Option.getOrNull(activeTunnelPairingUrl(previous)) !==
           Option.getOrNull(activeTunnelPairingUrl(nextState)) ||
         Option.getOrNull(activeTrustedBrowserOrigins(previous)) !==
-          Option.getOrNull(activeTrustedBrowserOrigins(nextState)) ||
-        !sameCloudflareAccess(previous, nextState),
+          Option.getOrNull(activeTrustedBrowserOrigins(nextState)),
     };
   }, changePermit.withPermit);
 
   const getAdvertisedEndpoints = Effect.gen(function* () {
-    const state = yield* Ref.get(stateRef);
     const currentNetworkInterfaces = yield* readNetworkInterfaces;
+    const state = yield* readCurrentState(currentNetworkInterfaces);
     const coreEndpoints = resolveDesktopCoreAdvertisedEndpoints({
       port: state.port,
       exposure: toResolvedExposure(state),

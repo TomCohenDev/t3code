@@ -1,5 +1,6 @@
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 
 export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = "Remove queued message";
 
@@ -10,6 +11,7 @@ export interface ThreadQueueRowControls {
   readonly dismissAccessibilityLabel: string;
   readonly displayText: string;
   readonly isEditing: boolean;
+  readonly sendLabel: "Send now" | "Skip compaction and send";
 }
 
 export function resolveThreadQueueRowControls(input: {
@@ -21,6 +23,8 @@ export function resolveThreadQueueRowControls(input: {
   readonly isEditing?: boolean;
   /** A guest's message keeps the guest's words; the owner can cancel it, not rewrite it. */
   readonly isGuestMessage?: boolean;
+  /** The active run is a compaction, so sending stops it. */
+  readonly promoteSkipsCompaction?: boolean;
   readonly text: string;
 }): ThreadQueueRowControls {
   const mutationEnabled = !input.busy;
@@ -35,8 +39,11 @@ export function resolveThreadQueueRowControls(input: {
     canSend: mutationEnabled && (input.canPromoteToSteer || input.canSendNow) && !isEditing,
     dismissAccessibilityLabel: REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
     // Editing and sending keep the original text so quoted citations stay linked.
-    displayText: assistantCitationsToPlainText(input.text),
+    displayText: isAttachmentOnlyBootstrapPrompt(input.text)
+      ? ""
+      : assistantCitationsToPlainText(input.text),
     isEditing,
+    sendLabel: input.promoteSkipsCompaction === true ? "Skip compaction and send" : "Send now",
   };
 }
 

@@ -23,6 +23,7 @@ import {
 import { cn } from "~/lib/utils";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
+import { copyFromObjectMenu, showObjectMenu } from "../../objectMenu";
 import { Button } from "../ui/button";
 import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
@@ -31,6 +32,7 @@ import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCom
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import { observeResize } from "~/lib/observeResize";
+import { textDirection } from "~/textDirection";
 
 export function AssistantCitationChip({
   citation,
@@ -53,12 +55,12 @@ export function AssistantCitationChip({
   const navigate = useNavigate();
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
+  const commentTriggerRef = useRef<HTMLButtonElement>(null);
   const draftCommentRef = useRef<string | null>(null);
   const [unavailableSourceAnchor, setUnavailableSourceAnchor] =
     useState<AssistantCitationSourceAnchor | null>(null);
   const commentOpen = commentEditor?.open ?? false;
   const sourceAnchor = commentEditor?.sourceAnchor;
-  const activeSourceAnchor = sourceAnchor === unavailableSourceAnchor ? undefined : sourceAnchor;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops the uncommitted comment draft held in a ref once the parent closes the comment editor
   useEffect(() => {
     if (!commentOpen) draftCommentRef.current = null;
@@ -91,23 +93,12 @@ export function AssistantCitationChip({
       onUnavailable: onSourceUnavailable,
     });
   }, [citation, commentOpen, sourceAnchor, unavailableSourceAnchor]);
-  const popupAnchor = activeSourceAnchor
-    ? {
-        contextElement: activeSourceAnchor.source,
-        getBoundingClientRect: () => {
-          const rects = activeSourceAnchor.range.getClientRects();
-          const rect =
-            rects.item(rects.length - 1) ?? activeSourceAnchor.range.getBoundingClientRect();
-          // Code blocks and tables scroll sideways inside the message, so the cited
-          // text can end in their hidden overflow. Base UI only shifts the popup while
-          // it still touches the anchor, so clamp the anchor to the message's width.
-          const bounds = activeSourceAnchor.source.getBoundingClientRect();
-          const left = Math.min(Math.max(rect.left, bounds.left), bounds.right);
-          const right = Math.max(Math.min(rect.right, bounds.right), left);
-          return new DOMRect(left, rect.top, right - left, rect.height);
-        },
-      }
-    : undefined;
+  // The card sits above its chip, inside the main pane. Anchored at the cited text, it could
+  // cover the sidebar or the chip.
+  // An element anchor, so the card follows the chip when the composer scrolls.
+  const popupAnchor = () =>
+    commentTriggerRef.current?.closest<HTMLElement>('[data-assistant-citation-chip="true"]') ??
+    commentTriggerRef.current;
   const label = assistantCitationLabel(citation);
   const sourceLinkProps = {
     to: "/$environmentId/$threadId" as const,
@@ -130,9 +121,17 @@ export function AssistantCitationChip({
       aria-label={`View cited assistant text: ${label}`}
     >
       <QuoteIcon aria-hidden="true" />
-      <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
+      <ContextChipLabel className="max-w-[16em]" dir={textDirection(label)}>
+        {label}
+      </ContextChipLabel>
     </Link>
   );
+  const goToSource = () => void navigate(assistantCitationNavigation(citation));
+  const copyQuote = {
+    label: "Copy quote",
+    icon: "copy",
+    run: () => copyFromObjectMenu(citation.text, "Copy quote"),
+  };
   if (!composer) {
     return (
       <ContextChipPopover
@@ -141,6 +140,14 @@ export function AssistantCitationChip({
         label={label}
         accessibleLabel={`Quoted assistant text: ${label}`}
         copyMarkdown={serializeAssistantCitation(citation)}
+        onContextMenu={(event) => {
+          const chip = event.currentTarget;
+          showObjectMenu(event, [
+            { label: "Show quote", run: () => chip.click() },
+            { label: "Go to source", run: goToSource },
+            copyQuote,
+          ]);
+        }}
       >
         <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col items-start gap-3 p-1 text-sm">
           <AssistantCitationQuote citation={citation} />
@@ -158,6 +165,18 @@ export function AssistantCitationChip({
     <ContextChip
       kind="citation"
       contentEditable={false}
+      onContextMenu={(event) =>
+        showObjectMenu(event, [
+          { label: "Go to source", run: goToSource },
+          commentEditor
+            ? {
+                label: citation.comment ? "Edit note" : "Add note",
+                run: () => commentTriggerRef.current?.click(),
+              }
+            : null,
+          copyQuote,
+        ])
+      }
       data-assistant-citation-chip="true"
       data-markdown-copy={serializeAssistantCitation(citation)}
     >
@@ -174,6 +193,7 @@ export function AssistantCitationChip({
           }}
         >
           <PopoverTrigger
+            ref={commentTriggerRef}
             aria-label={citation.comment ? "Edit citation comment" : "Add comment to citation"}
             data-citation-comment-trigger="true"
             render={<ContextChipAction />}
@@ -183,8 +203,8 @@ export function AssistantCitationChip({
           {commentEditor.open ? (
             <PopoverPopup
               {...composerFloatingLayerProps}
-              side={activeSourceAnchor ? "bottom" : "top"}
-              align="end"
+              side="top"
+              align="start"
               anchor={popupAnchor}
               initialFocus={() => {
                 commentInputRef.current?.focus({ preventScroll: true });
@@ -268,10 +288,13 @@ function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
         getVirtualizedScrollFadeClassName(fade),
       )}
     >
-      <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">
+      <blockquote
+        className="border-l-2 border-border pl-3 text-muted-foreground"
+        dir={textDirection(citation.text)}
+      >
         {citation.text}
       </blockquote>
-      {citation.comment ? <p>{citation.comment}</p> : null}
+      {citation.comment ? <p dir={textDirection(citation.comment)}>{citation.comment}</p> : null}
     </div>
   );
 }

@@ -8,6 +8,17 @@ Each section names:
 - **Works on:** web, desktop and mobile. "Server" means that the server does it for every client.
 - **Limits:** known limits, each with the condition to revisit it.
 
+## Local usage hubs
+
+An agent with full access can add a local CLIProxyAPI hub to the server's usage sources. It can
+request the management key privately, or read an existing owner-only key file on macOS or Linux.
+The source belongs to that server; remove it in Settings > Providers > Usage providers.
+
+- **Setting:** no toggle: full-access tool that writes the existing usage source setting.
+- **Works on:** server, for web, desktop, mobile and agent tools.
+- **Limits:** the hub URL must use a loopback IP address. Windows supports a private key request;
+  importing a key from a file requires a server on macOS or Linux.
+
 ## Central build caches
 
 Local builds can keep their disposable Vite caches and Android app outputs outside checkouts.
@@ -18,12 +29,52 @@ Local builds can keep their disposable Vite caches and Android app outputs outsi
 
 ## Worktrees
 
-### Restore worktrees on resume
+### Worktree lifecycle
+
+A thread worktree goes through four stages. The fork adds three server settings to upstream's worktree location and storage cleanup rules.
+
+| Stage   | What it decides                   | Setting                                                                          |
+| ------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| Place   | Where a new worktree goes         | `worktreePathTemplate` (empty by default: the worktree location applies)         |
+| Keep    | What stays while a thread is idle | `worktreeArtifactsAfterDays` (off by default; 1–3650 days)                       |
+| Clean   | When the folder and the branch go | Upstream cleanup rules for the folder; `restoreWorktreesOnResume` for the branch |
+| Restore | What resume rebuilds              | `restoreWorktreesOnResume` (off by default)                                      |
+
+All three are in Settings > Worktrees > Creation: "Worktree path template", "Evict worktree artifacts" and "Restore worktrees on resume". The stages work on the server, for web, desktop, mobile, agent tools and scheduled turns.
+
+#### Place
+
+A template decides where new worktrees go, for example next to `main/` in a `.bare` container.
+
+- The variables are `{worktrees}` (the worktree location), `{repoDir}` (the checkout, or the `.bare` container), `{repo}` (the folder name of `{repoDir}`), `{branch}` (with `/` changed to `-`) and `{branchLeaf}` (the last part of the branch). The template must hold `{branch}` or `{branchLeaf}`.
+- For a `.bare` container, use `{repoDir}/{branchLeaf}`. A worktree for `feat/api/qcdi-1234-auth` then goes to `<container>/qcdi-1234-auth`, next to `main/`.
+- In a normal clone, a template path inside a checkout uses the default worktree location instead, so `{repoDir}/{branchLeaf}` works for both layouts. To place normal clone worktrees elsewhere, use `{worktrees}/{repo}/{branch}` or `{repoDir}/../{repo}-{branch}`.
+- With a template, an auto-named thread names its branch from the first six words of its first message, so the folder and the branch keep the same name. The static branch naming mode adds its prefix. A taken name gets a `-1`, `-2` suffix. After 100 taken suffixes, the thread keeps its temporary `t3/<id>` branch. When a branch such as `t3` blocks `t3/x`, the name becomes `t3-x`.
+- Storage cleanup treats a template worktree outside the worktree location as managed, because T3 marks the worktrees that it creates.
+- **Limits:** a branch that you type, and a pull request branch, keep their names. If their folder exists, the launch fails and names the folder. Use `{branch}` when different branches end in the same last part.
+
+#### Keep
+
+The folder, the branch and the saved path of a thread stay until a clean rule applies. With `worktreeArtifactsAfterDays` set, ignored build outputs go before dependencies, and the worktree and its branch stay. The storage cleanup report splits logical file bytes and folder counts into Android builds, Gradle caches, other builds, other caches and `node_modules`. These are not recorded as physical space freed: pnpm files can share APFS blocks with its store. Evicted dependencies run normal project setup before the next turn, even if eviction has since been switched off. Build outputs do not trigger setup or an extra build step on resume; the agent's next build recreates them.
+
+The measured Mac examples were 6.91 GiB logical `node_modules` removed for 0.13 GiB reclaimed, and 1.35 GiB `apps/mobile/android/app/build` removed for 1.18 GiB reclaimed. These are reference measurements, not a conversion rule or a prediction of the next cleanup's physical reclamation.
+
+- **Eligibility:** this protects process cwds and T3-known active work. A single idle thread must own the checkout. It must be inactive for the configured days, or settled for one minute. Shared threads and subagents, running, queued or pending work, setup, builds, open terminals and uncertain process visibility keep artifacts. T3 metadata naming the worktree blocks cleanup even when its cwd is higher. Any process cwd in the checkout, a descendant or its container (the immediate parent holding sibling worktrees) also blocks cleanup. A deleted or unreadable cwd blocks cleanup only when its old path is in the checkout, a descendant or its container. The nearest readable folder above it gives that path. This rule also applies to T3 terminal and provider session cwds. A project setup script must be configured. These guards stay independent of the process scan and run again before deletion.
+- **Files:** exact reviewed relative paths only, including `apps/mobile/android/app/build`; there is no arbitrary `build` or `dist` basename rule. Dependency paths are expanded from workspace declarations into exact `node_modules` paths. Git must ignore each folder and track no file within it. Extension and path rules classify conservatively; they do not prove where a file came from or distinguish every hand-written ignored `.js` or `.json` file from generated output. A `.env*` file, secret, original source or unknown content, `_shared` link, or link outside the checkout keeps the whole folder. For an unrecognized file type, the report says the folder was kept and gives its reason and an example path. Kotlin incremental table exceptions apply only under `kotlin/<task>/cacheable/caches-jvm/`. Shared pnpm storage is not managed by this feature.
+- **Limits:** orphan Git worktrees without a stored T3 thread are excluded. A clean process list does not prove no external activity. A process above the container, such as one with cwd `$HOME` or `/`, can still act on the worktree through an absolute path; revisit if a real tool does that. T3-known active work remains protected independently of that cwd bound. Process checks support macOS and Linux. Other systems keep artifacts until inspection is available. This setting does not change upstream whole-worktree cleanup rules. With [central build caches](#central-build-caches) on, `apps/mobile/android/app/build` is a link, so this feature keeps it. Use `node scripts/fork-build-cache-prune.ts` for the central caches.
+
+#### Clean
+
+Upstream's storage cleanup rules decide when a worktree folder goes (Settings > Storage, and per project). With `restoreWorktreesOnResume` on, each cleanup run also deletes the local branch of a thread worktree whose folder is gone, when restore can rebuild that branch. This keeps a repeated message, such as a scheduled task, from using up all branch name suffixes.
+
+- **Rule:** cleanup deletes a branch only when all of these are true. No Git worktree registration uses it, also one whose folder is gone. It is not the default branch of `origin`. No thread folder that names it still exists. If a thread that can still resume names it, including an archived thread, its tip is on `origin`'s default branch, because restore recreates a deleted branch from there. If only deleted threads name it, each commit is on the default branch or on a remote-tracking ref. A branch with other commits always stays.
+- **See it:** the storage cleanup report shows "Deleted branch …" with the reason, and the server log has one line for each deleted branch.
+- **Limits:** without `origin` or its default branch (`refs/remotes/origin/HEAD`), every branch stays. A stale remote-tracking ref counts as on the remote; cleanup does not fetch for it. A branch with a squash-merged pull request has commits beyond the default branch, so it stays. Revisit this when such branches pile up.
+
+#### Restore
 
 Restore a missing worktree at its saved path before starting the next turn. An existing folder starts as it is, on any branch, as upstream does. After artifact eviction, setup runs in it when it is still a worktree of the project. If its branch still exists, recovery preserves it. If the branch was deleted, recovery fetches origin's default branch and creates the saved branch name from that revision. The thread warns that earlier uncommitted work is not in the recreated checkout. Project setup runs before the agent starts. Dependencies that artifact eviction removed also run normal setup. A missing `node_modules` that eviction did not remove does not run setup. The thread shows the restore as an activity. A stopped, failed or crashed setup closes that activity, and so does a server restart during setup. Missing build outputs do not add a setup or build step on resume; the next build recreates them.
 
-- **Setting:** `restoreWorktreesOnResume` (server setting, off by default). Settings > Worktrees > Creation > "Restore worktrees on resume".
-- **Works on:** server, for web, desktop, mobile, agent tools and scheduled turns.
 - **Way out:** when the folder of a branch worktree is gone and cannot be restored, the failure row offers "Recreate on a new branch" on web, desktop and mobile. It creates a worktree on `<branch>-restored`, from the old branch when it still exists and from the default branch otherwise. It runs project setup and sends the message of the latest failed run again, as the user who clicked. That message runs before the messages that the failure held. If the message cannot be sent, the button shows the error. A lead agent moves such a thread with `t3_worktree_handoff` and its `threadId`. A `continuationPrompt` from the lead can run after the messages that the failure held, and the lead gets its result.
 - **Limits:** a conflicting path stops recovery and setup after eviction. A failed recovery fails the turn with the reason ("Couldn't restore thread workspace"). Only this checkout's Git registration is repaired; no broad prune runs. When its branch exists, its saved index and refs, including staged changes, stay. Existing branches are never reset. Deleted-branch recovery requires a reachable origin with a discoverable default branch; its old index is not restored. Dependencies require a configured project setup script. When this setting is off, upstream's recovery runs unchanged: for a managed worktree path, it runs `git worktree prune` and adds the worktree again, without project setup. It creates a deleted branch from the current branch of the project, and a failed recovery fails the turn. Pending dependency restoration after artifact eviction still runs.
 
@@ -35,27 +86,7 @@ Auto-settle skips a thread while a background command of its agent runs, for exa
 - **Works on:** server, for every provider that reports background commands. Manual settle still stops the session.
 - **Limits:** a command left running, such as a dev server, holds the thread until the session releases idle background work (`DEFAULT_MAX_IDLE_PIN_MS` in `apps/server/src/orchestration-v2/ProviderSessionManager.ts`). Revisit this if threads with dev servers stay unsettled too long.
 
-### Artifact-only worktree cleanup
-
-Remove regenerable build outputs before dependencies, without removing the worktree or its branch. The storage cleanup report splits logical file bytes and folder counts into Android builds, Gradle caches, other builds, other caches and `node_modules`. These are not recorded as physical space freed: pnpm files can share APFS blocks with its store. Evicted dependencies run normal project setup before the next turn, even if eviction has since been switched off. Build outputs do not trigger setup or an extra build step on resume; the agent's next build recreates them.
-
-The measured Mac examples were 6.91 GiB logical `node_modules` removed for 0.13 GiB reclaimed, and 1.35 GiB `apps/mobile/android/app/build` removed for 1.18 GiB reclaimed. These are reference measurements, not a conversion rule or a prediction of the next cleanup's physical reclamation.
-
-- **Setting:** `worktreeArtifactEviction` (server setting, off by default) and `worktreeArtifactEvictionDays` (14 days by default, 1–3650). Settings > Worktrees > Creation > "Evict worktree artifacts".
-- **Works on:** server. All clients, scheduled turns and agent tools use the same recovery path.
-- **Eligibility:** this protects process cwds and T3-known active work. A single idle thread must own the checkout and be settled or inactive for the configured days. Shared threads and subagents, running, queued or pending work, setup, builds, open terminals and uncertain process visibility keep artifacts. T3 metadata naming the worktree blocks cleanup even when its cwd is higher. Any process cwd in the checkout, a descendant or its container (the immediate parent holding sibling worktrees) also blocks cleanup. A deleted or unreadable cwd blocks cleanup only when its old path is in the checkout, a descendant or its container. The nearest readable folder above it gives that path. This rule also applies to T3 terminal and provider session cwds. A project setup script must be configured. These guards stay independent of the process scan and run again before deletion.
-- **Files:** exact reviewed relative paths only, including `apps/mobile/android/app/build`; there is no arbitrary `build` or `dist` basename rule. Dependency paths are expanded from workspace declarations into exact `node_modules` paths. Git must ignore each folder and track no file within it. Extension and path rules classify conservatively; they do not prove where a file came from or distinguish every hand-written ignored `.js` or `.json` file from generated output. A `.env*` file, secret, original source or unknown content, `_shared` link, or link outside the checkout keeps the whole folder. For an unrecognized file type, the report says the folder was kept and gives its reason and an example path. Kotlin incremental table exceptions apply only under `kotlin/<task>/cacheable/caches-jvm/`. Shared pnpm storage is not managed by this feature.
-- **Limits:** orphan Git worktrees without a stored T3 thread are excluded. A clean process list does not prove no external activity. A process above the container, such as one with cwd `$HOME` or `/`, can still act on the worktree through an absolute path; revisit if a real tool does that. T3-known active work remains protected independently of that cwd bound. Process checks support macOS and Linux. Other systems keep artifacts until inspection is available. This setting does not change or disable upstream whole-worktree cleanup rules; turn those off separately if you want every checkout kept. With [central build caches](#central-build-caches) on, `apps/mobile/android/app/build` is a link, so this feature keeps it. Use `node scripts/fork-build-cache-prune.ts` for the central caches.
-
 ## Remote access
-
-### Cloudflare Access login
-
-The server accepts the Cloudflare Access JWT as the owner login, so a browser behind Cloudflare Access needs no pairing link.
-
-- **Setting:** `cloudflareAccessTeamDomain`, `cloudflareAccessAud` and `cloudflareAccessSubjects` (empty by default). On the desktop app, set them in Settings > Sharing & access, under "Allow pairing through a tunnel". On a headless server, set `T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN`, `T3CODE_CLOUDFLARE_ACCESS_AUD` and `T3CODE_CLOUDFLARE_ACCESS_SUBJECTS`.
-- **Works on:** server. The mobile app signs in with a Cloudflare Access service token, see [Request headers per environment](#request-headers-per-environment).
-- **Limits:** the subjects list must hold the client id of the service token that the desktop app uses for remote machines. Without it, the desktop app cannot open the machine. Revisit when that service token is retired.
 
 ### Request headers per environment
 
@@ -95,6 +126,21 @@ After an update, the app and the remote servers restart at about the same time. 
 - **Works on:** web, desktop. The sidebar, the environment chips and Settings > Environments still show the state at once. A send in that time still shows "Not connected: message not sent".
 - **Limits:** a refused sign-in or an offline device shows at once. Later reconnects keep the upstream wait of 2 seconds. The mobile app shows only a small "Reconnecting" status, so it has no wait. Revisit the 45 seconds when a normal restart takes longer.
 
+### Sync timings on mobile
+
+Settings > About > Diagnostics > Sync timings, below the crash reports, shows how long the app needs to sync chats, so that a slow sync can be measured on the phone. Each run is one cold start or one return to the foreground. For each environment, a run shows the time of each sync step and the duration of the connection steps:
+
+- the cached list shown, "synchronizing", the socket ready, the HTTP snapshot applied and "live";
+- the open thread from "synchronizing" to "live";
+- the foreground probe result: alive, silent, timed out or failed;
+- the route checks, the bearer authorization, the connection, the HTTP snapshot, the cached shell load and the silent socket check.
+
+"Copy sync timings" copies all runs as text. The text names environments by their label, never by address.
+
+- **Setting:** none. The timings stay in memory and cost no network traffic.
+- **Works on:** mobile. The recorder is in `packages/client-runtime`, so web can show it later.
+- **Limits:** the app keeps the cold start and the last 10 returns to the foreground. A restart clears them. The cold start time counts from when the app code loaded, not from the start of the process.
+
 ## kitshn
 
 kitshn connects the T3 machines of the owner. Each T3 server is the provider `t3` of the kitshn daemon on its machine. The owner shares access between machines on the kitshn map. T3 Code has no map of its own.
@@ -109,22 +155,21 @@ kitshn connects the T3 machines of the owner. Each T3 server is the provider `t3
 The server puts these cards on the kitshn map:
 
 - `t3.app`, "T3 on <machine>": the version, the running turns and a busy fact. Its commands are Restart server, Install update when idle, Stop all agents, Pause scheduled tasks and Collect diagnostics. Its lists hold the scheduled tasks (Run now, Pause, Resume) and the client sessions (Revoke session), at most 100 rows each. Its setting `updateChannel` picks the release feed, see [Fork releases](#fork-releases).
-- `t3.agents`, "Agents on <machine>": what agents of other machines can do on this machine.
 - `t3.thread`: one card for each thread with an open guest link.
 - `t3.settings`: the T3 settings state, see [Settings and theme sync](#settings-and-theme-sync).
 
 kitshn runs a command at once when a grant allows it. Otherwise the command waits for the owner as a kitshn job.
 
-- **Limits:** the busy fact and the lists refresh every 15 seconds.
+- **Limits:** the busy fact and the lists refresh every 15 seconds. kitshn gets a card again only when it changed.
+- kitshn drops a card part that breaks its rules, such as a list row, and keeps the rest. Settings > Machines names what it dropped.
 
 ### Access from kitshn
 
-The kitshn grants decide who gets in: browsers through Cloudflare Access, other machines and guests. On `t3.app`, view gives `read`, use gives `standard` and control gives `admin`.
+The kitshn grants decide who gets in: browsers through Cloudflare Access, other machines and guests. The kitshn daemon checks each new visitor and tells the server its levels. On `t3.app`, view gives `read`, use gives `standard` and control gives `admin`.
 
-- A grant that drops ends the sessions that it no longer allows.
-- The server accepts an Access token for the audiences of kitshn's applications on its host. Until the portal Worker goes, it also accepts the portal's audience, from the environment or from `machine-map-tunnel.json` of an older portal join.
-- **Pause:** kitshn's emergency pause closes every grant, so links and `machine_exec` stop at once (K-1618).
-- **Limits:** while kitshn is out of reach, the server uses the grants that it saved, for at most 24 hours after kitshn's last answer. The server asks kitshn once an hour to prove contact.
+- A grant that drops ends the sessions that it no longer allows. A session whose Access token only expired stays; its next request brings a new token.
+- **Pause:** kitshn's emergency pause closes every grant and every link at once (K-1618).
+- **Limits:** while the kitshn daemon is down, new visitors are refused. Open sessions keep working until their answer ends: at the latest when the Access token expires, a grant ends, or 24 hours after kitshn's last answer.
 
 ### Environment name from kitshn
 
@@ -137,20 +182,21 @@ Use the kitshn map name of the machine as the server environment name. A name ch
 
 A kitshn link makes another machine a linked environment. Agents pass its `environmentId` to the T3 tools, for example `t3_thread_list`, `t3_thread_launch` or `delegate_task` with `target.environmentId`. `t3_environment_links` lists the linked machines. A delegated task runs on the other machine and wakes the parent thread when it ends.
 
-- **Setting:** on the kitshn map, the owner shares the `t3.app` and `t3.agents` cards of the other machine with this machine. A link needs both.
+- **Setting:** on the kitshn map, the owner shares the `t3.app` card of the other machine with this machine.
 - **Access:** the level of the `t3.app` grant applies. `read` is read-only. `standard` gives `auto` and changes only the threads that its own link started. `admin` gives full access.
 - **Thread limits:** each call carries the limits of the calling thread. The other machine applies the narrower of those and the level.
 - **Manual links:** `t3 environment link` and `t3 environment unlink` refuse. Settings > Environments shows the kitshn links read-only.
-- **Audit:** each forwarded tool call and each exec run goes to the kitshn audit, without arguments or output.
-- **Limits:** a call goes through the link socket of the kitshn daemon, a named pipe on Windows. While kitshn is out of reach, at most 100 audit reports wait, and older ones drop.
+- **Audit:** the kitshn link proxy records each forwarded tool call, without arguments or output.
+- **Limits:** a call goes through the link socket of the kitshn daemon, a named pipe on Windows.
 
 ### Commands on other machines
 
-An agent runs a shell command on another machine with `machine_exec`. The command runs through the T3 server of that machine, as its T3 user, in the home directory or a given directory. The result holds the exit code, stdout and stderr. In a shell, `t3 machine exec` runs a command like ssh: stdin goes in, stdout and stderr come back as the command writes them, and the exit code is the command's.
+An agent runs a shell command on another machine with `machine_exec`. kitshn runs the command on that machine, as the user of its T3 provider, in the home directory or a given directory. T3 on that machine is not needed, so this also works to repair it. The result holds the exit code, stdout and stderr. In a shell, `t3 machine exec` runs a command like ssh: stdin goes in, stdout and stderr come back as the command writes them, and the exit code is the command's.
 
-- **Setting:** the `t3.agents` grant at `exec`, and the `t3.app` grant at `standard` or higher, from the other machine to this machine.
+- **Setting:** this machine reaches the `t3.app` card of the other machine, and the kitshn effect "runs" of this machine on that machine. "Automatic" runs each run at once, "ask" holds it for an approver circle (the owner by default), and "off" refuses it. A terminal thread that another machine starts here needs "runs" at "automatic" too.
+- **Approval:** `machine_exec` waits up to 60 seconds for the approval, then answers "waiting". The run starts when the owner approves it, and its result shows in `machines_read` (`execResults`). `t3 machine exec` prints a waiting line and waits.
 - **Who can:** a live full-access/default thread with the orchestration, worktree and pull-request tool capabilities. Restricted threads are refused. In an agent's shell, `t3 machine exec` acts as the agent's thread. Without a thread credential it is refused. No command list grants or refuses a command.
-- **Stop:** a lost grant stops a running command at once.
+- **Stop:** a lost connection to kitshn ends the run on both machines.
 - **In a shell:** in a checkout, use `node apps/server/src/bin.ts` instead of `t3`.
   - `t3 machine exec vps -- uname -a`
   - `t3 machine exec vps --cwd ~/app -- git status`
@@ -160,9 +206,9 @@ An agent runs a shell command on another machine with `machine_exec`. The comman
   - Folder to the other machine: `tar c -C dist . | t3 machine exec vps -- tar x -C /srv/app`
   - Folder from the other machine: `t3 machine exec vps -- tar c -C /srv/app . | tar x -C ./backup`
   - One file to the other machine: `t3 machine exec vps -- 'cat > /tmp/file' < file`
-- **Exit codes:** the exit code of the command. 124 when `--timeout` stops it. 255 when the stream fails: a refusal, a lost connection, or a grant that stops allowing exec. The reason goes to stderr.
-- **Long jobs:** `t3 machine exec` has no time limit. A ping every 25 seconds keeps the connection open. The end of the agent's turn does not stop it, so an agent can run it in the background. A lost connection stops the command, as with ssh. For a job that must outlive the connection, start it with `nohup <command> > job.log 2>&1 &` in a command that exits 0, and read the log later.
-- **Limits:** a `machine_exec` run lasts at most 90 seconds. Use `t3 machine exec` for longer work. `machine_exec` keeps 50,000 bytes of stdout and of stderr. A timeout loses the output. A command that reads stdin waits for the timeout. On a Windows machine, Windows PowerShell runs the command, so quote the command for PowerShell.
+- **Exit codes:** the exit code of the command. 124 when `--timeout` stops it. 255 when the stream fails: a refusal, a denial or a lost connection. The reason goes to stderr.
+- **Long jobs:** `t3 machine exec` runs for up to an hour. The end of the agent's turn does not stop it, so an agent can run it in the background. A lost connection stops the command, as with ssh. For a job that must outlive the connection, start it with `nohup <command> > job.log 2>&1 &` in a command that exits 0, and read the log later.
+- **Limits:** a `machine_exec` run lasts at most 90 seconds. Use `t3 machine exec` for longer work. `machine_exec` keeps 50,000 bytes of stdout and of stderr. On a Windows machine, PowerShell runs the command, so quote the command for PowerShell.
 
 ### Thread mentions across machines
 
@@ -179,15 +225,16 @@ The `t3.settings` state on kitshn holds a shared part and a part for each machin
 
 - Custom themes (the `themes/` folder, as `sharedThemes`) and `defaultTheme` sync too.
 - Keybindings sync while `keybindingSync` is on (off by default). Settings > Keybindings > "Sync keybindings". The shared value replaces the whole `keybindings.json` of each machine, and the machine keeps the file before it as `keybindings.json.bak`.
-- Web, desktop and mobile apply the client settings of the machine that serves them. A browser leaves out the settings that only the desktop app uses. The mobile app takes only the settings that it has. A change on the device stays until the synced value changes again.
+- Web, desktop and mobile apply the client settings of the machine that serves them. A browser leaves out the settings that only the desktop app uses. The mobile app takes only the settings that it has: `followUpBehavior`, `mathRenderingEnabled`, `planModeEnabled`, `sidebarWorkingShelfEnabled` and `sidebarProjectGroupingMode`. A change on the device stays until the synced value changes again.
 - Agents set one value of their own machine with `machines_set_setting`. Only the owner changes the shared part: in T3 Settings, or with `t3 tool call` from a shell.
 - Paths, secrets and project-keyed maps stay on each machine.
 
 ### Settings > Machines
 
-Settings > Machines shows how to join this machine to kitshn, and the kitshn settings of the selected environment. It also shows the kitshn connection: connected, connecting with the last error, or off with the reason, and the grants, reached machines, link proxy and kitshn's last answer. `machines_read` gives agents the same state.
+Settings > Machines shows how to join this machine to kitshn, and the kitshn settings of the selected environment. It also shows the kitshn connection: connected, connecting with the last error, or off with the reason, and the reached machines, link proxy and kitshn's last sync. `machines_read` gives agents the same state.
 
-- A notice shows while the portal still serves the T3 host of this machine. Hand it over with [Hand a T3 host over to kitshn](operations.md#hand-a-t3-host-over-to-kitshn).
+- A notice names the card parts that kitshn dropped.
+- `T3CODE_KITSHN=off` in the server environment keeps a server off kitshn. A dev server never registers. Only one T3 server of a machine registers; a second one shows kitshn's refusal.
 - The desktop app has "Join with a device invite": paste a kitshn device invite link there, see [Device invites](#device-invites).
 
 ### Device invites
@@ -195,7 +242,8 @@ Settings > Machines shows how to join this machine to kitshn, and the kitshn set
 A phone or a desktop app joins kitshn with its own device token (K-1601). On the kitshn map, "Add device" gives a one-time link `https://<kitshn>/join/device#code=…`. It works once and expires after 15 minutes.
 
 - **Phone:** scan the link in Add environment, or paste it in Address.
-- **Desktop:** paste the link in Settings > Machines > "Join with a device invite". The desktop app never uses the machine token of the kitshn daemon.
+- **Desktop:** on the kitshn invite page, press "Open in T3 Code desktop (fork)" and confirm the kitshn host. Or paste the link in Settings > Machines > "Join with a device invite". The desktop app never uses the machine token of the kitshn daemon.
+- Cloudflare Access refuses the CORS preflight of the app's requests to these machines. The desktop main process answers the preflight itself, only for the app's own page and for origins with request headers. The real request still goes through Access with the token.
 - The app keeps only the `t3.app` cards that the token opens, and pairs with each machine. It reads the list at start, when it comes back to the foreground, and on Settings > Fork > App token > Refresh machines (phone). The desktop app also reads it every 30 seconds, adds each new machine as an environment, and removes an environment that it added when the list drops the machine.
 - A refused machine pairs again with a backoff, because Access can take some seconds to accept a new token.
 - An empty or refused list disables or removes no saved machine. The machine shows the reason instead.
@@ -230,31 +278,26 @@ A signed Android APK of fork main, on fork releases that changed the app. It ins
   - No over-the-air updates, because those come from the upstream Expo project. Update with Obtainium.
   - arm64 phones only.
 
-### Fork installers
+### Updates
 
-One command installs the fork from the fork releases on macOS, Windows or Linux, then names the kitshn join step. The installer does not build from source. Commands and options: [Install the fork](operations.md#install-the-fork).
+One update policy for the desktop app and the server. Only the last step differs: the desktop app replaces itself with its updater (Squirrel.Mac, NSIS on Windows, the AppImage on Linux), and the server switches its runtime through the service launcher. How it works for maintainers: [Update and install](operations.md#update-and-install).
 
-### Install when idle
-
-While agents or programs in terminal threads run, the desktop update button offers "Install when idle" next to "Install now". The app installs the update when no agent turn and no terminal thread program runs. A terminal thread program holds the update by the rules of [Server auto-update](#server-auto-update): at most 6 hours from the choice, then a notice in its terminal, and the install about 10 minutes later.
-
-- **Works on:** desktop.
-- **Limits:** the wait lives in the window, so a window reload drops it. Revisit if a reload during the wait loses an update in practice.
-
-### Server auto-update
-
-A headless server that runs as the background service installs each newer fork release when no agent turn, no background shell and no program in a terminal thread runs. A program in a terminal thread holds the update for at most 6 hours (`TERMINAL_UPDATE_HOLD_MAX_HOURS` in `packages/contracts/src/forkTerminalThreads.ts`). Then its terminal shows a notice, and the update installs about 10 minutes later and ends the program.
-
-- **Setting:** server setting `forkAutoUpdate` (off by default). Settings > Maintenance > Updates > "Server auto-update".
-- **Works on:** server (the background service of `t3 service install`). The desktop app updates itself.
-- **Limits:** the restart stops running turns. Turn on [Recover interrupted agents](#recover-interrupted-agents) to continue them. Details: [Server updates](operations.md#server-updates).
-
-### Newer update before install
-
-Before the desktop app installs a downloaded update, it checks for a newer release. If one exists, it asks "Download newer" or "Install this one". Install when idle and the kitshn install-update command take the newer release.
-
-- **Setting:** client setting `checkNewerBeforeUpdateInstall` (off by default). Settings > About > App > "Check for a newer update before install".
-- **Works on:** desktop.
+- **Policy:**
+  - The newest fork release. The server takes the newest release that has `SHA256SUMS`. Before the desktop app installs a downloaded update, it checks for a newer release and downloads that one instead.
+  - A checksum. The server checks the archive against `SHA256SUMS`, and the desktop updater checks its download against the release feed.
+  - When idle: no agent turn and no background shell runs. A program in a terminal thread holds the update for at most 6 hours (`TERMINAL_UPDATE_HOLD_MAX_HOURS` in `packages/contracts/src/forkTerminalThreads.ts`). Then its terminal shows a notice, and the update installs about 10 minutes later and ends the program.
+  - The `t3` command follows: after the update, `t3 --version` names the new version.
+- **Setting:** server setting `forkUpdateMode`, `manual` (default) or `automatic`. Settings > Maintenance > Updates > "Automatic updates". With `automatic`, the server checks the fork releases every 5 minutes and installs when idle, and the desktop app installs each download when idle. A switch to `manual` cancels these waits, but not a wait from "Install when idle". The desktop app reads the setting of its own server. The old setting `forkAutoUpdate` is no longer read: set `forkUpdateMode` to `automatic` for automatic server updates.
+- **Start an update by hand:**
+  - Desktop: the update button. While agents, background shells or terminal programs run, it offers "Install when idle" next to "Install now".
+  - Server: `t3 update` on the machine. It installs at once and does not wait for idle.
+  - Agents and other machines: the kitshn command install-update of the T3 card (`machines_command` with `install-update`). It waits for idle with either setting.
+- **Install:** one command per OS family, see [Install the fork](operations.md#install-the-fork).
+- **Works on:** desktop (macOS, Windows, Linux) and the server of `t3 service install` on Linux. The fork publishes server archives only for Linux.
+- **Limits:**
+  - An update restarts the server and stops running turns. Turn on [Recover interrupted agents](#recover-interrupted-agents) to continue them.
+  - The desktop wait lives in the window, so a window reload drops it. Revisit if a reload during the wait loses an update in practice.
+  - The installers download the desktop apps without a checksum check. Revisit if a release asset can change after its upload.
 
 ### Changelog
 
@@ -275,8 +318,7 @@ A timeline of fork releases and their commits, the upstream commits that fork ma
 
 These README lines are maintainer procedures:
 
-- Local deploy: [Deploy a local build](operations.md#deploy-a-local-build).
-- Local Mac build: [Local Mac build](operations.md#local-mac-build).
+- Local deploy of a server or the Mac app: [Deploy a local build](operations.md#deploy-a-local-build).
 - Fork Sync: [Fork Sync](operations.md#fork-sync).
 - Fork CI: [Fork CI](operations.md#fork-ci).
 - Repair agent: [Repair agent](operations.md#repair-agent).
@@ -333,32 +375,23 @@ Sets how far back recent Claude Code and Codex sessions are offered for import, 
 - **Works on:** server.
 - An imported session keeps its first user message and the newest messages up to the limit.
 
-### Thread identity check
-
-A local service, for example kitshn, learns which thread an agent works in. The agent sends its MCP credential, the value of `T3_ACP_MCP_AUTHORIZATION`, to `GET /api/thread-identity` on the server port.
-
-- **Works on:** server.
-- The answer is the current state of the credential's thread: title, project, provider instance, modes, and the parent of a delegated child. A child delegated from a linked environment names the parent thread and its environment.
-- An unknown, revoked or idle credential, or the credential of an archived or deleted thread, gets `{"active":false}`, without a reason.
-- The check does not keep the credential alive.
-- **Limits:** the MCP credential is the only auth, as on `/mcp`. The route is also reachable through a tunnel or a public origin.
-
 ### Publish to kitshn
 
 Agents publish a file or a folder of their workspace to kitshn, and give the card a new address name. The tools are `kitshn_publish` and `kitshn_address`. They run the machine's kitshn 2 CLI, which sends each call through the local kitshn daemon (kitshn K-1116, K-1120, K-1123, K-1714). No agent and no T3 setting holds a kitshn token.
 
 - **Setting:** none in T3. Join the machine to kitshn, so its daemon runs. Without a daemon, the tool returns the kitshn error.
-- On each start, the server registers itself with the daemon as the `t3.` attester: `kitshn attester set --prefix t3. --url http://127.0.0.1:<port>/api/thread-identity --token-env T3_ACP_MCP_AUTHORIZATION`. This needs the daemon user or root. When the machine has no kitshn 2, the server logs one info line. Any other failure logs one warning. In both cases the server starts normally. Only the server of the default T3 home `~/.t3` registers. A server with `--base-dir` or `T3CODE_HOME`, a worktree dev server, a dev server with a dev URL, a server that does not listen on loopback, and Windows skip it.
-- A call with a thread credential fails closed. When the daemon cannot check the thread, or the thread is archived or deleted, the tool returns the kitshn error.
+- The call carries the thread's token in `KITSHN_ATTEST` (`t3:<token>`). The daemon asks this server over the provider connection who holds it, and kitshn labels the call with the thread (K-1752). Agent shells get `KITSHN_ATTEST` too, so `kitshn` commands of an agent name its thread.
+- A call with a thread credential fails closed. When the server cannot vouch for the thread in 2 seconds, or the thread is archived or deleted, the tool returns the kitshn error.
 - **Works on:** server, so every client.
 - Only a live full-access/default thread on this machine can publish. An agent on another machine cannot.
-- The call runs with the thread's MCP credential in `T3_ACP_MCP_AUTHORIZATION`. The daemon checks it at [Thread identity check](#thread-identity-check) (`/api/thread-identity`), so kitshn knows the thread that asks. A caller without a thread credential, such as an OAuth client, gets a refusal.
+- A caller without a thread credential, such as an OAuth client, gets a refusal.
 - `path` is relative to the thread's worktree, or its project folder. The tool refuses a path outside that folder after links resolve, and a path in a dot folder or to a dotfile.
 - The server uses `~/.local/bin/kitshn`, else the first `kitshn` in an absolute PATH folder that is kitshn 2. The PATH is the one that the server reads from the login shell at start. The check runs without a credential. A binary is kitshn 2 when `kitshn version --json` prints `{"product":"kitshn","generation":2,…}`. KitSHn 1 never runs. When no binary is kitshn 2, the error names the paths that it found.
-- A call stops after 150 seconds, a little above the daemon's own 120-second call limit. kitshn refuses at once when a right is unset or set to "ask".
+- A call stops after 150 seconds, a little above the daemon's own 120-second call limit. kitshn refuses at once when the effect of the call is "off".
+- **Approval:** a publish has the effect "shares". When its mode is "ask", kitshn asks a circle (the owner by default) and the CLI waits. After 60 seconds, the server stops the CLI and the tool returns `{outcome: "waiting", proposalId, message}`. The approval runs nothing by itself. After it, the agent sends the same call again within 1 hour, and that call runs (kitshn K-1714, K-1776). A changed call asks again. A denied or expired proposal returns the kitshn refusal.
 - **Limits:**
   - The server checks a binary once per path and change time. A new install at the same path with the same change time is not checked again. Revisit if kitshn installs keep the change time.
-  - A server that stopped leaves its `t3.` entry in the daemon. kitshn calls then fail with "could not check the T3 thread; try again." until the installed server starts again.
+  - While the server is not connected to kitshn, kitshn calls of its threads fail, because no server vouches for the thread.
   - A process of the same user, such as an agent in another full-access thread, can replace `~/.local/bin/kitshn` with a file that answers the version check. That file then gets the credential of the next thread that calls a kitshn tool. The change-time cache does not stop this, because the file can keep the old change time. Revisit when agents run as a user other than the server, or when kitshn signs its binary.
 
 ### kitshn provider
@@ -366,24 +399,19 @@ Agents publish a file or a folder of their workspace to kitshn, and give the car
 The server shows itself as cards on the kitshn map, with its commands (kitshn K-704 to K-709). kitshn is the only way this server joins other machines. The server runs `kitshn provider` of the machine's kitshn 2 and keeps it running. The child sends JSON lines to the local kitshn daemon. Without kitshn 2, the server works as upstream T3 Code, with no machine features.
 
 - **Start:** join the machine with `kitshn join <code> --server <address>`, or with the agent tool `machines_join` from a shell (agents cannot join). There is no setting: the server connects whenever kitshn 2 is on the machine.
-- **Cards:** one `t3.app` card "T3 on <environment name>", with the version, the running turns and a busy fact, and a `t3.agents` card "Agents on <environment name>" under it. The busy fact is "true" while an agent turn runs, so kitshn holds jobs sent "when idle". Each thread with an open guest link also gets a `t3.thread` card under the app card, named by the thread title, with an "Open thread" sticker to its guest page. The card goes when the link ends. The server checks the facts and the shared threads every 15 seconds, and sends only the cards that changed. The `t3.app` and `t3.agents` kinds have owner control, so the owner always holds them.
+- **Cards:** one `t3.app` card "T3 on <environment name>", with the version, the running turns and a busy fact, and the server port as its site; kitshn names the host. The busy fact is "true" while an agent turn runs, so kitshn holds jobs sent "when idle". Each thread with an open guest link also gets a `t3.thread` card under the app card, named by the thread title, with an "Open thread" sticker to its guest page. The card goes when the link ends. The server checks the facts and the shared threads every 15 seconds, and sends only the cards that changed. The `t3.app` kind has owner control, so the owner always holds it.
 - **Name:** with "Environment name from kitshn" on, the environment name is the machine name on the kitshn map.
-- **Grants:** once kitshn answered, kitshn grants decide access for each request with a verified Cloudflare Access JWT (a tunnel request). The desktop window, loopback and tailnet pairing keep T3's own auth. Without a grant, a tunnel request is refused; there is no other Access login.
-  - `t3.app`: `read`, `standard` and `admin` give the scopes of the levels of the same name, without pairing-link and relay rights. A machine's service token, named by a `machine` rule, gets the session of that machine.
+- **Access:** for each request with identity headers (a tunnel request), the server asks the daemon (`check`, K-721). The daemon checks the Access token and the grants, and answers the levels of the subject: a person, a device or another machine. The server keeps the answer until it ends. The desktop window, loopback and tailnet pairing keep T3's own auth. A refused tunnel request gets no session; there is no other Access login.
+  - `t3.app`: `read`, `standard` and `admin` give the scopes of the levels of the same name, without pairing-link and relay rights. Another machine gets the session of that machine, with the link access of its level.
   - `t3.thread`: opens only the guest page of that thread, without a guest link. `view` reads the thread. `send` also sends as the guest does, after the guest joined. The guest link itself works as before.
-  - `t3.agents`: another machine needs `use` for the forwarded agent tools, and `exec` with `t3.app` at `standard` or higher for `machine_exec` and terminal threads. Losing the grant stops a running command.
-  - Matching: `email` and `domain` in lowercase, `ip` against `Cf-Connecting-IP`, `device` and `machine` against the service token. An unknown rule type never matches. The highest matching level applies. Access checks the passkey.
-  - The last table stays on disk (`kitshn-grants.json` in the server state dir) and applies after a restart or while kitshn is out of reach. `endsAt` still ends a grant on time. After 24 hours without contact with kitshn, every tunnel request is refused until a fresh table arrives.
-  - At `endsAt`, a level drop or a removed grant, the server ends the sessions and WebSockets that lost access. Failed ends wait on disk and run again, also after a restart.
+  - When the grants change, the server checks its sessions again and ends the ones that lost access, with their WebSockets. Failed ends wait on disk (`kitshn-grants.json` in the server state dir) and run again, also after a restart.
 - **Settings:** the `t3.settings` state on kitshn sets the server settings, themes and keybindings: the shared part first, then this machine's own part over it. `machines_set_setting` sets one key of this machine's part or of the shared part; the shared part needs a full-access caller, and machine-local keys are refused.
 - **Commands:** Restart server, Install update when idle, Stop all agents, Pause scheduled tasks and Collect diagnostics. The card shows only the commands that this server can run now: Restart server needs a supervisor, and Install update needs the background service. A restart answers kitshn first and then restarts. An agent sends a command to a machine with `machines_command`, as a kitshn job; it can wait for the owner.
 - **Agent tools:** `machines_read` (what kitshn shows this machine), `machines_command`, `machines_queue_cancel` (only jobs that this machine queued), `machines_resources` (CPU, memory and disk of this machine for the last hour), `machines_set_setting` and `machines_join`. Access between machines, history, undo and presets are on the kitshn map.
 - **Diagnostics:** kitshn gets redacted diagnostics. Each process shows only its program name, never its arguments. Secrets in error texts become `REDACTED`: URL tokens such as a pairing link, `key=value` and `"key":"value"` for secret key names such as `token` and `password`, `NAME=value` env values, the word after `Bearer`, `token:` or `--token`, and known token formats.
-- **Failures:** without kitshn 2, after a refusal, or when the child exits, T3 runs normally and tries again. After a connection that registered, T3 tries again after 1 second, because a daemon restart ends the child. Each further try waits 5, 10, 20 and then 30 seconds. After a daemon restart, kitshn holds a queued command for 60 seconds until T3 registers again, and these waits stay inside that time. The same start rules as the attester apply: only the server of the default T3 home `~/.t3`, no dev server and no Windows.
-- **Limits:**
-  - `machine_exec` checks a `machine` rule only: an `ip` rule does not count for it.
-  - The card has no site yet, so kitshn does not serve T3 through it.
-  - Links to other machines (`machine_exec` from this machine, linked environments) wait for the kitshn link proxy support in T3.
+- **Failures:** without kitshn 2, after a refusal, or when the child exits, T3 runs normally and tries again. After a connection that registered, T3 tries again after 1 second, because a daemon restart ends the child. A child that does not answer `register` in 10 seconds, or that sends nothing for the daemon's grace time (45 seconds), counts as ended: T3 ends it and says why in Settings > Machines. Each further try waits 5, 10, 20 and then 30 seconds. After a daemon restart, kitshn holds a queued command for 60 seconds until T3 registers again, and these waits stay inside that time.
+- **Instance:** the server registers with its environment id. kitshn refuses a second T3 server of the same machine while the first one is connected. A dev server never registers, and `T3CODE_KITSHN=off` keeps a server off kitshn.
+- **Protocol:** `register` sends `protocol: 2` and `protocolVersion`, the `KITSHN_PROTOCOL` of the pinned `@kitshn/local` (kitshn K-724, K-725). The `protocolVersion` of the daemon's answer decides, and an answer without it reads as 2.0.0. `kitshn version --json` is only a check before the child starts. With the same major and another minor, T3 logs one warning per daemon version and runs; a newer feature waits on the `capabilities` of the answer, never on the minor. With another major, T3 does not register: Settings > Machines shows the reason, the server log names each reason once, and T3 tries again at the normal pace.
 - **Remove T3:** stop the T3 server first. Then run `kitshn provider forget t3` as the kitshn daemon user. The owner then selects "Forget provider" on the kitshn map.
 
 ### Scheduled task model
@@ -391,6 +419,8 @@ The server shows itself as cards on the kitshn map, with its commands (kitshn K-
 A scheduled task runs on any provider instance, or on the project default model. Pick it in the scheduled task editor.
 
 The model applies to runs that launch a new thread. A run that posts into a bound thread uses the current model of that thread.
+
+On a kitshn-joined machine without T3 Connect, the webhook URL is the kitshn site of the machine, for example `https://t3-<machine>.<zone>/api/hooks/<task>/<token>`. The site is behind Cloudflare Access, so a caller needs an Access service token. `schedule_task` and `list_scheduled_tasks` report this with `webhookNeeds`. A T3 Connect URL comes first when both exist.
 
 - **Works on:** web, desktop, mobile.
 
@@ -431,58 +461,40 @@ The sidebar lists threads that wait in a Waiting shelf, under the Working shelf.
 - **Use it:** a thread is in the Waiting shelf when its run waits on another thread, or when background work that the agent waits on holds its completion (`forkThreadIsWaiting` in `packages/client-runtime/src/state/forkTerminalThreads.ts`). A thread is in one shelf only. Waiting wins over Working. The shelf has the count, the collapse toggle, the sort and the drag rules of the Working shelf. When no thread waits, the shelf does not show.
 - **Limits:** the boring sidebar in Labs has no Working shelf, so it has no Waiting shelf.
 
-### Worktree path template
+### Thread addressing
 
-A template decides where new worktrees go, for example next to `main/` in a `.bare` container.
+Thread links in chat open the thread in T3 Code, each message has a link of its own, and a thread address from another app opens the desktop app.
 
-- **Setting:** server setting `worktreePathTemplate` (empty by default: the worktree location setting applies). Settings > Worktrees > Creation > "Worktree path template".
-- **Works on:** server.
-- The variables are `{worktrees}` (the worktree location), `{repoDir}` (the checkout, or the `.bare` container), `{repo}` (the folder name of `{repoDir}`), `{branch}` (with `/` changed to `-`) and `{branchLeaf}` (the last part of the branch). The template must hold `{branch}` or `{branchLeaf}`.
-- For a `.bare` container, use `{repoDir}/{branchLeaf}`. A worktree for `feat/api/qcdi-1234-auth` then goes to `<container>/qcdi-1234-auth`, next to `main/`.
-- In a normal clone, a template path inside a checkout uses the default worktree location instead, so `{repoDir}/{branchLeaf}` works for both layouts. To place normal clone worktrees elsewhere, use `{worktrees}/{repo}/{branch}` or `{repoDir}/../{repo}-{branch}`.
-- With a template, an auto-named thread names its branch from the first six words of its first message, so the folder and the branch keep the same name. The static branch naming mode adds its prefix. A taken name gets a `-1`, `-2` suffix. When a branch such as `t3` blocks `t3/x`, the name becomes `t3-x`.
-- **Limits:** a branch that you type, and a pull request branch, keep their names. If their folder exists, the launch fails and names the folder. Use `{branch}` when different branches end in the same last part.
-
-### Thread link chips
-
-Upstream shows every `t3-thread://` link in chat as the chip of an attached thread. With this setting, thread addresses and app links become chips too, and open the thread in T3 Code.
-
-- **Setting:** server setting `threadLinkChips` (off by default). Settings > Appearance > Thread links > "Thread link chips". In the mobile Settings: Threads, or Fork.
+- **Setting:** server setting `threadAddressing` (off by default). Settings > Appearance > Thread links > "Thread addressing". In the mobile Settings: Threads, or Fork.
 - **Works on:** web, desktop, mobile. Mobile reads the setting of the server of the thread, and has no switch of its own.
-- The chip reads `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
-- An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
-- A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
-- A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile. See [Message links](#message-links).
-- **Limits:** on mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
-
-### Message links
-
-A thread link that names a message opens the thread at that message. Use **Copy message link** beside a message on web and desktop, or hold its copy button on mobile. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
-
-- **Setting:** server setting `messageLinks` (on by default). Settings > Appearance > Thread links > "Message links". In the mobile Settings: Threads, or Fork. Off: the link opens the thread only, and **Copy message link** is hidden.
-- **Works on:** web, desktop, mobile.
-- **Forms:** `t3-thread://v2/<environmentId>/<threadId>#<messageId>`, `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
-- A message that the thread does not have shows "Message not found", and the thread stays open.
-- **Limits:** on mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
+- **On:**
+  - Upstream shows every `t3-thread://` link in chat as the chip of an attached thread. Thread addresses and app links become chips too, and open the thread in T3 Code.
+  - **Copy message link** shows beside each message on web and desktop. On mobile, hold the copy button of a message. The command palette copies the message under the timeline cursor; bind `timeline.copyMessageLink` in Settings > Keybindings if needed.
+  - A thread address opened from outside T3 Code, for example from Slack or GitHub, hands the thread to the desktop app. The browser tab then shows "Continue here" and "Open in desktop app".
+- **Off:** links render as upstream renders them, and **Copy message link** is hidden. A link that names a message still opens the thread at that message.
+- **Chips:**
+  - The chip reads `t3code://threads/<environmentId>/<threadId>`, `https://<host>/<environmentId>/<threadId>`, and the attached-thread marker `[Thread: <title>; ref=<contextId>]` that agents copy.
+  - An app link or a web address becomes a chip only when this client knows the environment. Copy keeps the link as written.
+  - A `t3-thread://` link to a thread on another machine opens that thread when this client knows its environment.
+  - A link that names a message shows a marker: `#` on web and desktop, a message icon on mobile.
+- **Message links:** a thread link that names a message opens the thread at that message. The app loads earlier history and opens a folded turn when needed, scrolls to the message and highlights it for a moment.
+  - **Forms:** `t3-thread://v2/<environmentId>/<threadId>#<messageId>`, `t3-thread://v1/<threadId>#<messageId>`, and a thread address or app link with `#<messageId>` or `?message=<messageId>`. Agents take `messageId` from `t3_thread_read`, also for a thread on another machine.
+  - A message that the thread does not have shows "Message not found", and the thread stays open.
+  - **History:** on web and desktop, each jump to a message is a history entry. This includes links, pins and citations. Back and Forward return to where you were in each entry. A scroll by hand adds no entry. No setting turns this off.
+- **Desktop app:** only web browser tabs redirect. The desktop app, the installed web app and app.t3.codes never redirect.
+- **Limits:**
+  - On mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
+  - The app keeps the position of each history entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
+  - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
 
 ### Message pins
 
 Pin a message with the pin button beside its copy buttons, or with the command palette item "Pin or unpin message" for the message under the timeline cursor. Bind `timeline.pinMessage` in Settings > Keybindings if needed. A pinned message keeps its buttons visible. **Pins** in thread details lists the pins of the thread. A pin button next to Usage in the sidebar footer lists the pins of all connected environments; it shows only while one pin or more exists. A click on a pin opens the thread at that message.
 
 - **Settings:** client setting `messagePins` (off by default), Settings > General > Display > "Message pins". Server setting `mobileMessagePins` (off by default), Settings > Appearance > Mobile app > "Message pins on mobile": a long press on a message in the mobile app offers Pin and Unpin.
-- **Works on:** web and desktop. Mobile: Pin and Unpin only, no list.
+- **Works on:** web and desktop. Mobile: Pin and Unpin, and Settings > Fork > "Pinned messages", which lists the pins of the environments with `mobileMessagePins` on. A tap opens the thread at the message, and the pin button unpins it. The row shows only while one pin or more exists.
 - **Storage:** the server setting `pinnedMessages` of the environment, so all its clients show the same pins. Restore defaults keeps the pins. kitshn does not sync them, because thread ids belong to one environment.
 - **Limits:** an environment keeps 200 pins. A pin keeps a 160-character excerpt and the thread title from the time of the pin. A pin of a thread that the sidebar does not list shows "Thread archived or deleted". "Message deleted" shows only for the open thread, when all its history is loaded. Agents have no MCP tool for pins.
-
-### Thread addresses open the desktop app
-
-A thread address opened from outside T3 Code, for example from Slack or GitHub, hands the thread to the desktop app. The browser tab then shows "Continue here" and "Open in desktop app".
-
-- **Setting:** server setting `threadLinksOpenDesktopApp` (off by default). Settings > Appearance > Thread links > "Thread addresses open the desktop app".
-- **Works on:** web browser tabs. The desktop app, the installed web app and app.t3.codes never redirect.
-- **Limits:**
-  - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
-  - With `threadLinkChips` off, a thread address clicked in T3 web chat opens a new tab that counts as a link from outside, so it goes to the desktop app too. Revisit if users keep `threadLinkChips` off while this setting is on.
 
 ### New thread on mobile
 
@@ -536,26 +548,18 @@ Build the thread card from its elements, for desktop and web and for mobile.
 
 ## Filters
 
-### Repository owner filters
+### Pull request filters
 
-Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization.
+Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization. The active pull request filters show as chips above the list.
 
-- **Setting:** client setting `repositoryOwnerFilters` (on by default). Settings > General > Sidebar > "Repository owner filters". The sidebar choice is the client setting `sidebarOwnerFilter`.
+- **Setting:** client setting `pullRequestFilters` (on by default). Settings > General > Sidebar > "Pull request filters". One switch turns the owner filter and the chips on or off together. The sidebar owner choice is the client setting `sidebarOwnerFilter`, a sidebar state and not a switch.
 - **Works on:** web, desktop.
 - Pull request page: open Filters > Owner, pick "Show only selected" or "Hide selected", then pick the owners. In the search, type `org:` or `owner:` to show an owner, and `-org:` or `-owner:` to hide one.
 - Sidebar: click the building icon next to the project scope. A chip under the header names the filter, counts the hidden projects, and shows how many hidden threads need you.
 - A fork checkout counts under the owner of the fork in the sidebar, and under the upstream owner on the pull request page. A project without a remote has no owner: pick "No repository owner" for it.
-- **Limits:** the mobile app has no owner filter. Revisit when the mobile parity work reaches filters.
-
-### Pull request filter chips
-
-The active pull request filters show as chips above the list.
-
-- **Setting:** client setting `pullRequestFilterChips` (on by default). Settings > General > Sidebar > "Pull request filter chips".
-- **Works on:** web, desktop.
-- Click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
+- Chips: click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
 - When no pull request matches, the empty list names the filters and offers "Clear filters".
-- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has its own filter menu. Revisit when the mobile parity work reaches filters.
+- **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has no owner filter. Its filter pills already show each active filter, so it needs no chips. Revisit the owner filter when the mobile parity work reaches filters.
 
 ## Scripts and terminal
 
@@ -594,11 +598,12 @@ Escape moves focus from the composer to the timeline, then to the sidebar. Arrow
 
 ### Shortcuts in tooltips
 
-Control tooltips show the keys of the control as chips, such as "Stash ⌘S", for example on the stash, the runtime mode and the approval buttons.
+Tooltips, menus and the command palette show the keys of an action as chips, such as "Stash ⌘S".
 
 - **Setting:** client settings `tooltipShortcuts` (on by default) and `tooltipShortcutLimit` (default 4, 1 to 9). Settings > Keybindings > Keyboard > "Shortcuts in tooltips" and "Keys per tooltip".
 - **Works on:** web, desktop.
 - Your own keys come first. More keys than the limit show as "+N".
+- Compaction keys: `chat.compactContext` (`mod+alt+shift+c`) runs "Compact context". `composer.toggleCompactBeforeSend` (`mod+alt+shift+k`) flips the "Compact" or "Keep" toggle, with the `when` condition `compactBeforeSendShown`.
 - **Limits:** a sidebar tab names no digit while focus levels are off. A sidebar row names the pin and settle keys only for the open thread.
 
 ### Keyboard cheat sheet
@@ -623,7 +628,7 @@ On a Settings page, `mod+f` opens a find box in the header. The rows of that pag
 
 A thread whose screen is a live terminal, next to the other threads of a project. A schedule or an agent can type into it; a webhook task cannot. User guide: [Terminal threads](terminal-threads.md).
 
-- **Setting:** server setting `terminalThreads` (off by default); client settings `terminalThreadFontSizeMin` and `terminalThreadFontSizeMax` (8 and 24), the zoom limits of every terminal (Cmd+=, Cmd+-, Cmd+0, macOS only, because Ctrl+- is undo in shells), and `currentProjectTerminalOpensThread` (off), which makes New terminal thread in current project press the enlarge button at once. Settings > Terminal (`TerminalSettings.tsx`), which holds every terminal setting: the drawer terminal and terminal threads. The terminal font stays in Appearance > Typography, where upstream keeps it; Settings > Terminal has a row that opens it there. Its fork rows render through the places `terminal-all-terminals` and `terminal-threads` (`forkSettingsCatalog.ts`). The Fork page lists them again, with a link to Settings > Terminal, and the settings search finds each row at both places. Keybinding commands `chat.newTerminal` (`mod+alt+t`) and `chat.newTerminalLocal` (`mod+alt+shift+n`).
+- **Setting:** server setting `terminalThreads` (off by default); client settings `terminalThreadFontSizeMin` and `terminalThreadFontSizeMax` (8 and 24), the zoom limits of every terminal (Cmd+=, Cmd+-, Cmd+0, macOS only, because Ctrl+- is undo in shells), and `currentProjectTerminalOpensThread` (off), which makes New terminal thread in current project press the enlarge button at once. Settings > Terminal (`TerminalSettings.tsx`), which holds every terminal setting: the drawer terminal and terminal threads. The terminal font stays in Appearance > Typography, where upstream keeps it; Settings > Terminal has a row that opens it there. Its fork rows render through the places `terminal-all-terminals` and `terminal-threads` (`forkSettingsCatalog.ts`). The Fork page lists them again, with a link to Settings > Terminal, and the settings search finds each row at both places. Keybinding commands `chat.newTerminal` (`mod+alt+t`) and `chat.newTerminalLocal` (`mod+alt+shift+n`). In the mobile Settings, Fork has a "Terminal threads" switch for `terminalThreads`.
 - **Works on:** web, desktop and mobile create and use them. The mobile app opens one on its native terminal screen. It has no draft terminal: the Terminal control of the new-thread draft (`ForkNewTerminalThreadControl.tsx`), shown only for a draft with a project because a terminal thread needs a project folder, opens a sheet (`ForkNewTerminalThreadSheet.tsx`) that takes the shell and the folder (project folder, an existing worktree from the first page of branches, or a new worktree from the base branch of the draft through `vcs.prepareDraftWorktree`), then creates the thread at once, with the input that the web draft also uses (`terminalThreadCreateInput` in `client-runtime/src/state/forkTerminalThreadCreation.ts`). The mobile terminal screen renames such a thread after its first command, as the web screen does. Remote environments work the same, because the terminal runs on the server of the thread.
 - **Setting off:** the server starts no shell of a terminal thread. `terminal.open` and `terminal.restart` of its main terminal, and any `shell` field, fail with `TerminalThreadsOffError`. `terminal.attach` of its main terminal streams the live session or the saved output without a shell (`TerminalManager.forkSavedOutputStream`), so every client, also an older one, shows it read only. The web screen blocks input and names the setting (`readOnlyNotice` of `ForkShellTerminal`). The `terminal` provider instance is disabled, so a message, a schedule or an MCP launch fails. Agents get the text about terminal threads only while the setting is on: it is the `usage` of the `terminal` entry of `orchestrator_capabilities` (`fork/terminalProvider/agentUsage.ts`), not part of the session instructions. A program that still runs keeps running, and its drawer terminals work as in any thread.
 - **Thread:** a normal thread with the provider `terminal` (constants in `packages/contracts/src/forkTerminalThreads.ts`). `ThreadRouteView` renders `ForkTerminalThreadScreen` for it, not `ChatView`: the thread header above the main terminal `term-1`, with the drawer for the other terminals. The right panel, the thread details and their shortcuts work like the ones of ChatView: `components/chat/useThreadRightPanel.tsx` holds the panel state of the screen and takes its actions and its layout from ChatView's `useRightPanelActions` and `ChatRightPanel`. Without a composer (`composerDraftTarget` null), the panel offers no "send to chat", "Add to chat" or diff and file comments, and the thread details leave out the project scripts. The environment notices are ChatView's (`useSystemComposerBanners`). The snooze and settle line (`useForkThreadStatusLine`, with the terminal snooze rule) copies the status line part of ChatView's `useThreadLifecycle`, which needs a composer. The thread error banner is the only place a failed message shows.
@@ -661,7 +666,7 @@ App shortcuts take priority in a focused terminal, and the app asks before a ter
 
 - **Setting:** client settings `terminalAppShortcutsFirst` (off by default) and `confirmTerminalClose` (on by default). Settings > Terminal > "App shortcuts in terminal" and "Terminal close confirmation".
 - **Works on:** web, desktop.
-- **Limits:** the mobile app does not ask before a terminal closes. Revisit if a mobile user closes a running terminal by mistake.
+- **Limits:** the mobile app does not ask, because it never closes a terminal: its close button only leaves the terminal screen. Revisit if the mobile app gets a close action.
 
 ## Web app and look
 
@@ -696,20 +701,31 @@ A phone gets thread notifications while the installed app is closed, from each s
 - A server pushes when a thread starts to wait for approval or input, or when a running thread completes or fails. A compaction that T3 Code starts on its own pushes only when it fails, like the page notification. A terminal thread also pushes for a new attention on its main terminal: Input needed, Program done or Program failed, like the page notification.
 - A push replaces the page notification of the same thread. No push shows when the window in front already shows that thread.
 
-### Theme style
+### Themes
+
+The theme that you select in Settings > Appearance is the one control. A published theme carries its colors and, in the fork, also its style and its icons. The mobile app follows the same themes while Themes on mobile is on.
+
+- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app > "Themes on mobile", or Fork > "Themes from your servers" in the mobile Settings. kitshn syncs it. Web and desktop have no switch: select a published theme in Settings > Appearance, or another theme to drop its style and icons. See [Appearance](../user/appearance.md) for published themes.
+- **Works on:** web, desktop, and mobile with Themes on mobile.
+- Off by default, because on the phone it replaces the theme that the user selected there with the default theme of the server.
+
+#### Style
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
-- **Setting:** none. Select a published theme in Settings > Appearance. See [Appearance](../user/appearance.md) for published themes.
-- **Works on:** web, desktop, and mobile with [Themes on mobile](#themes-on-mobile).
-- **Limits:** see [Themes on mobile](#themes-on-mobile) for the fields that mobile skips.
+#### Icons
 
-### Themes on mobile
+A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
 
-The mobile app uses the themes that its servers publish.
+- **Works on:** web, desktop.
+- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
+- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
+- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
-- **Setting:** server setting `mobilePublishedThemes` (off by default). Settings > Appearance > Mobile app, or Fork in the mobile Settings. kitshn syncs it.
-- **Works on:** mobile.
+#### On mobile
+
+With `mobilePublishedThemes` on, the mobile app uses the themes that its servers publish.
+
 - Appearance in the mobile app shows the published themes under "From your servers". A theme with colors for one appearance offers that appearance only.
 - The app takes the server setting `defaultTheme` once for each theme id, for the appearances that the theme has colors for. The color scheme mode stays as set on the phone.
 - The app stores the last published themes, so the theme shows before a server connects.
@@ -721,24 +737,24 @@ The mobile app uses the themes that its servers publish.
   - A theme that lists only `canvas` and `accent` gets only those two colors, because the palette generator lives in `apps/web/src/themePalette.ts`. Revisit when such a theme is in use on a phone, or when upstream moves the generator to `packages/shared`.
   - A pixel radius class that upstream adds later keeps its size under a theme until `fork-theme.css` gets a rule for it.
   - Other fonts keep the stock font. The composer takes the `sans` font, and the terminal and diff views keep the platform monospace font.
-  - `noise`, user CSS and icon packs have no mobile form. The text of the Android buttons keeps the system font.
+  - `noise`, user CSS and icons have no mobile form. The text of the Android buttons keeps the system font.
   - Setting the same `defaultTheme` again does not apply it again on the phone, because `defaultThemeSetAt` is local to each machine.
+
+#### App icon
+
+The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
+
+- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
+- **Limits:**
+  - The icon is part of the build, so no theme and no switch changes it. Revisit if a theme needs its own app icon.
+  - iOS builds keep the nightly icon.
 
 ### Fork settings on mobile
 
-Fork in the mobile Settings holds the fork settings that apply to the mobile app: published themes, the camera in the composer, thread link chips, message links and what New thread opens. Threads also shows the camera, thread link chips, message links and what New thread opens. A change writes the setting to each selected environment.
+Fork in the mobile Settings holds the fork settings that apply to the mobile app: [themes](#themes), the camera in the composer, message pins, sidebar tabs, terminal threads, thread addressing and what New thread opens. It also has "Pinned messages", see [Message pins](#message-pins). Threads also shows the camera, message pins, thread addressing and what New thread opens. A change writes the setting to each selected environment.
 
 - **Works on:** mobile.
 - **Limits:** a change on the phone is the own value of each server, not the shared value on kitshn. Set the shared value with "All environments" in T3 Settings.
-
-### Theme icon packs
-
-A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
-
-- **Works on:** web, desktop.
-- The slots are the sidebar tab icons (`tab.<id>`), the thread statuses (`status.<status>`), the tab bar buttons (`tabs.more`, `tabs.new`, `tabs.edit`) and the sidebar header (`sidebar.search`, `sidebar.filter`, `sidebar.add-project`, `sidebar.new-thread`). `apps/web/src/components/AppIcon.tsx` lists them.
-- Each icon carries `data-app-icon="<slot>"`. The sidebar tabs carry `data-sidebar-tab` (`default` or `custom`), `data-selected`, `data-status`, `data-attention` and `data-drop-target` for theme CSS.
-- **Limits:** the app strips scripts, styles, links and remote content from each SVG, and an icon is at most 4096 characters. The mobile app shows stock icons. Revisit after sidebar tabs reach mobile.
 
 ### Local server groups
 
@@ -758,13 +774,6 @@ A row shows "from <thread>" when the server knows for certain which other thread
   - A new project or thread worktree counts after up to 30 seconds. A worktree that no thread uses counts after up to 5 minutes.
   - A server whose shell exited has no "from" link on macOS, because macOS hides the environment of other processes. On Linux the server also reads `CLAUDE_CODE_SESSION_ID` and `CODEX_THREAD_ID` from the process environment. Windows has no "from" link for agent servers.
 
-### Lightning icon
-
-The fork desktop app, its notifications and the bundled web page use the Tick3d lightning icon instead of the nightly icon. To change it, see [App icon](operations.md#app-icon).
-
-- **Works on:** desktop, web, Android APK. The APK uses the layers `assets/fork/tick3d-android-{foreground,background,monochrome}.svg`, as PNG files in `apps/mobile/assets/fork/`.
-- **Limits:** iOS builds keep the nightly icon.
-
 ### Back and forward
 
 Back and forward buttons sit right of the sidebar toggle, like in VS Code. A button is dimmed when it has nothing to go to.
@@ -783,9 +792,11 @@ Back and forward buttons sit right of the sidebar toggle, like in VS Code. A but
 
 Right-click menus use the app's own menu, also in the desktop app, in place of the system menu. The menu follows the app theme and shows icons, group names, check marks and submenus. Arrow keys move over the items, letters jump to an item, and Escape closes the menu.
 
-- **Setting:** client setting `richContextMenu` (off by default). Settings > Appearance > Interface > "App context menu".
+- **Setting:** none. Menus always use the app menu. A menu that opens before the app is ready, or on an error screen, uses a plain web menu.
+- Controls and menu items that a keybinding can run show the key. Right-click one, or press Shift+F10 or the context menu key on it, for **Keybindings…**. In a menu it opens nested, so the menu stays open, and Escape closes only the nested menu. A menu item without a key shows a faint dash. Command palette and cheat sheet rows have the same menu.
+- Messages, code blocks, citation chips, pins and the pins button, queued messages, attachments, check rows, composer banners, the update pill, settings rows, environment rows, connection status dots, the plan card, the context window meter, the thread usage section and the Snoozed and Settled headers have a menu of their own buttons, the items of their "…" menu and copy actions. Selected text, text fields and links keep their own menus. On mobile, a long press on a message bubble, a check row, a usage limit row or the Snoozed and Settled headers opens the same kind of menu.
 - **Works on:** web, desktop. The mobile app keeps its native menus.
-- Text fields and pages in the browser panel keep the system menu, with spelling suggestions and Cut, Copy and Paste. A place without an app menu also keeps the system menu.
+- Text fields and pages in the browser panel keep the system menu, with spelling suggestions and Cut, Copy and Paste.
 - **Limits:**
   - The menu stays inside the app window.
   - Disabled items stay reachable with the arrow keys, as in other app menus.

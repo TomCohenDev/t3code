@@ -1,11 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Redacted from "effect/Redacted";
+import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProcessRunner from "../../processRunner.ts";
@@ -14,7 +17,6 @@ import * as KitshnCli from "./KitshnCli.ts";
 // kitshn may add fields; a source run prints version "dev".
 const KITSHN_2 = '{"product":"kitshn","generation":2,"version":"dev","added":true}';
 const AUTHORIZATION = Redacted.make("Bearer thread-token");
-const ATTESTER_URL = "http://127.0.0.1:3773/api/thread-identity";
 
 /**
  * Fake `kitshn` files: each answers `version --json` with its own text, and the fake runner records
@@ -27,8 +29,8 @@ const setup = (binaries: {
   relative?: ReadonlyArray<string>;
   /** A Windows host: `kitshn.exe` files without an execute bit, and PATH split by `;`. */
   windows?: boolean;
-  /** The answer of `kitshn attester set`. */
-  attester?: { readonly code: number; readonly stdout: string; readonly stderr: string };
+  /** The run prints this on stdout, signals `started`, and never ends. */
+  hangAfter?: string;
 }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -55,34 +57,40 @@ const setup = (binaries: {
       install(path.join(base, `relative${index}`), version),
     );
     const runs: Array<ProcessRunner.ProcessRunInput> = [];
+    const started = yield* Deferred.make<void>();
+    const hangAfter = binaries.hangAfter;
     const cli = yield* KitshnCli.KitshnCli.pipe(
       Effect.provide(
         KitshnCli.layer.pipe(
           Layer.provide(
             Layer.mock(ProcessRunner.ProcessRunner)({
               run: (input) =>
-                Effect.sync(() => {
-                  runs.push(input);
-                  const version = input.args[0] === "version";
-                  const answer =
-                    input.args[0] === "attester" && binaries.attester !== undefined
-                      ? binaries.attester
-                      : {
-                          stdout: version ? (versions.get(input.command) ?? "") : '{"card":"c1"}',
-                          stderr: version ? "" : "waiting: proposal p1 asks its approver circle.\n",
-                          code: version && versions.get(input.command) === "" ? 2 : 0,
-                        };
-                  return {
-                    stdout: answer.stdout,
-                    stderr: answer.stderr,
-                    code: ChildProcessSpawner.ExitCode(answer.code),
-                    timedOut: false,
-                    stdoutTruncated: false,
-                    stderrTruncated: false,
-                    stdoutInvalidUtf8: false,
-                    stderrInvalidUtf8: false,
-                  };
-                }),
+                hangAfter !== undefined && input.args[0] !== "version"
+                  ? Effect.sync(() =>
+                      input.onStdoutChunk?.(new TextEncoder().encode(hangAfter)),
+                    ).pipe(
+                      Effect.andThen(Deferred.succeed(started, undefined)),
+                      Effect.andThen(Effect.never),
+                    )
+                  : Effect.sync(() => {
+                      runs.push(input);
+                      const version = input.args[0] === "version";
+                      const answer = {
+                        stdout: version ? (versions.get(input.command) ?? "") : '{"card":"c1"}',
+                        stderr: version ? "" : "waiting: proposal p1 asks its approver circle.\n",
+                        code: version && versions.get(input.command) === "" ? 2 : 0,
+                      };
+                      return {
+                        stdout: answer.stdout,
+                        stderr: answer.stderr,
+                        code: ChildProcessSpawner.ExitCode(answer.code),
+                        timedOut: false,
+                        stdoutTruncated: false,
+                        stderrTruncated: false,
+                        stdoutInvalidUtf8: false,
+                        stderrInvalidUtf8: false,
+                      };
+                    }),
             }),
           ),
         ),
@@ -101,8 +109,7 @@ const setup = (binaries: {
         }),
       );
     const run = host(cli.run(["address", "c1", "new", "--json"], AUTHORIZATION));
-    const setAttester = host(cli.setAttester(ATTESTER_URL));
-    return { run, setAttester, runs, homeBinary, pathBinaries };
+    return { run, binary: host(cli.binary), runs, homeBinary, pathBinaries, started };
   });
 
 it.layer(NodeServices.layer)("KitshnCli", (it) => {
@@ -126,8 +133,27 @@ it.layer(NodeServices.layer)("KitshnCli", (it) => {
       ]);
       // The runner merges `env` over the server env, so a credential there never reaches the probe
       // and the real run gets exactly this thread's value.
-      expect(runs[0]?.env).toEqual({ T3_ACP_MCP_AUTHORIZATION: "" });
-      expect(runs[2]?.env).toEqual({ T3_ACP_MCP_AUTHORIZATION: "Bearer thread-token" });
+      expect(runs[0]?.env).toEqual({ T3_ACP_MCP_AUTHORIZATION: "", KITSHN_ATTEST: "" });
+      // K-1752: the daemon asks this T3 to attest the thread token.
+      expect(runs[2]?.env).toEqual({
+        T3_ACP_MCP_AUTHORIZATION: "",
+        KITSHN_ATTEST: "t3:thread-token",
+      });
+    }),
+  );
+
+  it.effect("stops a call 60 seconds after its waiting line on stdout", () =>
+    Effect.gen(function* () {
+      const waiting = '{"outcome":"waiting","proposalId":"p1"}\n';
+      const { run, started } = yield* setup({ path: [KITSHN_2], hangAfter: waiting });
+      const fiber = yield* Effect.forkChild(run);
+      yield* Deferred.await(started);
+      yield* TestClock.adjust("60 seconds");
+      expect(yield* Fiber.join(fiber)).toEqual({
+        exitCode: "waiting",
+        stdout: waiting,
+        stderr: "",
+      });
     }),
   );
 
@@ -164,6 +190,20 @@ it.layer(NodeServices.layer)("KitshnCli", (it) => {
     }),
   );
 
+  it.effect.each([
+    { version: KITSHN_2, protocol: "2.0.0" },
+    {
+      version: '{"product":"kitshn","generation":2,"version":"a","protocol":"2.1.0"}',
+      protocol: "2.1.0",
+    },
+    { version: '{"product":"kitshn","generation":2,"version":"a","protocol":3}', protocol: "none" },
+  ])("reads protocol $protocol from version --json (K-724)", ({ version, protocol }) =>
+    Effect.gen(function* () {
+      const { binary, pathBinaries } = yield* setup({ path: [version] });
+      expect(yield* binary).toEqual({ path: pathBinaries[0], protocol });
+    }),
+  );
+
   it.effect("names the missing install when no kitshn exists on an absolute PATH entry", () =>
     Effect.gen(function* () {
       const { run, runs } = yield* setup({ path: [], relative: [KITSHN_2] });
@@ -172,60 +212,6 @@ it.layer(NodeServices.layer)("KitshnCli", (it) => {
         message: "This machine has no kitshn 2. Join it to kitshn.",
       });
       expect(runs).toEqual([]);
-    }),
-  );
-
-  it.effect("registers the T3 attester without a credential and checks the answer", () =>
-    Effect.gen(function* () {
-      const listed = JSON.stringify([
-        { prefix: "x.", address: "http://127.0.0.1:9/", tokenEnv: "X" },
-        { prefix: "t3.", address: ATTESTER_URL, tokenEnv: "T3_ACP_MCP_AUTHORIZATION" },
-      ]);
-      const { setAttester, runs, pathBinaries } = yield* setup({
-        path: [KITSHN_2],
-        attester: { code: 0, stdout: listed, stderr: "" },
-      });
-      yield* setAttester;
-      expect(runs[1]).toMatchObject({
-        command: pathBinaries[0],
-        args: [
-          "attester",
-          "set",
-          "--prefix",
-          "t3.",
-          "--url",
-          ATTESTER_URL,
-          "--token-env",
-          "T3_ACP_MCP_AUTHORIZATION",
-        ],
-        env: { T3_ACP_MCP_AUTHORIZATION: "" },
-      });
-    }),
-  );
-
-  it.effect.each([
-    {
-      name: "a refusal line",
-      attester: { code: 1, stdout: "", stderr: "kitshn: not allowed\n" },
-      message: "kitshn: not allowed",
-    },
-    {
-      name: "a list without this URL",
-      attester: {
-        code: 0,
-        stdout:
-          '[{"prefix":"t3.","address":"http://127.0.0.1:1/api/thread-identity","tokenEnv":"T3_ACP_MCP_AUTHORIZATION"}]',
-        stderr: "",
-      },
-      message: `kitshn attester set did not list the t3. attester at ${ATTESTER_URL}.`,
-    },
-  ])("attester set fails on $name", ({ attester, message }) =>
-    Effect.gen(function* () {
-      const { setAttester } = yield* setup({ path: [KITSHN_2], attester });
-      expect(yield* Effect.flip(setAttester)).toMatchObject({
-        reason: "attester_refused",
-        message,
-      });
     }),
   );
 });

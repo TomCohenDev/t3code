@@ -1,4 +1,6 @@
 import { SessionPermissions } from "./SessionPermissions";
+import { objectMenuEntriesProps } from "../../objectMenu";
+import { ObjectMenuEntryItems } from "../ObjectMenuEntryItems";
 import {
   ChevronRightIcon,
   ChevronsLeftRightEllipsisIcon,
@@ -12,6 +14,7 @@ import {
   type EnvironmentId,
   connectReachabilityHelpUrl,
   formatConnectReachable,
+  managedCapabilityDenial,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import {
@@ -36,7 +39,7 @@ import {
 } from "./ConnectionDiagnosisDetails";
 import { usePreparedConnection } from "~/state/session";
 import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -61,6 +64,7 @@ import {
   usePrimaryEnvironmentId,
 } from "~/state/environments";
 import { APP_VERSION } from "~/branding";
+import { usePrimaryManagedPolicy } from "~/state/managedPolicy";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "~/state/server";
 import {
@@ -243,6 +247,28 @@ export function SavedBackendListRow({
       : ""
   }`;
 
+  const environmentEntries = [
+    {
+      label: routesOpen ? "Hide routes" : "Routes",
+      menuIcon: <RouteIcon />,
+      run: () => setRoutesOpen((open) => !open),
+    },
+    mcpUrl
+      ? { label: "Copy MCP URL", icon: "copy", run: () => copyMcpUrl(mcpUrl, { url: mcpUrl }) }
+      : null,
+    errorTraceId
+      ? { label: "Copy trace ID", icon: "copy", run: () => copyTraceId(errorTraceId) }
+      : null,
+    {
+      label: isRemoving ? "Removing…" : "Remove from this device…",
+      icon: "trash",
+      destructive: true,
+      separatorBefore: true,
+      disabled: isRemoving,
+      run: () => onRemove(environment),
+    },
+  ];
+
   return (
     <EnvironmentRow
       kind={machineKind}
@@ -414,6 +440,7 @@ export function SavedBackendListRow({
       </Tooltip>
       <Menu>
         <MenuTrigger
+          {...objectMenuEntriesProps(environmentEntries)}
           render={
             <Button
               type="button"
@@ -431,20 +458,8 @@ export function SavedBackendListRow({
             environmentId={environmentId}
             serverConfig={environment.serverConfig}
           />
-          <MenuItem onClick={() => setRoutesOpen((open) => !open)}>
-            <RouteIcon />
-            {routesOpen ? "Hide routes" : "Routes"}
-          </MenuItem>
-          {mcpUrl ? (
-            <MenuItem onClick={() => copyMcpUrl(mcpUrl, { url: mcpUrl })}>Copy MCP URL</MenuItem>
-          ) : null}
-          {errorTraceId ? (
-            <MenuItem onClick={() => copyTraceId(errorTraceId)}>Copy trace ID</MenuItem>
-          ) : null}
-          <MenuSeparator />
-          <MenuItem variant="destructive" onClick={() => onRemove(environment)}>
-            {isRemoving ? "Removing…" : "Remove from this device…"}
-          </MenuItem>
+          {/* The icon submenu has no context menu entry: it is a choice list, not one action. */}
+          <ObjectMenuEntryItems entries={environmentEntries} />
         </MenuPopup>
       </Menu>
     </EnvironmentRow>
@@ -547,6 +562,8 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     reconcileCloudState,
   } = useCloudLinkController();
   const { openAuthPrompt } = useT3ConnectAuthPrompt();
+  // The server unlinks and refuses relay changes under such a policy; unlinking stays possible.
+  const connectDenial = managedCapabilityDenial(usePrimaryManagedPolicy(), "connect");
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
 
@@ -668,21 +685,24 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
         <SettingsRow
           title={searchableSetting("t3-connect").title}
           description={
-            signedOut
-              ? "Sign in to make this environment available to your other devices through T3 Connect."
-              : linkRevoked
-                ? "This environment was removed from T3 Connect. Turn it on to link it again."
-                : managedTunnelActive
-                  ? reachability?.status === "unreachable"
-                    ? "T3 Connect is on, but other devices cannot reach this environment."
-                    : reachability?.status === "reachable"
-                      ? "This environment is available to your other devices through T3 Connect."
-                      : "T3 Connect is on. Reachability has not been checked yet."
-                  : managedTunnelOutOfSync
-                    ? "T3 Connect is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn T3 Connect on to repair it."
-                    : "Make this environment available to your other devices through T3 Connect."
+            connectDenial !== undefined && !managedTunnelActive
+              ? connectDenial
+              : signedOut
+                ? "Sign in to make this environment available to your other devices through T3 Connect."
+                : linkRevoked
+                  ? "This environment was removed from T3 Connect. Turn it on to link it again."
+                  : managedTunnelActive
+                    ? reachability?.status === "unreachable"
+                      ? "T3 Connect is on, but other devices cannot reach this environment."
+                      : reachability?.status === "reachable"
+                        ? "This environment is available to your other devices through T3 Connect."
+                        : "T3 Connect is on. Reachability has not been checked yet."
+                    : managedTunnelOutOfSync
+                      ? "T3 Connect is out of sync. This environment is linked only to publish agent activity, so other devices cannot connect. Turn T3 Connect on to repair it."
+                      : "Make this environment available to your other devices through T3 Connect."
           }
           status={operationError ?? primaryCloudLinkState.error ?? reachabilityStatus}
+          managed={managedTunnelActive ? undefined : connectDenial}
           control={
             signedOut ? (
               signInButton
@@ -696,7 +716,9 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
             )
           }
         >
-          {signedOut ? null : <T3ConnectTunnelUsage tunnelLimit={tunnelLimit} />}
+          {signedOut || connectDenial !== undefined ? null : (
+            <T3ConnectTunnelUsage tunnelLimit={tunnelLimit} />
+          )}
         </SettingsRow>
       ) : linkRevoked ? (
         <SettingsRow
@@ -712,6 +734,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
               ? "Sign in to send activity to mobile notifications and Live Activities."
               : "Send activity to mobile notifications and Live Activities without T3 Connect."
           }
+          managed={connectDenial}
           control={
             signedOut ? (
               signInButton
@@ -731,6 +754,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
         <SettingsRow
           title={searchableSetting("hold-webhooks-while-offline").title}
           description="Keep webhook requests for up to 24 hours while this environment is offline, then deliver them. Off: T3 Connect only forwards requests and stores nothing."
+          managed={connectDenial}
           control={
             <CloudLinkSwitch
               ariaLabel="Hold webhook requests while this environment is offline"
