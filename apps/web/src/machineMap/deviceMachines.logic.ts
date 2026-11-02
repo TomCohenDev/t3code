@@ -70,3 +70,31 @@ export function listedOrigins(
     machine.id === ownMachineId ? [] : (originOf(machine.origin) ?? []),
   );
 }
+
+/** The least time between two reads of the machine list from the timer, while visible. */
+export const LIST_INTERVAL_MS = 5 * 60_000;
+/** The least time between two list reads from focus or visibility, so app switches stay cheap. */
+export const LIST_EVENT_GAP_MS = 30_000;
+
+/** `event`: the window became visible or got focus. `tick`: the timer. */
+export type DeviceSyncTrigger = "event" | "tick";
+/** `list`: read the machine list and apply it. `pair`: only pair the managed machines that wait. */
+export type DeviceSyncStep = "none" | "list" | "pair";
+
+/**
+ * Decides what one sync trigger does. A hidden window and a sync in flight do nothing. A list
+ * read that came due while hidden runs on the next event. Pairing retries need no list read.
+ */
+export function deviceSyncStep(input: {
+  readonly trigger: DeviceSyncTrigger;
+  readonly hidden: boolean;
+  readonly running: boolean;
+  readonly lastListAtMs: number | null;
+  readonly nowMs: number;
+  readonly pairsWaiting: boolean;
+}): DeviceSyncStep {
+  if (input.hidden || input.running) return "none";
+  const gapMs = input.trigger === "tick" ? LIST_INTERVAL_MS : LIST_EVENT_GAP_MS;
+  if (input.lastListAtMs === null || input.nowMs - input.lastListAtMs >= gapMs) return "list";
+  return input.pairsWaiting ? "pair" : "none";
+}
