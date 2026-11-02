@@ -90,7 +90,8 @@ const VARIANT_CONFIG = {
   preview: {
     appName: "T3 Code Preview",
     scheme: "t3code-preview",
-    threadLinkScheme: "t3-thread-preview",
+    // The fork APK is the preview variant, so it claims the thread link scheme itself.
+    threadLinkScheme: "t3-thread",
     iosBundleIdentifier: "com.t3tools.t3code.preview",
     androidPackage: "com.t3tools.t3code.preview",
     relyingParty: "clerk.t3.codes",
