@@ -270,11 +270,12 @@ Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives 
 
 A signed Android APK of fork main, on fork releases that changed the app. It installs next to the store app and speaks the protocol of fork main.
 
-- **Install:** on the phone, open [Add with Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.yardenzamir.t3code%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FYarden-zamir%2Ft3code%22%2C%22author%22%3A%22Yarden-zamir%22%2C%22name%22%3A%22T3%20Code%20fork%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%2C%5C%22fallbackToOlderReleases%5C%22%3Atrue%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22android%5C%5C%5C%5C.apk%24%5C%22%7D%22%7D). It tracks the fork releases with "Include prereleases" and "Fallback to older releases" on, and the APK filter `android\.apk$`.
+- **Install:** on the phone, add the app in Obtainium from `https://apk.yarden-zamir.com/index.html` (HTML source) with the link filter `t3code-.*-android\.apk`. Each new build shows as an update and downloads from Cloudflare. The GitHub repo `https://github.com/Yarden-zamir/t3code` also works as a source, with "Include prereleases" on and the APK filter `android\.apk$`, but downloads from GitHub.
+- **Mirror:** `apk.yarden-zamir.com` is a kitshn Worker app (`kitshn.config.ts`, `scripts/apk-mirror/worker.js`) that lists the release APKs at `/index.html`, redirects `/latest/t3code-android.apk` to the newest one, and serves each APK from Cloudflare's cache after its first download from GitHub. The list refreshes within 5 minutes of a release.
 - **Install by hand:** open the APK of the newest release that has one, and allow installs from that browser. Install a newer APK over it to update. Most releases have no APK, because only a release that changed the app builds one.
 - **Limits:**
   - No push notifications, because the build has no `google-services.json`. Revisit when the fork has a Firebase project.
-  - `t3code://` links open the Play Store app, because the APK uses the `t3code-preview` scheme. Revisit when the APK build registers its own scheme for those links.
+  - `t3code://` links open the Play Store app, because the APK uses the `t3code-preview` scheme. `t3-thread://` links open the APK, see [Thread addressing](#thread-addressing).
   - No over-the-air updates, because those come from the upstream Expo project. Update with Obtainium.
   - arm64 phones only.
 
