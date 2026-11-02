@@ -68,9 +68,10 @@ async function latest(request, env, ctx) {
 }
 
 async function apk(name, request, env, ctx) {
-  // The cache key has no range, so one stored copy answers every range request.
+  // The stored copy has no range; the match carries the request's Range header so one copy
+  // answers every range request with a 206.
   const key = new Request(new URL(`/${name}`, request.url).toString());
-  const hit = await caches.default.match(key, { ignoreMethod: true });
+  const hit = await caches.default.match(new Request(key, { headers: request.headers }), { ignoreMethod: true });
   if (hit) return hit;
   const asset = (await releases(env, ctx)).find((item) => item.name === name);
   if (!asset) return new Response("Not found", { status: 404 });
