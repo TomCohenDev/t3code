@@ -172,6 +172,7 @@ const withService = <A, E>(
     readonly gate?: Deferred.Deferred<void>;
     readonly gateForTask?: (input: LaunchInput) => Deferred.Deferred<void> | undefined;
     readonly relayHookBaseUrl?: string;
+    readonly kitshnSiteOrigin?: string;
     readonly sql?: SqlClient.SqlClient;
     readonly workers?: Map<string, Effect.Effect<void>>;
   } = {},
@@ -249,7 +250,10 @@ const withService = <A, E>(
       }),
       Layer.succeed(
         ScheduledTaskService.ScheduledTaskWebhookOrigin,
-        Effect.succeed({ relayHookBaseUrl: options.relayHookBaseUrl ?? null }),
+        Effect.succeed({
+          relayHookBaseUrl: options.relayHookBaseUrl ?? null,
+          kitshnSiteOrigin: options.kitshnSiteOrigin ?? null,
+        }),
       ),
     );
     return yield* Effect.gen(function* () {
@@ -325,18 +329,40 @@ it("builds the relay hook URL from the managed tunnel's key, never the environme
   }
 });
 
-it.effect("gives webhook tasks a relay URL when the environment has a managed tunnel", () =>
-  withService(
-    ({ service }) =>
-      Effect.gen(function* () {
-        const { task } = yield* service.upsert(yield* webhookTaskInput());
-        const token = task.webhook!.path.split("/").at(-1);
-        assert.equal(
-          task.webhook?.url,
-          `https://relay.example.com/v1/hooks/0123456789abcdef/scheduled-task%3Ahook/${token}`,
-        );
-      }),
-    { relayHookBaseUrl: "https://relay.example.com/v1/hooks/0123456789abcdef" },
+it.effect("gives webhook tasks the relay URL first, else the kitshn site URL", () =>
+  Effect.forEach(
+    [true, false],
+    (relay) =>
+      withService(
+        ({ service }) =>
+          Effect.gen(function* () {
+            const { task } = yield* service.upsert(yield* webhookTaskInput());
+            const path = task.webhook!.path;
+            const token = path.split("/").at(-1);
+            assert.deepEqual(
+              task.webhook,
+              relay
+                ? {
+                    path,
+                    url: `https://relay.example.com/v1/hooks/0123456789abcdef/scheduled-task%3Ahook/${token}`,
+                    hasSecret: false,
+                  }
+                : {
+                    path,
+                    url: `https://t3-mac.example.com${path}`,
+                    urlNeedsAccessToken: true,
+                    hasSecret: false,
+                  },
+            );
+          }),
+        {
+          kitshnSiteOrigin: "https://t3-mac.example.com",
+          ...(relay
+            ? { relayHookBaseUrl: "https://relay.example.com/v1/hooks/0123456789abcdef" }
+            : {}),
+        },
+      ),
+    { discard: true },
   ),
 );
 
