@@ -20,7 +20,7 @@ it("ignores composing keys in the search", async () => {
   );
   const search = page.getByRole("combobox", { name: "Search settings" });
   await search.fill("theme");
-  await expect.element(page.getByRole("option", { name: /Theme/ })).toBeVisible();
+  await expect.element(page.getByRole("option", { name: /Theme/ }).first()).toBeVisible();
 
   for (const composition of [
     { key: "Enter", isComposing: true, keyCode: 13 },
