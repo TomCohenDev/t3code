@@ -299,7 +299,7 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       expect(exit._tag === "Failure" ? String(exit.cause) : "launcher handoff").toBe(
         "launcher handoff",
       );
-      expect(order).toEqual(["download", "extract", "preflight", "accept"]);
+      expect(order).toEqual(["index", "download", "extract", "preflight", "accept"]);
     }),
   );
 
