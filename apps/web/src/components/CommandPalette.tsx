@@ -16,6 +16,7 @@ import {
   getNewProjectPublishTarget,
   getNewProjectPublishTargets,
   getNewProjectRepository,
+  githubIncompleteOwnerRepositoryMessage,
   normalizePastedCloneUrl,
   addProjectRemoteSourceLabel,
   addProjectRemoteSourcePathHint,
@@ -152,6 +153,7 @@ import {
 } from "./ForkTerminalThreadPaletteItems";
 import { handleForkMessageLinkPaletteShortcut } from "./chat/ForkCopyMessageLink";
 import { navigationHistoryPaletteItems } from "./ForkNavigationHistory";
+import { resolvePastedPath } from "@t3tools/shared/path";
 import {
   dispatchCommandPalette,
   getCommandPaletteReturnFocus,
@@ -635,11 +637,9 @@ function OpenCommandPaletteDialog(props: {
           addProjectCloneFlow.repository?.nameWithOwner ?? addProjectCloneFlow.remoteUrl,
         )
       : "";
-  const browsePath = getFilesystemBrowsePath(
-    query,
-    browseEnvironmentPlatform,
-    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null,
-  );
+  const canBrowsePaths =
+    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null;
+  const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
   const isBrowsing = browsePath.isBrowsing;
   const browseDirectoryPath = browsePath.directoryPath;
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
@@ -923,7 +923,7 @@ function OpenCommandPaletteDialog(props: {
   function handleQueryChange(nextQuery: string): void {
     browseNavigation.invalidate();
     clearTypedHighlight();
-    setQuery(nextQuery);
+    setQuery(canBrowsePaths ? resolvePastedPath(query, nextQuery) : nextQuery);
     if (nextQuery === "" && currentView?.initialQuery) {
       popView();
     }
@@ -1987,6 +1987,21 @@ function OpenCommandPaletteDialog(props: {
     if (addProjectCloneFlow.step === "repository") {
       const rawRepository = query.trim();
       if (rawRepository.length === 0 || isRemoteProjectLookingUp) {
+        return;
+      }
+
+      const incompleteOwnerMessage = githubIncompleteOwnerRepositoryMessage(
+        addProjectCloneFlow.source,
+        rawRepository,
+      );
+      if (incompleteOwnerMessage) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Repository name incomplete",
+            description: incompleteOwnerMessage,
+          }),
+        );
         return;
       }
 

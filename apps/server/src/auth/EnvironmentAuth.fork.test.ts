@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 
 import * as ServerSecretStore from "./ServerSecretStore.ts";
@@ -28,6 +29,7 @@ const layerServerConfig = (overrides?: Partial<ServerConfig.ServerConfig["Servic
 
 const layerEnvironmentAuth = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
   EnvironmentAuth.layer.pipe(
+    Layer.provide(ManagedPolicy.layerTest()),
     Layer.provideMerge(SqlitePersistence.layerMemory),
     Layer.provide(ServerSecretStore.layer),
     Layer.provide(ServerEnvironment.layerIdentity),
