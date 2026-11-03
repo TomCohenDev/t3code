@@ -151,6 +151,35 @@ const layerTest = GuestShareService.layer.pipe(
 );
 
 const threadId = ThreadId.make("thread:guest-share-service");
+// Fork: a run forks only once its native provider session is resolved (forkNativeSource.ts).
+const forkProviderThreadId = ProviderThreadId.make("provider-thread:guest-share");
+const forkResolvedProviderThread = (now: DateTime.Utc) => ({
+  id: EventId.make("event:provider-thread"),
+  type: "provider-thread.updated" as const,
+  threadId,
+  occurredAt: now,
+  payload: {
+    id: forkProviderThreadId,
+    driver: ProviderDriverKind.make("codex"),
+    providerInstanceId: instanceId,
+    providerSessionId: null,
+    appThreadId: threadId,
+    ownerNodeId: null,
+    nativeThreadRef: {
+      driver: ProviderDriverKind.make("codex"),
+      nativeId: "native-guest-share",
+      strength: "strong" as const,
+    },
+    nativeConversationHeadRef: null,
+    status: "idle" as const,
+    firstRunOrdinal: 1,
+    lastRunOrdinal: 1,
+    handoffIds: [],
+    forkedFrom: null,
+    createdAt: now,
+    updatedAt: now,
+  },
+});
 
 const shareThreadFor = Effect.fn(function* (threadId: ThreadId) {
   yield* Ref.set(hostname, "env.t3.test");
@@ -1002,6 +1031,7 @@ it.effect("gives a fork's guest the files on messages the fork shows from its so
     const now = yield* DateTime.now;
     yield* (yield* EventSink.EventSinkV2).write({
       events: [
+        forkResolvedProviderThread(now),
         {
           id: EventId.make("event:run-done"),
           type: "run.updated",
@@ -1009,7 +1039,12 @@ it.effect("gives a fork's guest the files on messages the fork shows from its so
           runId: run.id,
           providerInstanceId: instanceId,
           occurredAt: now,
-          payload: { ...run, status: "completed", completedAt: now },
+          payload: {
+            ...run,
+            providerThreadId: forkProviderThreadId,
+            status: "completed",
+            completedAt: now,
+          },
         },
       ],
     });
@@ -1110,34 +1145,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
         }),
         // A guest's sent message is a user message; it must not open files on the host.
         item("item:guest-image", 2, { type: "user_message", text: `![Mine](${fromUser})` }),
-        // Fork: a run forks only once its native provider session is resolved.
-        {
-          id: EventId.make("event:provider-thread"),
-          type: "provider-thread.updated" as const,
-          threadId,
-          occurredAt: now,
-          payload: {
-            id: ProviderThreadId.make("provider-thread:guest-share"),
-            driver: ProviderDriverKind.make("codex"),
-            providerInstanceId: instanceId,
-            providerSessionId: null,
-            appThreadId: threadId,
-            ownerNodeId: null,
-            nativeThreadRef: {
-              driver: ProviderDriverKind.make("codex"),
-              nativeId: "native-guest-share",
-              strength: "strong" as const,
-            },
-            nativeConversationHeadRef: null,
-            status: "idle" as const,
-            firstRunOrdinal: 1,
-            lastRunOrdinal: 1,
-            handoffIds: [],
-            forkedFrom: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        },
+        forkResolvedProviderThread(now),
         {
           id: EventId.make("event:run-done"),
           type: "run.updated" as const,
@@ -1147,7 +1155,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
           occurredAt: now,
           payload: {
             ...run!,
-            providerThreadId: ProviderThreadId.make("provider-thread:guest-share"),
+            providerThreadId: forkProviderThreadId,
             status: "completed" as const,
             completedAt: now,
           },
