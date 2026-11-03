@@ -39,6 +39,7 @@ const archiveBytes = new TextEncoder().encode("not really a tarball");
 const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Effect.Effect<void>) =>
   HttpClient.make((request) =>
     Effect.gen(function* () {
+      urls.push(request.url);
       // Fork: the update first checks that the fork release of the version is installable.
       if (request.url.startsWith("https://api.github.com/")) {
         order.push("index");
@@ -47,7 +48,6 @@ const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Eff
           Response.json([{ tag_name: "v1.1.0", assets: [{ name: "SHA256SUMS" }] }]),
         );
       }
-      urls.push(request.url);
       if (request.url.endsWith("/SHA256SUMS")) {
         const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", archiveBytes));
         const hex = Array.from(new Uint8Array(digest), (byte) =>
