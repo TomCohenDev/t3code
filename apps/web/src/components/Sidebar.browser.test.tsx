@@ -64,6 +64,8 @@ describe("sidebar header new thread", () => {
       activeThread: null,
       defaultProjectRef: currentProjectRef,
       handleNewThread: startThread,
+      // Fork: the hook also starts terminal threads.
+      handleNewTerminalThread: vi.fn(),
       routeDraftId: null,
       routeThreadRef: null,
     });
@@ -79,7 +81,11 @@ describe("sidebar header new thread", () => {
     });
 
     if (scenario.picker) {
-      expect(openCommandPalette).toHaveBeenCalledExactlyOnceWith({ open: "new-thread-in" });
+      // Fork: the picker also names the thread kind.
+      expect(openCommandPalette).toHaveBeenCalledExactlyOnceWith({
+        open: "new-thread-in",
+        threadKind: "chat",
+      });
       expect(startThread).not.toHaveBeenCalled();
     } else {
       expect(openCommandPalette).not.toHaveBeenCalled();
