@@ -3,7 +3,7 @@ name: kitshn
 on:
   push:
     branches: [main]
-    paths: [kitshn.config.ts, scripts/apk-mirror/**, .github/workflows/kitshn.yml]
+    paths: [kitshn.config.ts, scripts/apk-mirror/**, .github/workflows/fork-kitshn.yml]
   workflow_dispatch:
 permissions:
   contents: read
