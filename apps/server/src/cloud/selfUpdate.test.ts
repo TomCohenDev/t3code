@@ -36,7 +36,7 @@ interface HarnessOptions {
 }
 
 const archiveBytes = new TextEncoder().encode("not really a tarball");
-const releaseHttpClient = (order: string[], beforeDownload?: Effect.Effect<void>) =>
+const releaseHttpClient = (order: string[], urls: string[], beforeDownload?: Effect.Effect<void>) =>
   HttpClient.make((request) =>
     Effect.gen(function* () {
       // Fork: the update first checks that the fork release of the version is installable.
@@ -47,6 +47,7 @@ const releaseHttpClient = (order: string[], beforeDownload?: Effect.Effect<void>
           Response.json([{ tag_name: "v1.1.0", assets: [{ name: "SHA256SUMS" }] }]),
         );
       }
+      urls.push(request.url);
       if (request.url.endsWith("/SHA256SUMS")) {
         const digest = yield* Effect.promise(() => crypto.subtle.digest("SHA-256", archiveBytes));
         const hex = Array.from(new Uint8Array(digest), (byte) =>
@@ -70,6 +71,7 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
   const path = yield* Path.Path;
   const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-self-update-test-" });
   const order: string[] = [];
+  const urls: string[] = [];
   const runner = ProcessRunner.ProcessRunner.of({
     run: (input) =>
       Effect.gen(function* () {
@@ -149,7 +151,10 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
         run: () => Effect.die("unexpected desktop app update run"),
       },
     ),
-    Effect.provideService(HttpClient.HttpClient, releaseHttpClient(order, options.beforeDownload)),
+    Effect.provideService(
+      HttpClient.HttpClient,
+      releaseHttpClient(order, urls, options.beforeDownload),
+    ),
     Effect.provideService(HostProcess.Platform, "linux"),
     Effect.provideService(HostProcess.Architecture, "x64"),
     Effect.provide(
@@ -159,7 +164,7 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
       ),
     ),
   );
-  return { selfUpdate, order };
+  return { selfUpdate, order, urls };
 });
 
 it.layer(NodeServices.layer)("server self update", (it) => {
@@ -212,11 +217,17 @@ it.layer(NodeServices.layer)("server self update", (it) => {
 
   it.effect("lets a user start an update, but only to stable without nightly", () =>
     Effect.gen(function* () {
-      const { selfUpdate, order } = yield* makeHarness({
+      const { selfUpdate, order, urls } = yield* makeHarness({
         policy: {
           schemaVersion: 1,
           organization: "Example Corp",
-          limits: { updates: { mode: "auto", allowNightly: false } },
+          limits: {
+            updates: {
+              mode: "auto",
+              allowNightly: false,
+              feedUrl: "https://updates.example.com/t3code/",
+            },
+          },
         },
       });
       expect(
@@ -224,7 +235,15 @@ it.layer(NodeServices.layer)("server self update", (it) => {
           .reason,
       ).toBe("Example Corp manages T3 Code updates. Only stable releases can be installed.");
       expect(order).toEqual([]);
+      // The mirror lists only 1.1.0's archive.
+      expect((yield* selfUpdate.update({ targetVersion: "1.2.0" }).pipe(Effect.flip)).reason).toBe(
+        "Example Corp's update mirror has no t3@1.2.0 for this machine.",
+      );
       expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
+      // The release comes from the policy's mirror, not GitHub.
+      expect(urls.length).toBeGreaterThan(0);
+      for (const url of urls)
+        expect(url).toMatch(/^https:\/\/updates\.example\.com\/t3code\/v1\.[12]\.0\//);
     }),
   );
 
