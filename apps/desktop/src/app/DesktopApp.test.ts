@@ -47,6 +47,8 @@ import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts"
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import * as DesktopAppToggle from "../window/DesktopAppToggle.ts";
+import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 
 import * as BrowserImport from "../preview/BrowserImport/BrowserImport.ts";
@@ -86,6 +88,14 @@ it.effect(
       const runApp = DesktopApp.program
         .pipe(
           Effect.provide(NodeCrypto.layer),
+          // Fork: the app toggle shortcuts and the native browser host.
+          Effect.provideService(DesktopAppToggle.DesktopAppToggle, {
+            initialize: Effect.void,
+          } as unknown as DesktopAppToggle.DesktopAppToggle["Service"]),
+          Effect.provideService(
+            DesktopBrowserHost.DesktopBrowserHost,
+            {} as unknown as DesktopBrowserHost.DesktopBrowserHost["Service"],
+          ),
           Effect.provideService(DesktopAppIdentity.DesktopAppIdentity, {
             resolveUserDataPath: Effect.succeed("/isolated/userdata"),
             configure: record("identity"),
