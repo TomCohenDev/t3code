@@ -151,6 +151,35 @@ const layerTest = GuestShareService.layer.pipe(
 );
 
 const threadId = ThreadId.make("thread:guest-share-service");
+// Fork: a run forks only once its native provider session is resolved (forkNativeSource.ts).
+const forkProviderThreadId = ProviderThreadId.make("provider-thread:guest-share");
+const forkResolvedProviderThread = (now: DateTime.Utc) => ({
+  id: EventId.make("event:provider-thread"),
+  type: "provider-thread.updated" as const,
+  threadId,
+  occurredAt: now,
+  payload: {
+    id: forkProviderThreadId,
+    driver: ProviderDriverKind.make("codex"),
+    providerInstanceId: instanceId,
+    providerSessionId: null,
+    appThreadId: threadId,
+    ownerNodeId: null,
+    nativeThreadRef: {
+      driver: ProviderDriverKind.make("codex"),
+      nativeId: "native-guest-share",
+      strength: "strong" as const,
+    },
+    nativeConversationHeadRef: null,
+    status: "idle" as const,
+    firstRunOrdinal: 1,
+    lastRunOrdinal: 1,
+    handoffIds: [],
+    forkedFrom: null,
+    createdAt: now,
+    updatedAt: now,
+  },
+});
 
 const shareThreadFor = Effect.fn(function* (threadId: ThreadId) {
   yield* Ref.set(hostname, "env.t3.test");
@@ -966,6 +995,88 @@ it.effect("serves the shared thread's files to its guest, never another thread's
   }).pipe(Effect.scoped, Effect.provide(layerTest)),
 );
 
+it.effect("gives a fork's guest the files on messages the fork shows from its source", () =>
+  Effect.gen(function* () {
+    const { orchestrator } = yield* shareThread;
+    const guestShares = yield* GuestShareService.GuestShareService;
+    const { attachmentsDir } = yield* ServerConfig.ServerConfig;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const ownerImage = Effect.fn(function* (name: string) {
+      const image = {
+        type: "image" as const,
+        id: ChatAttachmentId.make(createAttachmentId(threadId)!),
+        name,
+        mimeType: "image/png",
+        sizeBytes: PNG.length,
+      };
+      yield* fileSystem.writeFile(
+        resolveAttachmentPath({ attachmentsDir, attachment: image })!,
+        PNG,
+      );
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`owner:${name}`),
+        threadId,
+        messageId: MessageId.make(`message:${name}`),
+        text: name,
+        attachments: [image],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      return image;
+    });
+    const inherited = yield* ownerImage("before.png");
+    const run = (yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]!;
+    const now = yield* DateTime.now;
+    yield* (yield* EventSink.EventSinkV2).write({
+      events: [
+        forkResolvedProviderThread(now),
+        {
+          id: EventId.make("event:run-done"),
+          type: "run.updated",
+          threadId,
+          runId: run.id,
+          providerInstanceId: instanceId,
+          occurredAt: now,
+          payload: {
+            ...run,
+            providerThreadId: forkProviderThreadId,
+            status: "completed",
+            completedAt: now,
+          },
+        },
+      ],
+    });
+    const forkId = ThreadId.make("thread:guest-share-fork");
+    yield* orchestrator.dispatch({
+      type: "thread.fork",
+      commandId: CommandId.make("fork"),
+      sourceThreadId: threadId,
+      targetThreadId: forkId,
+      sourcePoint: { type: "run", runId: run.id },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const later = yield* ownerImage("after.png");
+    const { url } = yield* guestShares.create({ threadId: forkId });
+    const { token: session } = yield* guestShares.redeem({
+      credential: url.slice(url.indexOf("#") + 1),
+      name: "Sam",
+    });
+
+    assert.equal(
+      (yield* guestShares.attachment(session, inherited.id)).attachment.id,
+      inherited.id,
+    );
+    // The source's messages after the fork point are not part of the fork.
+    assert.equal(
+      (yield* Effect.flip(guestShares.attachment(session, later.id))).reason,
+      "unavailable",
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("serves an image on the host only when an agent reply the guest sees shows it", () =>
   Effect.gen(function* () {
     const { orchestrator, guestShares } = yield* shareThread;
@@ -1034,34 +1145,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
         }),
         // A guest's sent message is a user message; it must not open files on the host.
         item("item:guest-image", 2, { type: "user_message", text: `![Mine](${fromUser})` }),
-        // Fork: a run forks only once its native provider session is resolved.
-        {
-          id: EventId.make("event:provider-thread"),
-          type: "provider-thread.updated" as const,
-          threadId,
-          occurredAt: now,
-          payload: {
-            id: ProviderThreadId.make("provider-thread:guest-share"),
-            driver: ProviderDriverKind.make("codex"),
-            providerInstanceId: instanceId,
-            providerSessionId: null,
-            appThreadId: threadId,
-            ownerNodeId: null,
-            nativeThreadRef: {
-              driver: ProviderDriverKind.make("codex"),
-              nativeId: "native-guest-share",
-              strength: "strong" as const,
-            },
-            nativeConversationHeadRef: null,
-            status: "idle" as const,
-            firstRunOrdinal: 1,
-            lastRunOrdinal: 1,
-            handoffIds: [],
-            forkedFrom: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        },
+        forkResolvedProviderThread(now),
         {
           id: EventId.make("event:run-done"),
           type: "run.updated" as const,
@@ -1071,7 +1155,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
           occurredAt: now,
           payload: {
             ...run!,
-            providerThreadId: ProviderThreadId.make("provider-thread:guest-share"),
+            providerThreadId: forkProviderThreadId,
             status: "completed" as const,
             completedAt: now,
           },

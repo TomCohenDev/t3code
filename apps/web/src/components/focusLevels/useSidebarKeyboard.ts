@@ -123,7 +123,7 @@ function stepTab(direction: 1 | -1): boolean {
  */
 export function useSidebarKeyboard(input: {
   readonly routeThreadRef: ScopedThreadRef | null;
-  readonly searchFieldRef: RefObject<HTMLElement | null>;
+  readonly searchInputRef: RefObject<HTMLInputElement | null>;
   readonly runThreadAction: (
     threadRef: ScopedThreadRef,
     position: { x: number; y: number },
@@ -196,7 +196,7 @@ export function useSidebarKeyboard(input: {
       "sidebar.previousTab": () => stepTab(-1),
       "sidebar.nextTab": () => stepTab(1),
       "sidebar.search": () => {
-        const field = latest.current.searchFieldRef.current?.querySelector<HTMLElement>("input");
+        const field = latest.current.searchInputRef.current;
         if (!field) return false;
         field.focus();
         return true;
