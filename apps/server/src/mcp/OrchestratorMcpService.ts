@@ -116,6 +116,7 @@ import {
   type McpInvocationScope,
   type McpThreadInvocationScope,
   requireThreadScope,
+  threadAppLinkFor,
   threadLinkFor,
 } from "./McpInvocationContext.ts";
 import * as Metrics from "../observability/Metrics.ts";
@@ -846,6 +847,7 @@ function listItemFromShell(
     projectId: shell.projectId,
     title: shell.title,
     link: threadLinkFor(scope, shell.id),
+    appLink: threadAppLinkFor(scope, shell.id),
     createdBy: shell.createdBy,
     creationSource: shell.creationSource,
     status: shell.activityRunStatus ?? shell.status,
@@ -880,6 +882,7 @@ function threadDetail(
     projectId: projection.thread.projectId,
     title: projection.thread.title,
     link: threadLinkFor(scope, projection.thread.id),
+    appLink: threadAppLinkFor(scope, projection.thread.id),
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
     status: active?.status ?? latest?.status ?? "idle",
@@ -1018,6 +1021,8 @@ function timelineItem(input: {
   readonly maxChars: number;
   readonly textOffset?: number;
   readonly messagesByThreadId: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection["messages"]>;
+  /** Fork: set for an outside client; in T3 Code an agent adds `#<messageId>` to `link`. */
+  readonly appLinkScope?: Pick<McpInvocationScope, "environmentId">;
 }): OrchestratorMcpThreadTimelineItem {
   const text = turnItemText(input.row.item);
   const offset = input.textOffset ?? 0;
@@ -1041,6 +1046,9 @@ function timelineItem(input: {
     ...(input.row.item.type === "subagent" ? { subagentId: input.row.item.subagentId } : {}),
     runId: input.row.item.runId,
     messageId,
+    ...(input.appLinkScope === undefined || messageId === null
+      ? {}
+      : { appLink: threadAppLinkFor(input.appLinkScope, input.row.sourceThreadId, messageId) }),
     createdBy: message?.createdBy ?? null,
     creationSource: message?.creationSource ?? null,
     ...(message?.senderThreadId === undefined ? {} : { senderThreadId: message.senderThreadId }),
@@ -1693,6 +1701,7 @@ const make = Effect.gen(function* () {
         environmentId: scope.environmentId,
         threadId: task.childThreadId,
       }),
+      appLink: threadAppLinkFor(scope, task.childThreadId),
       childRunId: childRun?.id ?? null,
       childNodeId: task.id,
       status,
@@ -1860,7 +1869,11 @@ const make = Effect.gen(function* () {
       childThreadId: null,
       ...(task.remoteChild === undefined
         ? {}
-        : { remoteChild: task.remoteChild, link: formatThreadLink(task.remoteChild) }),
+        : {
+            remoteChild: task.remoteChild,
+            link: formatThreadLink(task.remoteChild),
+            appLink: threadAppLinkFor(task.remoteChild, task.remoteChild.threadId),
+          }),
       childRunId: null,
       childNodeId: task.id,
       status,
@@ -3060,6 +3073,7 @@ const make = Effect.gen(function* () {
               return {
                 threadId,
                 link: formatThreadLink({ environmentId: scope.environmentId, threadId }),
+                appLink: threadAppLinkFor(scope, threadId),
                 runId: run?.id ?? null,
                 status: run?.status ?? "idle",
                 title: projection.thread.title,
@@ -3226,6 +3240,7 @@ const make = Effect.gen(function* () {
             row,
             maxChars,
             messagesByThreadId,
+            ...(scope.client?.webOrigin === undefined ? {} : { appLinkScope: scope }),
             ...(input.itemId === undefined ? {} : { textOffset: input.textOffset ?? 0 }),
           }),
         ),
@@ -3276,6 +3291,7 @@ const make = Effect.gen(function* () {
       return {
         threadId: input.threadId,
         link: threadLinkFor(scope, input.threadId),
+        appLink: threadAppLinkFor(scope, input.threadId, messageId),
         messageId,
         runId: result.run.id,
         ...(result.run.delegatedTaskId === undefined ? {} : { taskId: result.run.delegatedTaskId }),
