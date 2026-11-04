@@ -166,6 +166,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   success: Schema.Struct({
     threadId: ThreadId,
     link: Schema.optional(Schema.String),
+    appLink: Schema.optional(Schema.String),
     projectId: ProjectId,
     modelSelection: ModelSelection,
     runId: Schema.NullOr(RunId),

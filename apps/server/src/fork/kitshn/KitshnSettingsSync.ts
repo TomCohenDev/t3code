@@ -210,7 +210,8 @@ const make = Effect.gen(function* () {
     current: typeof ServerSettingsSchema.Type,
   ) {
     const encoded = yield* encodeServerSettings(
-      ServerSettings.redactServerSettingsForClient(current),
+      // Fork machines and clients that read t3.settings decode secret references.
+      ServerSettings.redactServerSettingsForClient(current, { secretReferences: true }),
     );
     return yield* withSyncedKeybindings(
       fileSystem,

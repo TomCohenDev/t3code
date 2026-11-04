@@ -2939,6 +2939,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             }
             return;
           case "copy-thread":
+            // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
             void copyThreadReference(threadChipCopyTarget(threadRef, thread.title));
             return;
           case "copy-thread-id":

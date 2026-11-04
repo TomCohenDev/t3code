@@ -55,7 +55,8 @@ describe("new thread commands", () => {
     commands[scenario.command]!(event);
 
     if (scenario.picker) {
-      expect(openPicker).toHaveBeenCalledWith({ open: "new-thread-in" });
+      // Fork: `chat.new` names its thread kind, so the picker starts a chat thread.
+      expect(openPicker).toHaveBeenCalledWith({ open: "new-thread-in", threadKind: "chat" });
       expect(startLocal).not.toHaveBeenCalled();
     } else {
       expect(openPicker).not.toHaveBeenCalled();

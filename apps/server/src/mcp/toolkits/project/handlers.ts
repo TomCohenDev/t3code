@@ -356,6 +356,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         return {
           threadId: thread.id,
           link: McpInvocationContext.threadLinkFor(scope, thread.id),
+          appLink: McpInvocationContext.threadAppLinkFor(scope, thread.id),
           projectId: thread.projectId,
           modelSelection: thread.modelSelection,
           runId: run?.id ?? null,

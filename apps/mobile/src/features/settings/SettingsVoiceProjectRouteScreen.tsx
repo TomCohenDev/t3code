@@ -2,7 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useProjects } from "../../state/entities";
@@ -32,7 +32,7 @@ export function SettingsVoiceProjectRouteScreen() {
       {Platform.OS === "android" ? (
         <>
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title="Project" onBack={() => navigation.goBack()} />
+          <AppBar embedded title="Project" onBack={() => navigation.goBack()} />
         </>
       ) : null}
       <ScrollView

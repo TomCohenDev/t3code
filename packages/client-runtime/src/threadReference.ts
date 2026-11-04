@@ -3,16 +3,14 @@ import type {
   ScopedThreadRef,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import {
-  formatComposerContextReference,
-  threadContextRecord,
-} from "@t3tools/shared/composerContextReferences";
+import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
 
 import { resolveThreadCurrentPullRequestLink } from "./threadPullRequests.ts";
 
 export interface ThreadReferenceCopyTarget {
   readonly kind: "pull-request" | "thread";
-  /** The plain text: a PR URL, or a thread chip's reference link. */
+  /** The plain text: a PR URL, or a Markdown link that opens the thread in the app. */
   readonly value: string;
   /** What a toast or palette row shows for the copy. */
   readonly description: string;
@@ -23,7 +21,11 @@ export interface ThreadReferenceCopyTarget {
   readonly failureTitle: string;
 }
 
-/** A thread chip pastes into any composer whose agent reads that thread's machine. */
+/**
+ * A Markdown `t3-thread` link that opens the thread in the desktop or mobile app. It pastes back
+ * as a chip into any composer whose agent reads that thread's machine.
+ * Fork: copies the t3-thread link, because the fork app is not associated with the hosted origin. Revisit when the fork has a hosted app with App Links for com.yardenzamir.t3code.
+ */
 export function threadChipCopyTarget(
   threadRef: ScopedThreadRef,
   title: string,
@@ -31,7 +33,7 @@ export function threadChipCopyTarget(
   const record = threadContextRecord(threadRef, title);
   return {
     kind: "thread",
-    value: formatComposerContextReference(record),
+    value: formatThreadLink(threadRef, record.title),
     description: record.title,
     fragment: { version: 1, source: { environmentId: threadRef.environmentId }, records: [record] },
     clipboardTarget: "thread",

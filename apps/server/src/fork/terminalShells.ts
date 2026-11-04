@@ -134,6 +134,12 @@ export const TerminalShellSettings = Schema.Struct({
 });
 const decodeTerminalShellSettings = Schema.decodeUnknownOption(TerminalShellSettings);
 
+/** The config of the terminal provider instance. */
+export const TerminalSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  ...TerminalShellSettings.fields,
+});
+
 /**
  * The custom shells in the settings. An invalid config gives none: the provider shows the decode
  * error, and `terminal.open` fails with the shell as unknown.

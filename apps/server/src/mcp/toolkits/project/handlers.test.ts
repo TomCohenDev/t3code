@@ -228,6 +228,7 @@ it.effect(
 
       const aboveCeiling = yield* launchWith("auto-accept-edits", "full-access", {
         title: "Fix",
+        // Fork: an outside client gets the thread address on the origin it reached.
         webOrigin: "https://box.example.ts.net",
       });
       expect(aboveCeiling.launched[0]?.runtimeMode).toBe("auto-accept-edits");

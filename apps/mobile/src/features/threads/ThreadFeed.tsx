@@ -61,6 +61,7 @@ import {
 } from "@t3tools/contracts";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { formatThreadLink, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { threadLinkMessageId } from "@t3tools/shared/threadMessageLinks";
 import {
@@ -2720,9 +2721,8 @@ export const ThreadFeed = memo(function ThreadFeed({
     fontScale,
   });
   const settledPaneWidth = useWorkspaceSettledContentWidth();
-  const [measuredViewportWidth, setViewportWidth] = useState(() =>
-    props.layoutVariant === "split" ? 0 : windowWidth,
-  );
+  const splitLayout = (props.layoutVariant ?? "compact") !== "compact";
+  const [measuredViewportWidth, setViewportWidth] = useState(() => (splitLayout ? 0 : windowWidth));
   const viewportWidth =
     settledPaneWidth !== null ? Math.round(settledPaneWidth) : measuredViewportWidth;
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -2824,7 +2824,7 @@ export const ThreadFeed = memo(function ThreadFeed({
     props.threadId,
     fileShareSourceIdentifier,
   );
-  const horizontalPadding = props.layoutVariant === "split" ? 20 : 16;
+  const horizontalPadding = splitLayout ? 20 : 16;
   const contentLeftInset = props.contentSideInsets?.left ?? 0;
   const contentRightInset = props.contentSideInsets?.right ?? 0;
   const usableViewportWidth = Math.max(0, viewportWidth - contentLeftInset - contentRightInset);
@@ -3102,10 +3102,15 @@ export const ThreadFeed = memo(function ThreadFeed({
       if (thread) {
         if (actionId === "open-thread") onMarkdownLinkPress(href);
         else if (actionId === "copy-thread-link") {
-          // Fork: a Markdown link, so a paste in chat is a chip, the same as "Copy message link".
-          const title = appAtomRegistry.get(environmentThreadShells.threadShellAtom(thread))?.title;
-          const messageId = threadLinkMessageId(href) ?? undefined;
-          copyTextWithHaptic(formatThreadLink(thread, title ?? "", messageId));
+          // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
+          const title =
+            appAtomRegistry.get(environmentThreadShells.threadShellAtom(thread))?.title ?? "";
+          const messageId = threadLinkMessageId(href);
+          copyTextWithHaptic(
+            messageId === null
+              ? threadChipCopyTarget(thread, title).value
+              : formatThreadLink(thread, title, messageId),
+          );
         }
         return;
       }
@@ -3873,7 +3878,12 @@ export const ThreadFeed = memo(function ThreadFeed({
 
   return (
     <PresentationSource identifier={fileShareSourceIdentifier} style={{ flex: 1 }}>
-      <View className="flex-1" onLayout={handleViewportLayout}>
+      {/* While the pane tracks a sliding sidebar, rows keep its settled width and re-wrap once. */}
+      <View
+        className="flex-1"
+        style={settledPaneWidth !== null ? { width: settledPaneWidth } : undefined}
+        onLayout={handleViewportLayout}
+      >
         <View className="flex-1">
           {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- ThreadFeedScrollView is passed through the iOS-only spread below; the prop rejects undefined. */}
           <KeyboardAwareLegendList
@@ -3887,7 +3897,7 @@ export const ThreadFeed = memo(function ThreadFeed({
             // Horizontal Duo reservations are already included in the row padding.
             contentInsetAdjustmentBehavior={
               usesNativeAutomaticInsets
-                ? duoColumns && props.layoutVariant === "split"
+                ? duoColumns && splitLayout
                   ? "scrollableAxes"
                   : "automatic"
                 : "never"

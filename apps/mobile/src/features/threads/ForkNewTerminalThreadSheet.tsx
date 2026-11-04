@@ -29,7 +29,7 @@ import { Platform, ScrollView, View } from "react-native";
 import { ScreenStack } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
@@ -430,7 +430,7 @@ export function ForkNewTerminalThreadSheet({ route }: StaticScreenProps<NewTermi
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {/* A full screen card on Android (`Stack.tsx`), so the header pads for the status bar. */}
-      <AndroidScreenHeader title={TITLE} onBack={() => navigation.goBack()} />
+      <AppBar embedded title={TITLE} onBack={() => navigation.goBack()} />
       <ScreenContent insetHorizontal={layout.usesSplitView}>{content}</ScreenContent>
     </View>
   );
