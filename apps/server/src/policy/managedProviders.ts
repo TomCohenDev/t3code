@@ -25,6 +25,8 @@ import { openCodeClient } from "@t3tools/provider-opencode/client";
 import { piClient } from "@t3tools/provider-pi/client";
 import type { ProviderClientDefinition } from "@t3tools/provider-core/client";
 
+import { TerminalSettings } from "../fork/terminalShells.ts";
+
 interface KnownDriver {
   readonly label: string;
   readonly configFields: ReadonlySet<string>;
@@ -72,6 +74,8 @@ const KNOWN_DRIVERS: ReadonlyMap<ProviderDriverKind, KnownDriver> = new Map([
   known("codex", "Codex", CodexSettings),
   known("claudeAgent", "Claude", ClaudeSettings),
   known("antigravity", "Antigravity", AntigravitySettings),
+  // Fork: the terminal driver is built in, so a policy must be able to name it.
+  known("terminal", "Terminal", TerminalSettings),
   ...PACKAGED_CLIENTS.map((client) =>
     known(client.driverKind, client.label, client.settingsSchema, client.hasDefaultInstance),
   ),
