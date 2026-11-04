@@ -2,14 +2,20 @@ import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contract
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { DEFAULT_HOSTED_APP_URL } from "./connectAuth.ts";
 import { threadLinkMessageId } from "./threadMessageLinks.ts";
 
 export const THREAD_LINK_PROTOCOL = "t3-thread";
 const V1_PREFIX = `${THREAD_LINK_PROTOCOL}://v1/`;
 const V2_PREFIX = `${THREAD_LINK_PROTOCOL}://v2/`;
+const HOSTED_PREFIX = `${DEFAULT_HOSTED_APP_URL}/threads/`;
+const HOSTED_SEGMENT = "[A-Za-z0-9_%-]+";
+const HOSTED_LINK = `${HOSTED_PREFIX.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}${HOSTED_SEGMENT}/${HOSTED_SEGMENT}`;
 // Code comes first in the alternation so a link written inside a code span or fence is skipped.
-const THREAD_LINK_OUTSIDE_CODE =
-  /(?<fence>(`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(`+)[^\n]*?\4)|\[(?<label>[^\]\n]*)\]\((?<href>t3-thread:\/\/v[12]\/[^\s)]+)\)|<(?<autolink>t3-thread:\/\/v[12]\/[^\s<>]+)>/g;
+const THREAD_LINK_OUTSIDE_CODE = new RegExp(
+  String.raw`(?<fence>(\`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(\`+)[^\n]*?\4)|\[(?<label>[^\]\n]*)\]\((?<href>t3-thread:\/\/v[12]\/[^\s)]+|${HOSTED_LINK})\)|<(?<autolink>t3-thread:\/\/v[12]\/[^\s<>]+|${HOSTED_LINK})>|(?<bare>${HOSTED_LINK})(?![\w%/?#-])`,
+  "g",
+);
 
 const decodeThreadId = Schema.decodeUnknownOption(ThreadId);
 const decodeEnvironmentId = Schema.decodeUnknownOption(EnvironmentId);
@@ -20,12 +26,41 @@ export interface ThreadLink {
   readonly threadId: ThreadId;
 }
 
+// Escapes even URL-safe punctuation, so a sentence's closing period never reads as part of an id.
+const hostedSegment = (id: string) =>
+  encodeURIComponent(id).replace(
+    /[.!~*'()]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+/** Opens the thread from anywhere: the hosted app offers the desktop app, the mobile app, or itself. */
+export function hostedThreadLink(ref: ScopedThreadRef, origin = DEFAULT_HOSTED_APP_URL): string {
+  const path = `/threads/${hostedSegment(ref.environmentId)}/${hostedSegment(ref.threadId)}`;
+  return new URL(path, origin).toString();
+}
+
+const HOSTED_PATH = new RegExp(`^(${HOSTED_SEGMENT})/(${HOSTED_SEGMENT})$`);
+
+function parseHostedThreadLink(href: string): ThreadLink | null {
+  const match = HOSTED_PATH.exec(href.slice(HOSTED_PREFIX.length));
+  if (!match) return null;
+  try {
+    const environmentId = Option.getOrNull(decodeEnvironmentId(decodeURIComponent(match[1]!)));
+    const threadId = Option.getOrNull(decodeThreadId(decodeURIComponent(match[2]!)));
+    return environmentId === null || threadId === null ? null : { environmentId, threadId };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The ids as written. Thread ids can hold percent escapes of their own, so they are not decoded.
+ * The ids as written. Thread ids can hold percent escapes of their own, so they are not decoded,
+ * except in a hosted link, which escapes them itself.
  * Fork: an optional `#<messageId>` fragment names one message (`threadLinkMessageId`).
  */
 export function parseThreadLinkHref(linkHref: string): ThreadLink | null {
   const [href = ""] = linkHref.split("#", 1);
+  if (href.startsWith(HOSTED_PREFIX)) return parseHostedThreadLink(href);
   if (href.startsWith(V1_PREFIX)) {
     const threadId = Option.getOrNull(decodeThreadId(href.slice(V1_PREFIX.length)));
     return threadId === null ? null : { environmentId: null, threadId };
@@ -86,18 +121,32 @@ function threadLinkHref(link: ThreadLink, messageId?: string): string {
   return messageId === undefined ? href : `${href}#${messageId}`;
 }
 
-/** Without a label, an autolink: clients show the thread's current title. Fork: `messageId`. */
-export function formatThreadLink(ref: ThreadLink, label?: string, messageId?: string): string {
-  const cleaned = label
+const linkLabel = (label: string | undefined) =>
+  label
     ?.replace(/[[\]\\\r\n]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+/** Without a label, an autolink: clients show the thread's current title. Fork: `messageId`. */
+export function formatThreadLink(ref: ThreadLink, label?: string, messageId?: string): string {
+  const cleaned = linkLabel(label);
   const href = threadLinkHref(ref, messageId);
   return cleaned ? `[${cleaned}](${href})` : `<${href}>`;
 }
 
+/** What a person copies out of T3 Code: a Markdown link that opens the thread anywhere. */
+export function formatHostedThreadLink(
+  ref: ScopedThreadRef,
+  label: string,
+  origin?: string,
+): string {
+  const href = hostedThreadLink(ref, origin);
+  const cleaned = linkLabel(label);
+  return cleaned ? `[${cleaned}](${href})` : href;
+}
+
 export function hasThreadLinks(markdown: string): boolean {
-  return markdown.includes(`${THREAD_LINK_PROTOCOL}://v`);
+  return markdown.includes(`${THREAD_LINK_PROTOCOL}://v`) || markdown.includes(HOSTED_PREFIX);
 }
 
 /** Every thread the markdown's links can name, so their titles are keyed reads. */
@@ -109,7 +158,7 @@ export function threadLinkRefs(
   // Hermes' matchAll yields matches without `groups`; exec keeps them.
   const pattern = new RegExp(THREAD_LINK_OUTSIDE_CODE);
   for (let match = pattern.exec(markdown); match !== null; match = pattern.exec(markdown)) {
-    const href = match.groups?.href ?? match.groups?.autolink;
+    const href = match.groups?.href ?? match.groups?.autolink ?? match.groups?.bare;
     const link = href === undefined ? null : parseThreadLinkHref(href);
     if (link === null) continue;
     for (const ref of threadLinkCandidates(link, messageEnvironmentId)) {
@@ -129,21 +178,34 @@ export function unknownThreadLinkLabel(
 }
 
 /**
- * Writes each link with its thread's current title. A link `title` cannot resolve becomes plain
- * text, its written label or a neutral one, except a labeled v1 link, which may open elsewhere.
+ * Rewrites each link outside code `replace` answers for. `label` is a Markdown link's own text.
+ * Fork: `href` is the link as written, so a rewrite keeps its message fragment.
+ */
+export function replaceThreadLinks(
+  markdown: string,
+  replace: (link: ThreadLink, label: string | undefined, href: string) => string | undefined,
+): string {
+  if (!hasThreadLinks(markdown)) return markdown;
+  return markdown.replace(THREAD_LINK_OUTSIDE_CODE, (source, ...args) => {
+    const groups = args.at(-1) as Partial<Record<"href" | "autolink" | "bare" | "label", string>>;
+    const href = groups.href ?? groups.autolink ?? groups.bare;
+    if (href === undefined) return source;
+    const link = parseThreadLinkHref(href);
+    return (link && replace(link, groups.label, href)) ?? source;
+  });
+}
+
+/**
+ * Writes each link with its thread's current title, a hosted link as a v2 link. A link `title`
+ * cannot resolve becomes plain text, its written label or a neutral one, except a labeled v1
+ * link, which may open elsewhere.
  */
 export function relabelThreadLinks(
   markdown: string,
   messageEnvironmentId: EnvironmentId,
   title: (ref: ScopedThreadRef) => string | undefined,
 ): string {
-  if (!hasThreadLinks(markdown)) return markdown;
-  return markdown.replace(THREAD_LINK_OUTSIDE_CODE, (source, ...args) => {
-    const groups = args.at(-1) as { href?: string; autolink?: string; label?: string };
-    const href = groups.href ?? groups.autolink;
-    if (href === undefined) return source;
-    const written = parseThreadLinkHref(href);
-    if (written === null) return source;
+  return replaceThreadLinks(markdown, (written, label, href) => {
     const environmentId = written.environmentId ?? messageEnvironmentId;
     const decoded = percentDecodedThreadLinkId(written.threadId);
     const threadId =
@@ -154,12 +216,12 @@ export function relabelThreadLinks(
         : written.threadId;
     const current = title({ environmentId, threadId });
     if (current === undefined) {
-      if (groups.href !== undefined && written.environmentId === null) return source;
-      return groups.label?.trim() || unknownThreadLinkLabel(written, messageEnvironmentId);
+      if (label !== undefined && written.environmentId === null) return undefined;
+      return label?.trim() || unknownThreadLinkLabel(written, messageEnvironmentId);
     }
     return formatThreadLink(
       { environmentId: written.environmentId, threadId },
-      current.trim() || groups.label || threadId,
+      current.trim() || label || threadId,
       threadLinkMessageId(href) ?? undefined,
     );
   });

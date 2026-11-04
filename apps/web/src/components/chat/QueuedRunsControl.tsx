@@ -311,7 +311,7 @@ export function QueuedRunsControl({
               aria-current={isEditing ? "true" : undefined}
               {...objectMenuProps([{ label: "Copy text", value: previewText }])}
               {...objectMenuActionsProps}
-              className="group/queued flex w-full flex-col items-end gap-1 transition-opacity duration-150 ease-out starting:opacity-0 motion-reduce:transition-none"
+              className="group/queued flex w-full flex-col items-end gap-1"
             >
               <QueuedMessage
                 environmentId={props.environmentId}
