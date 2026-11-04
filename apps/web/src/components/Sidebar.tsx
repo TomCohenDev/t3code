@@ -106,7 +106,6 @@ import {
   type ThreadActionPreset,
   useSidebarKeyboard,
 } from "./focusLevels/useSidebarKeyboard";
-import { configuredHostedAppUrl } from "../hostedPairing";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import {
   pickableProjectGroups,
@@ -2940,9 +2939,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             }
             return;
           case "copy-thread":
-            void copyThreadReference(
-              threadChipCopyTarget(threadRef, thread.title, configuredHostedAppUrl()),
-            );
+            // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
+            void copyThreadReference(threadChipCopyTarget(threadRef, thread.title));
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });

@@ -488,6 +488,7 @@ Thread links in chat open the thread in T3 Code, each message has a link of its 
   - On mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
   - The app keeps the position of each history entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
   - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
+  - Copy thread, the thread chip and the mobile **Copy thread link** copy a Markdown `t3-thread://v2` link, not upstream's `https://app.t3.codes/threads/…` link. That hosted link opens only the browser, because the fork APK is not associated with app.t3.codes. A pasted hosted link still becomes a chip. Revisit when the fork has a hosted app with App Links for `com.yardenzamir.t3code`.
 
 ### Message pins
 

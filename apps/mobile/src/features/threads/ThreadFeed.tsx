@@ -61,11 +61,8 @@ import {
 } from "@t3tools/contracts";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
-import {
-  formatThreadLink,
-  hostedThreadLink,
-  parseThreadLinkHref,
-} from "@t3tools/shared/threadLinks";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
+import { formatThreadLink, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { threadLinkMessageId } from "@t3tools/shared/threadMessageLinks";
 import {
   parseComposerContextHref,
@@ -3105,15 +3102,15 @@ export const ThreadFeed = memo(function ThreadFeed({
       if (thread) {
         if (actionId === "open-thread") onMarkdownLinkPress(href);
         else if (actionId === "copy-thread-link") {
-          // Fork: a hosted link carries no message, so a message link stays a Markdown thread link.
+          // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
+          const title =
+            appAtomRegistry.get(environmentThreadShells.threadShellAtom(thread))?.title ?? "";
           const messageId = threadLinkMessageId(href);
-          if (messageId === null) copyTextWithHaptic(hostedThreadLink(thread));
-          else {
-            const title = appAtomRegistry.get(
-              environmentThreadShells.threadShellAtom(thread),
-            )?.title;
-            copyTextWithHaptic(formatThreadLink(thread, title ?? "", messageId));
-          }
+          copyTextWithHaptic(
+            messageId === null
+              ? threadChipCopyTarget(thread, title).value
+              : formatThreadLink(thread, title, messageId),
+          );
         }
         return;
       }

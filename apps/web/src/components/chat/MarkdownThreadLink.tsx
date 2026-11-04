@@ -1,7 +1,7 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { EnvironmentId, MessageId } from "@t3tools/contracts";
 import {
-  formatHostedThreadLink,
   formatThreadLink,
   guessThreadLinkRef,
   percentDecodedThreadLinkId,
@@ -9,7 +9,6 @@ import {
   unknownThreadLinkLabel,
 } from "@t3tools/shared/threadLinks";
 
-import { configuredHostedAppUrl } from "../../hostedPairing";
 import { useThreadRefs, useThreadShell } from "../../state/entities";
 import { UnresolvedChip } from "../contextChipParts";
 import { ThreadContextChip } from "../ThreadContextChip";
@@ -43,10 +42,10 @@ export function MarkdownThreadLink(props: {
     <ThreadContextChip
       record={{ ...ref, title }}
       copyMarkdown={
-        // Fork: a hosted link carries no message, so a message link stays a thread link.
+        // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
         props.messageId
           ? formatThreadLink(ref, title, props.messageId)
-          : formatHostedThreadLink(ref, title, configuredHostedAppUrl())
+          : threadChipCopyTarget(ref, title).value
       }
       messageId={props.messageId ?? null}
     />
