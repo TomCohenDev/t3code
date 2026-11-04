@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - plain Node test that runs a bash script against a local HTTP fixture.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
@@ -31,63 +32,85 @@ const fakeGhDir = () => {
   return dir;
 };
 
+// The fixture server answers on this event loop, so the script runs asynchronously.
 const run = (url: string) =>
-  NodeChildProcess.spawnSync("bash", [script], {
-    encoding: "utf8",
-    env: {
-      PATH: `${fakeGhDir()}:${process.env.PATH ?? ""}`,
-      WEBHOOK_URL: url,
-      CF_ACCESS_CLIENT_ID: "id",
-      CF_ACCESS_CLIENT_SECRET: "secret",
-      GH_TOKEN: "x",
-      NEEDS_JSON: '{"sync":{"result":"failure"}}',
-      GITHUB_REPOSITORY: "o/r",
-      GITHUB_REF_NAME: "main",
-      GITHUB_EVENT_NAME: "workflow_dispatch",
-      GITHUB_WORKFLOW: "Fork Sync",
-      GITHUB_SERVER_URL: "https://github.com",
-      GITHUB_RUN_ID: "1",
-    },
+  new Promise<{ status: number | null; output: string }>((resolve, reject) => {
+    const child = NodeChildProcess.spawn("bash", [script], {
+      env: {
+        PATH: `${fakeGhDir()}:${process.env.PATH ?? ""}`,
+        WEBHOOK_URL: url,
+        CF_ACCESS_CLIENT_ID: "id",
+        CF_ACCESS_CLIENT_SECRET: "secret",
+        GH_TOKEN: "x",
+        NEEDS_JSON: '{"sync":{"result":"failure"}}',
+        GITHUB_REPOSITORY: "o/r",
+        GITHUB_REF_NAME: "main",
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        GITHUB_WORKFLOW: "Fork Sync",
+        GITHUB_SERVER_URL: "https://github.com",
+        GITHUB_RUN_ID: "1",
+      },
+      timeout: 20_000,
+    });
+    let output = "";
+    child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+    child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, output }));
   });
+
+const withServer = async (
+  status: number,
+  body: string,
+  headers: Record<string, string>,
+  check: (result: { status: number | null; output: string }) => void,
+) => {
+  const server = await serve(status, body, headers);
+  try {
+    check(await run(server.url));
+  } finally {
+    server.close();
+  }
+};
 
 describe("fork-notify-agent.sh", () => {
-  it("fails on a redirect, which is Cloudflare Access refusing the service token", async () => {
-    const server = await serve(302, "<html>302 Found</html>", {
-      location: "https://example.cloudflareaccess.com/cdn-cgi/access/login/x",
-    });
-    try {
-      const result = run(server.url);
-      expect(result.status).not.toBe(0);
-      expect(result.stdout + result.stderr).toContain("302");
-      expect(result.stdout + result.stderr).toContain("example.cloudflareaccess.com");
-    } finally {
-      server.close();
-    }
-  });
+  it("fails on a redirect, which is Cloudflare Access refusing the service token", () =>
+    withServer(
+      302,
+      "<html>302 Found</html>",
+      { location: "https://example.cloudflareaccess.com/cdn-cgi/access/login/x?kid=1" },
+      (result) => {
+        expect(result.status).toBe(1);
+        expect(result.output).toContain("answered 302");
+        expect(result.output).toContain(
+          "https://example.cloudflareaccess.com/cdn-cgi/access/login/x",
+        );
+        expect(result.output).not.toContain("kid=1");
+      },
+    ));
 
-  it("fails when the task is disabled", async () => {
-    const server = await serve(409, '{"error":"hook_disabled"}', {
-      "content-type": "application/json",
-    });
-    try {
-      const result = run(server.url);
-      expect(result.status).not.toBe(0);
-      expect(result.stdout + result.stderr).toContain("hook_disabled");
-    } finally {
-      server.close();
-    }
-  });
+  it("fails with its reason when the task is disabled and no Location header exists", () =>
+    withServer(
+      409,
+      '{"error":"hook_disabled"}',
+      { "content-type": "application/json" },
+      (result) => {
+        expect(result.status).toBe(1);
+        expect(result.output).toContain("answered 409");
+        expect(result.output).toContain("task is disabled");
+        expect(result.output).toContain("hook_disabled");
+      },
+    ));
 
-  it("succeeds only on an accepted delivery", async () => {
-    const server = await serve(202, '{"deliveryId":"d1"}', {
-      "content-type": "application/json",
-    });
-    try {
-      const result = run(server.url);
+  it("fails on a 202 without a deliveryId", () =>
+    withServer(202, "{}", { "content-type": "application/json" }, (result) => {
+      expect(result.status).toBe(1);
+      expect(result.output).toContain("answered 202, not 202 with a deliveryId");
+    }));
+
+  it("succeeds only on an accepted delivery", () =>
+    withServer(202, '{"deliveryId":"d1"}', { "content-type": "application/json" }, (result) => {
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("d1");
-    } finally {
-      server.close();
-    }
-  });
+      expect(result.output).toContain("delivery d1");
+    }));
 });

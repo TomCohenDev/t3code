@@ -73,7 +73,8 @@ if [[ "$status" == "202" && -n "$delivery_id" ]]; then
   echo "The repair agent took the run: delivery ${delivery_id}."
   exit 0
 fi
-location="$(grep -i '^location:' "$body.headers" | head -1 | tr -d '\r' | cut -d' ' -f2-)"
+# The header is optional, and under pipefail a grep with no match must not end the script here.
+location="$(grep -i '^location:' "$body.headers" | head -1 | tr -d '\r' | cut -d' ' -f2- || true)"
 echo "::error title=Repair agent not notified::The webhook answered ${status}, not 202 with a deliveryId."
 if [[ "$status" == 3* ]]; then
   echo "Redirect to ${location%%\?*}: Cloudflare Access refused the service token. Check that the repository secrets CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET hold a kitshn device token whose actor reaches the machine's T3 card."
