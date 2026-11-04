@@ -3,8 +3,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import {
-  AndroidSettingsEnvironmentFilter,
   SettingsEnvironmentFilterHeader,
+  useSettingsEnvironmentMenu,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { AppTokenSettingsSection } from "./forkAppTokenSettings";
 import {
@@ -23,11 +23,12 @@ import { SettingsSection } from "./components/SettingsSection";
 export function SettingsForkRouteScreen() {
   const insets = useSafeAreaInsets();
   const settings = useForkMobileSettings();
+  const environmentMenu = useSettingsEnvironmentMenu();
 
   return (
     <>
       <SettingsEnvironmentFilterHeader />
-      <SettingsScreen title="Fork" trailing={<AndroidSettingsEnvironmentFilter />}>
+      <SettingsScreen title="Fork" menus={[environmentMenu]}>
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
