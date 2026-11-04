@@ -53,12 +53,33 @@ payload="$(jq -n \
     run_url: $run_url, run_id: $run_id, jobs: ($needs | map_values(.result))}
     + (if $reason == "" then {} else {reason: $reason} end)')"
 echo "$payload"
-# The webhook server can restart, which takes minutes. So retry once a minute for 15 minutes.
-# The notify jobs have timeout-minutes: 20 to cover the last attempt (up to 120 s).
-curl --fail-with-body --silent --show-error \
-  --retry 15 --retry-delay 60 --retry-max-time 900 --max-time 120 --retry-all-errors \
+# The webhook server can restart, which takes minutes. So retry once a minute for 15 minutes on
+# a refused connection and 408, 429 and 5xx (curl's --retry set). The notify jobs have
+# timeout-minutes: 20 to cover the last attempt (up to 120 s).
+# Only 202 with a deliveryId proves that the task took the run. Cloudflare Access answers a 302
+# to its login page when it refuses the service token, and T3 answers 409 for a disabled task:
+# both must fail this job, because a successful notify job silences the next failure for 90 minutes.
+body="$(mktemp)"
+status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+  --retry 15 --retry-delay 60 --retry-max-time 900 --retry-connrefused --max-time 120 \
+  --dump-header "$body.headers" \
   -X POST "$WEBHOOK_URL" \
   -H "content-type: application/json" \
   -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  --data-binary "$payload"
+  --data-binary "$payload")"
+delivery_id="$(jq -r '.deliveryId // empty' "$body" 2>/dev/null || true)"
+if [[ "$status" == "202" && -n "$delivery_id" ]]; then
+  echo "The repair agent took the run: delivery ${delivery_id}."
+  exit 0
+fi
+location="$(grep -i '^location:' "$body.headers" | head -1 | tr -d '\r' | cut -d' ' -f2-)"
+echo "::error title=Repair agent not notified::The webhook answered ${status}, not 202 with a deliveryId."
+if [[ "$status" == 3* ]]; then
+  echo "Redirect to ${location%%\?*}: Cloudflare Access refused the service token. Check that the repository secrets CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET hold a kitshn device token whose actor reaches the machine's T3 card."
+elif [[ "$status" == "409" ]]; then
+  echo "The task is disabled on the T3 server. Enable the scheduled task \"Fork repair\" there."
+fi
+echo "Answer body (first 300 bytes):"
+head -c 300 "$body"; echo
+exit 1
