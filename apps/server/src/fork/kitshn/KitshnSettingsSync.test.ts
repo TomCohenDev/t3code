@@ -489,3 +489,83 @@ it.effect("asks for the circles again when the connection registers", () =>
     }),
   ),
 );
+
+const desiredSets = (sent: ReadonlyArray<KitshnConnection.LocalRequestInput>) =>
+  sent.flatMap((input) => {
+    if (input.type !== "desired-set") return [];
+    const { rev: _rev, provider: _provider, kind: _kind, type: _type, ...rest } = input;
+    return [rest];
+  });
+
+it.effect("stores a non-owner's person settings in their circle and the rest as before", () =>
+  withSync({ partner: PARTNER_PART }, ({ sync, sent }) =>
+    Effect.gen(function* () {
+      const ayelet: SettingsSession = { circles: ["partner", "family"], owner: false };
+      const rest = yield* sync.writeSessionServerPatch(ayelet, {
+        mobileComposerCamera: true,
+        forkUpdateMode: "automatic",
+      });
+      expect(rest).toEqual({ forkUpdateMode: "automatic" });
+      yield* sync.share(
+        {
+          server: ["mobileComposerCamera"],
+          client: { followUpBehavior: "queue", loadBalancingEnabled: true },
+        },
+        ayelet,
+      );
+      expect(desiredSets(sent)).toEqual([
+        {
+          part: "circle",
+          circle: "partner",
+          value: {
+            server: { mobileSidebarTabs: true, mobileComposerCamera: true },
+            client: { followUpBehavior: "steer" },
+          },
+        },
+        {
+          part: "circle",
+          circle: "partner",
+          value: {
+            server: { mobileSidebarTabs: true, mobileComposerCamera: true },
+            client: { followUpBehavior: "queue" },
+          },
+        },
+      ]);
+      // The owner's patch goes to the settings file whole.
+      const owner = yield* sync.writeSessionServerPatch(OWNER_SESSION, {
+        mobileComposerCamera: true,
+      });
+      expect(owner).toEqual({ mobileComposerCamera: true });
+      expect(desiredSets(sent)).toHaveLength(2);
+    }),
+  ),
+);
+
+it.effect("sets only a circle that kitshn names here, and a non-owner only their own", () =>
+  withSync({}, ({ sync, sent }) =>
+    Effect.gen(function* () {
+      const change = { server: {}, client: { followUpBehavior: "steer" } };
+      // The picker lists a circle once the state ask named it.
+      yield* sync.clientState(OWNER_SESSION).pipe(
+        Stream.filter((state) => state.circles.length > 0),
+        Stream.runHead,
+      );
+      const ghost = yield* Effect.flip(
+        sync.setCircle({ circleId: "ghost", ...change }, OWNER_SESSION),
+      );
+      expect(ghost.message).toContain("no such circle");
+      yield* sync.setCircle({ circleId: "partner", ...change }, OWNER_SESSION);
+      const other = yield* Effect.flip(
+        sync.setCircle({ circleId: "partner", ...change }, { circles: ["family"], owner: false }),
+      );
+      expect(other.message).toContain("their own first circle");
+      expect(desiredSets(sent)).toEqual([
+        {
+          part: "circle",
+          circle: "partner",
+          value: { server: {}, client: { followUpBehavior: "steer" } },
+        },
+      ]);
+    }),
+  ),
+);
