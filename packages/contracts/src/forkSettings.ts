@@ -4,11 +4,42 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { ProjectId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  MessageId,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 import { ProjectScript } from "./project.ts";
 import { PullRequestAuthorAssociation } from "./pullRequest.ts";
 import { SidebarTabs } from "./sidebarTabs.ts";
 import { StoredThreadCardLayout, ThreadCardLayouts } from "./slotLayout.ts";
+
+/** Fork: the most pinned messages that one environment keeps. */
+export const MESSAGE_PINS_MAX = 200;
+/** Fork: the longest message excerpt that a pin keeps. */
+export const MESSAGE_PIN_EXCERPT_MAX = 160;
+
+/**
+ * Fork: a pinned message. The excerpt and the thread title are copies from the time of the pin,
+ * so a list of pins shows them without a load of each thread, also for an archived thread.
+ */
+export const MessagePin = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  pinnedAt: IsoDateTime,
+  excerpt: Schema.String.check(Schema.isMaxLength(MESSAGE_PIN_EXCERPT_MAX)),
+  threadTitle: Schema.String,
+});
+export type MessagePin = typeof MessagePin.Type;
+
+/** Fork: the pinned messages of an environment, by `messagePinKey`. */
+export const PinnedMessages = Schema.Record(Schema.String, MessagePin).check(
+  Schema.isMaxProperties(MESSAGE_PINS_MAX),
+);
+export type PinnedMessages = typeof PinnedMessages.Type;
 
 /** Fork: the value of the `sidebarOwnerFilter` client setting. */
 export const SidebarOwnerFilter = Schema.Struct({
@@ -20,52 +51,58 @@ export const SidebarOwnerFilter = Schema.Struct({
   ),
 });
 export type SidebarOwnerFilter = typeof SidebarOwnerFilter.Type;
-/** Fork: a local time of day for a snooze quick option. */
-const SnoozeQuickOptionTime = Schema.Struct({
-  hour: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 23 })),
-  minute: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 59 })),
-});
-export const SnoozeQuickOptionDay = Schema.Literals([
-  "today",
-  "tomorrow",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-  "sunday",
-]);
-export type SnoozeQuickOptionDay = typeof SnoozeQuickOptionDay.Type;
-/**
- * Fork: one entry of the `snoozeQuickOptions` client setting. "in" snoozes for a duration. "at"
- * snoozes until a local time today, tomorrow, or on the next given weekday. Limit: a desktop shell
- * fails to read the client settings when an entry has a kind that its schema does not know.
- * Revisit before a new kind: release the shell before the web client writes that kind.
- */
-export const SnoozeQuickOption = Schema.Union([
-  Schema.TaggedStruct("in", {
-    amount: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999 })),
-    unit: Schema.Literals(["minutes", "hours", "days"]),
-    label: Schema.optionalKey(TrimmedNonEmptyString),
-  }),
-  Schema.TaggedStruct("at", {
-    day: SnoozeQuickOptionDay,
-    time: SnoozeQuickOptionTime,
-    label: Schema.optionalKey(TrimmedNonEmptyString),
-  }),
-]);
-export type SnoozeQuickOption = typeof SnoozeQuickOption.Type;
-export const MAX_SNOOZE_QUICK_OPTIONS = 10;
-const SnoozeQuickOptions = Schema.NullOr(
-  Schema.Array(SnoozeQuickOption).check(Schema.isMaxLength(MAX_SNOOZE_QUICK_OPTIONS)),
-);
-
 export const MIN_TOOLTIP_SHORTCUT_LIMIT = 1;
 export const MAX_TOOLTIP_SHORTCUT_LIMIT = 9;
 /** How many keys of one control its tooltip shows before "+N". */
 export const TooltipShortcutLimit = Schema.Int.check(
   Schema.isBetween({ minimum: MIN_TOOLTIP_SHORTCUT_LIMIT, maximum: MAX_TOOLTIP_SHORTCUT_LIMIT }),
+);
+
+export const MIN_IN_APP_NOTIFICATION_SECONDS = 1;
+export const MAX_IN_APP_NOTIFICATION_SECONDS = 300;
+/** How long an in-app thread notification stays on screen while the app has focus. */
+export const InAppNotificationSeconds = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_IN_APP_NOTIFICATION_SECONDS,
+    maximum: MAX_IN_APP_NOTIFICATION_SECONDS,
+  }),
+);
+
+export const MAX_TERMINAL_KEY_MAPPINGS = 64;
+/**
+ * Fork: a key that a terminal sends as the bytes in `send`, in place of its own encoding. `key`
+ * uses the keybinding syntax, such as `cmd+z`. `send` uses escape notation: `\e`, `\xNN`,
+ * `\uNNNN`, `\r`, `\n`, `\t` and `\\`. `\xNN` is the character U+00NN, which the terminal sends
+ * as UTF-8, so a value from 0x80 up becomes two bytes. A mapping applies in every terminal.
+ */
+export const TerminalKeyMapping = Schema.Struct({
+  key: TrimmedNonEmptyString.check(Schema.isMaxLength(32)),
+  send: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64)),
+});
+export type TerminalKeyMapping = typeof TerminalKeyMapping.Type;
+
+export const MIN_TERMINAL_THREAD_FONT_LIMIT = 6;
+export const MAX_TERMINAL_THREAD_FONT_LIMIT = 48;
+/** The smallest and largest font size that the zoom keys of a terminal thread reach, in points. */
+export const TerminalThreadFontLimit = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_TERMINAL_THREAD_FONT_LIMIT,
+    maximum: MAX_TERMINAL_THREAD_FONT_LIMIT,
+  }),
+);
+
+export const MIN_TERMINAL_HISTORY_LINES = 500;
+export const MAX_TERMINAL_HISTORY_LINES = 200_000;
+export const TerminalHistoryLines = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_TERMINAL_HISTORY_LINES, maximum: MAX_TERMINAL_HISTORY_LINES }),
+);
+export const MIN_TERMINAL_HISTORY_MEGABYTES = 1;
+export const MAX_TERMINAL_HISTORY_MEGABYTES = 256;
+export const TerminalHistoryMegabytes = Schema.Int.check(
+  Schema.isBetween({
+    minimum: MIN_TERMINAL_HISTORY_MEGABYTES,
+    maximum: MAX_TERMINAL_HISTORY_MEGABYTES,
+  }),
 );
 
 export const MIN_AGENT_SESSION_IMPORT_WINDOW_DAYS = 1;
@@ -93,11 +130,10 @@ export type AgentSessionImportMaxMessages = typeof AgentSessionImportMaxMessages
 export const DEFAULT_AGENT_SESSION_IMPORT_MAX_MESSAGES: AgentSessionImportMaxMessages = 200;
 
 /**
- * Fork: client access of the machine map (MM-916). `off`: a browser that passes Cloudflare
- * Access as the owner gets the owner access, as before. `observe`: the browser proves its key; a
- * key that an approved client holds gets that client's arrow, at most `standard`, and any other
- * key keeps the owner access and waits in the portal for approval. `enforce` (MM-918): only a key
- * of an approved client gets in, with the full level of its arrow.
+ * Fork: client access of the machine map (MM-916). `off`: an Access owner gets owner access.
+ * `observe`: an approved client key gets its client's arrow, at most `standard`; other keys keep
+ * owner access and wait for approval. `enforce` (MM-918): only approved client keys get in, with
+ * the full level of their arrow.
  */
 export const ClientAccessMode = Schema.Literals(["off", "observe", "enforce"]);
 export type ClientAccessMode = typeof ClientAccessMode.Type;
@@ -124,20 +160,6 @@ export const PullRequestWatchRemarkFilter = Schema.Struct({
 });
 export type PullRequestWatchRemarkFilter = typeof PullRequestWatchRemarkFilter.Type;
 
-export const DEFAULT_MACHINE_MAP_PORTAL_URL = "https://map.tomcohen.dev";
-
-/**
- * Fork: machine map (`apps/machine-map/SPEC.md`, MM-1301). Off means no portal connection and no
- * change to auth. The machine token lives in the server secret store, never here (MM-1302).
- */
-export const MachineMapSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  portalUrl: TrimmedNonEmptyString.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_MACHINE_MAP_PORTAL_URL)),
-  ),
-});
-export type MachineMapSettings = typeof MachineMapSettings.Type;
-
 export const ForkClientSettingsFields = {
   confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: a focused terminal hands keys that match an app keybinding to the app first. */
@@ -152,15 +174,10 @@ export const ForkClientSettingsFields = {
   ),
   /** Fork: background work status icons open a details popover; their descriptions render markdown links. */
   backgroundWorkDetails: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Fork: pin buttons on messages, and the lists of pins in thread details and the sidebar. */
+  messagePins: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: a changelog of fork releases, upstream changes and Fork Sync runs from the update UI. */
   forkChangelogEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /**
-   * Fork: an install of a downloaded desktop update checks for a newer release first, and offers
-   * to download that one instead. Unattended installs take the newer release.
-   */
-  checkNewerBeforeUpdateInstall: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
-  ),
   /**
    * Fork: the web app registers a service worker for the installed app (`apps/web/public/sw.js`):
    * an offline page, notifications on Android and iOS, and the badge on the app icon.
@@ -172,19 +189,15 @@ export const ForkClientSettingsFields = {
    */
   webPushEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
-   * Fork: filter by repository owner (`repositoryOwnerOf`) on the pull request page and in the
-   * sidebar. Remove when upstream T3 Code ships its own owner or organization filter.
+   * Fork: pull request filters. A filter by repository owner (`repositoryOwnerOf`) on the pull
+   * request page and in the sidebar, and the active pull request filters as chips above the list.
+   * Remove a part when upstream T3 Code ships its own owner filter or active-filter chips.
    */
-  repositoryOwnerFilters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /**
-   * Fork: the active pull request filters show as chips above the list, and an empty list names
-   * the filters that emptied it. Remove when upstream T3 Code shows its active filters itself.
-   */
-  pullRequestFilterChips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  pullRequestFilters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
    * Fork: the sidebar filter by repository owner. "is" shows only the projects of these owners,
    * and "is_not" hides them. Null stands for projects without an owner. No owners shows every
-   * project. Applies only while `repositoryOwnerFilters` is on.
+   * project. Applies only while `pullRequestFilters` is on.
    */
   sidebarOwnerFilter: SidebarOwnerFilter.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
@@ -197,11 +210,6 @@ export const ForkClientSettingsFields = {
   sidebarTabSingleThreadOpens: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
-  /**
-   * Fork: the quick options of the web and desktop snooze menus, in menu order. Null keeps the
-   * built-in options. The mobile app always shows the built-in options.
-   */
-  snoozeQuickOptions: SnoozeQuickOptions.pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   /**
    * Fork: focus levels. Escape moves focus from the composer to the timeline, then to the
    * sidebar. Arrow keys move a cursor in the timeline and the sidebar. Off by default, because
@@ -220,6 +228,67 @@ export const ForkClientSettingsFields = {
   tooltipShortcuts: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: the most keys one tooltip shows; more show as "+N". */
   tooltipShortcutLimit: TooltipShortcutLimit.pipe(Schema.withDecodingDefault(Effect.succeed(4))),
+  /** Fork: the smallest font size that the zoom keys of a terminal thread reach. */
+  terminalThreadFontSizeMin: TerminalThreadFontLimit.pipe(
+    Schema.withDecodingDefault(Effect.succeed(8)),
+  ),
+  /** Fork: the largest font size that the zoom keys of a terminal thread reach. */
+  terminalThreadFontSizeMax: TerminalThreadFontLimit.pipe(
+    Schema.withDecodingDefault(Effect.succeed(24)),
+  ),
+  /** Fork: keys that every terminal sends as fixed bytes. See `TerminalKeyMapping`. */
+  terminalKeyMappings: Schema.Array(TerminalKeyMapping)
+    .check(Schema.isMaxLength(MAX_TERMINAL_KEY_MAPPINGS))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  /**
+   * Fork: "New terminal thread in current project" makes the terminal thread at once, like the
+   * enlarge button of a terminal draft. Off, because the thread shows before a command runs.
+   */
+  currentProjectTerminalOpensThread: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /** Fork: back and forward buttons next to the sidebar toggle in the title bar. Off, because it changes the title bar. */
+  backForwardButtons: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: hides the T3 Code wordmark in the sidebar and the environment pill. */
+  brandingHidden: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: the desktop app keeps the back history after a restart, and back and forward skip
+   * threads and drafts that no longer exist. Off, because it changes what back does.
+   */
+  rememberBackForwardHistory: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /**
+   * Fork: right after the app starts, the composer waits longer before it warns that a server
+   * is reconnecting. Off by default, because it delays an existing warning.
+   */
+  restartReconnectWarningGrace: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /**
+   * Fork: `settings.find` (`mod+f` by default) opens a find box that filters the rows of the open
+   * Settings page. Off by default, because it takes `mod+f` from the search of all settings.
+   */
+  settingsFind: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: how long an in-app thread notification shows. 5 is the toast default. */
+  inAppNotificationSeconds: InAppNotificationSeconds.pipe(
+    Schema.withDecodingDefault(Effect.succeed(5)),
+  ),
+  /** Fork: a thread that finishes shows an in-app notification. Off shows only threads that need you. */
+  inAppNotificationCompletions: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
+  /**
+   * Fork: a notification that asks for input or approval, or tells of a failure, stays until you
+   * close it. Off, because it changes how long these notifications show.
+   */
+  inAppNotificationAttentionStays: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
+  /** Fork: opening a thread closes its in-app notifications. Off, because it changes when they close. */
+  inAppNotificationClosesOnOpen: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
 };
 
 export const ForkClientSettingsPatchFields = {
@@ -227,21 +296,34 @@ export const ForkClientSettingsPatchFields = {
   terminalAppShortcutsFirst: Schema.optionalKey(Schema.Boolean),
   appToggleShortcuts: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   backgroundWorkDetails: Schema.optionalKey(Schema.Boolean),
+  messagePins: Schema.optionalKey(Schema.Boolean),
   forkChangelogEnabled: Schema.optionalKey(Schema.Boolean),
-  checkNewerBeforeUpdateInstall: Schema.optionalKey(Schema.Boolean),
   installedAppEnabled: Schema.optionalKey(Schema.Boolean),
   webPushEnabled: Schema.optionalKey(Schema.Boolean),
-  repositoryOwnerFilters: Schema.optionalKey(Schema.Boolean),
-  pullRequestFilterChips: Schema.optionalKey(Schema.Boolean),
+  pullRequestFilters: Schema.optionalKey(Schema.Boolean),
   sidebarOwnerFilter: Schema.optionalKey(SidebarOwnerFilter),
   sidebarTabsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarTabSingleThreadOpens: Schema.optionalKey(Schema.Boolean),
-  snoozeQuickOptions: Schema.optionalKey(SnoozeQuickOptions),
   keyboardFocusLevels: Schema.optionalKey(Schema.Boolean),
   focusLevelHighlight: Schema.optionalKey(Schema.Boolean),
   inkwireWhiteFrame: Schema.optionalKey(Schema.Boolean),
   tooltipShortcuts: Schema.optionalKey(Schema.Boolean),
   tooltipShortcutLimit: Schema.optionalKey(TooltipShortcutLimit),
+  terminalThreadFontSizeMin: Schema.optionalKey(TerminalThreadFontLimit),
+  terminalThreadFontSizeMax: Schema.optionalKey(TerminalThreadFontLimit),
+  terminalKeyMappings: Schema.optionalKey(
+    Schema.Array(TerminalKeyMapping).check(Schema.isMaxLength(MAX_TERMINAL_KEY_MAPPINGS)),
+  ),
+  currentProjectTerminalOpensThread: Schema.optionalKey(Schema.Boolean),
+  backForwardButtons: Schema.optionalKey(Schema.Boolean),
+  brandingHidden: Schema.optionalKey(Schema.Boolean),
+  rememberBackForwardHistory: Schema.optionalKey(Schema.Boolean),
+  restartReconnectWarningGrace: Schema.optionalKey(Schema.Boolean),
+  settingsFind: Schema.optionalKey(Schema.Boolean),
+  inAppNotificationSeconds: Schema.optionalKey(InAppNotificationSeconds),
+  inAppNotificationCompletions: Schema.optionalKey(Schema.Boolean),
+  inAppNotificationAttentionStays: Schema.optionalKey(Schema.Boolean),
+  inAppNotificationClosesOnOpen: Schema.optionalKey(Schema.Boolean),
 };
 
 /**
@@ -249,22 +331,40 @@ export const ForkClientSettingsPatchFields = {
  * opens a draft in the project of the last new thread on the phone, and `none` opens a draft
  * without a project. A thread link, a share or a prompt link keeps its own project.
  */
+/** Fork: manual installs only on a request; automatic installs the newest release when idle. */
+export const ForkUpdateMode = Schema.Literals(["manual", "automatic"]);
+export type ForkUpdateMode = typeof ForkUpdateMode.Type;
+
 export const MobileNewThreadProject = Schema.Literals(["picker", "last", "none"]);
 export type MobileNewThreadProject = typeof MobileNewThreadProject.Type;
 
 export const ForkServerSettingsFields = {
-  worktreeArtifactEviction: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  worktreeArtifactEvictionDays: Schema.Int.check(
-    Schema.isBetween({ minimum: 1, maximum: 3650 }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed(14))),
+  /**
+   * Fork worktree lifecycle, "keep" stage: remove ignored build outputs and dependencies of a
+   * worktree after this many idle days. Null keeps them. See docs/fork/features.md.
+   */
+  worktreeArtifactsAfterDays: Schema.NullOr(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /**
+   * Fork worktree lifecycle, "restore" and "clean" stages: rebuild a missing worktree on resume,
+   * and let storage cleanup delete a branch that restore can rebuild.
+   */
   restoreWorktreesOnResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: auto-settle skips a thread while a background command of its agent runs. Settling
+   * stops the provider session, which kills the command and the wake-up it would send.
+   */
+  autoSettleWaitsForBackgroundCommands: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   /** Fork: use the joined machine map name as the environment label. */
   environmentLabelFromMachineMap: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   /**
-   * Fork: where new worktrees go, such as `{repoDir}/{branchLeaf}`. Empty
-   * keeps the `worktreesDirectory` layout. See docs/fork/features.md.
+   * Fork worktree lifecycle, "place" stage: where new worktrees go, such as
+   * `{repoDir}/{branchLeaf}`. Empty keeps the `worktreesDirectory` layout. See docs/fork/features.md.
    */
   worktreePathTemplate: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
@@ -285,10 +385,12 @@ export const ForkServerSettingsFields = {
     ),
   ),
   /**
-   * Fork: a server that runs as the background service installs each newer
-   * fork release when no agent turn runs. See docs/fork/operations.md "Server updates".
+   * Fork: "automatic" installs the newest fork release when this machine is idle. The background
+   * service and the desktop app both follow it. See docs/fork/features.md "Updates".
    */
-  forkAutoUpdate: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  forkUpdateMode: ForkUpdateMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("manual" as const)),
+  ),
   /**
    * Scripts available in every project of this environment. They run where a
    * project script runs for the thread: its worktree, else the project root.
@@ -306,6 +408,11 @@ export const ForkServerSettingsFields = {
   pinnedProjectScriptIds: Schema.Record(ProjectId, Schema.Array(TrimmedNonEmptyString)).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /**
+   * Fork: pinned messages. Stored on the server, so every client of this environment shows the
+   * same pins. The client setting `messagePins` shows them.
+   */
+  pinnedMessages: PinnedMessages.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   agentSessionImportWindowDays: AgentSessionImportWindowDays.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_AGENT_SESSION_IMPORT_WINDOW_DAYS)),
   ),
@@ -321,24 +428,11 @@ export const ForkServerSettingsFields = {
    */
   preferOriginRemote: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: thread links render as the attached-thread chip, and an https thread address of an
-   * environment that the client knows opens inside T3. A server setting, so the mobile app reads it.
+   * Fork: thread addresses and app links render as the attached-thread chip and open in T3, each
+   * message offers Copy message link, and a thread address from outside T3 Code in a browser tab
+   * opens the app (`t3code://threads/...`). A server setting, so the mobile app reads it.
    */
-  threadLinkChips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /**
-   * Fork: a thread address opened from outside T3 Code in a plain browser tab hands the thread to
-   * the desktop app (`t3code://threads/...`) as soon as the page loads.
-   */
-  threadLinksOpenDesktopApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /**
-   * Fork: a thread link with `#<messageId>` opens the thread at that message, scrolls to it and
-   * highlights it. Off: the link opens the thread only.
-   */
-  messageLinks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  /** Fork: machine map connection. See `MachineMapSettings`. */
-  machineMap: MachineMapSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-  /** Fork: how a Cloudflare Access sign-in of a browser meets the clients of the map. See `ClientAccessMode`. */
-  clientAccess: ClientAccessMode.pipe(Schema.withDecodingDefault(Effect.succeed("off"))),
+  threadAddressing: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: user-built thread card layouts. See `ThreadCardLayouts`. */
   threadCardLayouts: ThreadCardLayouts.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
@@ -349,7 +443,7 @@ export const ForkServerSettingsFields = {
   sidebarTabs: SidebarTabs.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   /**
    * Fork: the machine map reports and applies the rules of `keybindings.json` as the server
-   * setting `keybindings` (`KEYBINDINGS_SETTING_KEY`). See apps/machine-map/README.md "Keybinding sync".
+   * setting `keybindings` (`KEYBINDINGS_SETTING_KEY`).
    */
   keybindingSync: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
@@ -367,9 +461,10 @@ export const ForkServerSettingsFields = {
    */
   previewLocalServerGroups: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: the mobile app offers the themes that this server publishes, with their fonts, shape
-   * and canvas pattern, and takes `defaultTheme`. A server setting, so the machine map syncs it
-   * and the mobile app reads it.
+   * Fork: the one switch of the Themes feature. The mobile app offers the themes that this server
+   * publishes, with their fonts, shape and canvas pattern, and takes `defaultTheme`. Web and
+   * desktop need no switch: the chosen theme carries its style and icons. A server setting, so
+   * the machine map syncs it and the mobile app reads it.
    */
   mobilePublishedThemes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: what "New thread" opens in the mobile app. See `MobileNewThreadProject`. */
@@ -381,6 +476,11 @@ export const ForkServerSettingsFields = {
    * turns the plus button into a menu on a server without file attachments.
    */
   mobileComposerCamera: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: the long-press menu of a mobile message offers Pin and Unpin (`pinnedMessages`). A
+   * server setting, because the mobile app has no fork client settings.
+   */
+  mobileMessagePins: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Fork: the home thread list of the mobile app shows the `sidebarTabs` tabs. */
   mobileSidebarTabs: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
@@ -389,32 +489,47 @@ export const ForkServerSettingsFields = {
    * Empty keeps no copy. Off by default, because it sends thread content to another machine.
    */
   threadBackupMachine: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /**
+   * Fork: terminal threads (`forkTerminalThreads.ts`). A thread whose screen is a terminal. A
+   * server setting, because the server starts the shell and writes the shell integration.
+   */
+  terminalThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: how many lines of output the server keeps for each terminal. */
+  terminalHistoryLines: TerminalHistoryLines.pipe(Schema.withDecodingDefault(Effect.succeed(5000))),
+  /** Fork: how many megabytes of output the server keeps for each terminal. */
+  terminalHistoryMegabytes: TerminalHistoryMegabytes.pipe(
+    Schema.withDecodingDefault(Effect.succeed(8)),
+  ),
 };
 
 export const ForkServerSettingsPatchFields = {
-  worktreeArtifactEviction: Schema.optionalKey(Schema.Boolean),
-  worktreeArtifactEvictionDays: Schema.optionalKey(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
+  worktreeArtifactsAfterDays: Schema.optionalKey(
+    Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 }))),
   ),
   restoreWorktreesOnResume: Schema.optionalKey(Schema.Boolean),
+  autoSettleWaitsForBackgroundCommands: Schema.optionalKey(Schema.Boolean),
   environmentLabelFromMachineMap: Schema.optionalKey(Schema.Boolean),
   worktreePathTemplate: Schema.optionalKey(TrimmedString),
   recoverInterruptedTurns: Schema.optionalKey(Schema.Boolean),
   recoverInterruptedTurnsMessage: Schema.optionalKey(TrimmedNonEmptyString),
   recoverInterruptedTurnsSubagentMessage: Schema.optionalKey(TrimmedNonEmptyString),
-  forkAutoUpdate: Schema.optionalKey(Schema.Boolean),
+  forkUpdateMode: Schema.optionalKey(ForkUpdateMode),
   globalScripts: Schema.optionalKey(Schema.Array(ProjectScript)),
   pinnedGlobalScriptIds: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   /** Per-project entry replacement: each entry replaces that project's pins and `null` removes them. */
   pinnedProjectScriptIds: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Array(TrimmedNonEmptyString))),
   ),
+  /** Per-pin entry replacement: an entry adds that pin and `null` removes it. */
+  pinnedMessages: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.NullOr(MessagePin)).check(
+      Schema.isMaxProperties(MESSAGE_PINS_MAX),
+    ),
+  ),
   agentSessionImportWindowDays: Schema.optionalKey(AgentSessionImportWindowDays),
   agentSessionImportMaxMessages: Schema.optionalKey(AgentSessionImportMaxMessages),
   preferOriginRemote: Schema.optionalKey(Schema.Boolean),
-  threadLinkChips: Schema.optionalKey(Schema.Boolean),
-  threadLinksOpenDesktopApp: Schema.optionalKey(Schema.Boolean),
-  messageLinks: Schema.optionalKey(Schema.Boolean),
+  threadAddressing: Schema.optionalKey(Schema.Boolean),
   keybindingSync: Schema.optionalKey(Schema.Boolean),
   /** An empty value removes the saved key; the redaction marker keeps it. */
   voiceTranscriptionOpenAiApiKey: Schema.optionalKey(TrimmedString),
@@ -422,8 +537,12 @@ export const ForkServerSettingsPatchFields = {
   mobilePublishedThemes: Schema.optionalKey(Schema.Boolean),
   mobileNewThreadProject: Schema.optionalKey(MobileNewThreadProject),
   mobileComposerCamera: Schema.optionalKey(Schema.Boolean),
+  mobileMessagePins: Schema.optionalKey(Schema.Boolean),
   mobileSidebarTabs: Schema.optionalKey(Schema.Boolean),
   threadBackupMachine: Schema.optionalKey(TrimmedString),
+  terminalThreads: Schema.optionalKey(Schema.Boolean),
+  terminalHistoryLines: Schema.optionalKey(TerminalHistoryLines),
+  terminalHistoryMegabytes: Schema.optionalKey(TerminalHistoryMegabytes),
   /** Replaces the saved tabs whole: a merge would keep deleted tabs and assignments. */
   sidebarTabs: Schema.optionalKey(SidebarTabs),
   /** Per surface: a patched layout replaces the saved one, and `null` restores the built-in card. */
@@ -431,14 +550,6 @@ export const ForkServerSettingsPatchFields = {
     Schema.Struct({
       desktop: Schema.optionalKey(Schema.NullOr(StoredThreadCardLayout)),
       mobile: Schema.optionalKey(Schema.NullOr(StoredThreadCardLayout)),
-    }),
-  ),
-  clientAccess: Schema.optionalKey(ClientAccessMode),
-  /** Merges per field: a patched field replaces the saved one. */
-  machineMap: Schema.optionalKey(
-    Schema.Struct({
-      enabled: Schema.optionalKey(Schema.Boolean),
-      portalUrl: Schema.optionalKey(TrimmedNonEmptyString),
     }),
   ),
   /** Merges per field: a patched field replaces the saved one. */

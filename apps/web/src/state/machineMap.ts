@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { ReadableThreadEnvironment } from "@t3tools/client-runtime/composerThreadItems";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { createReadableThreadEnvironmentAtoms } from "@t3tools/client-runtime/state/readableThreadEnvironments";
 import {
   createEnvironmentRpcCommand,
@@ -7,45 +7,52 @@ import {
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "@t3tools/client-runtime/state/runtime";
 import { type EnvironmentId, type MachineMapClientState, WS_METHODS } from "@t3tools/contracts";
-import { Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useEnvironmentQuery } from "./query";
 
-/**
- * Fork: machine map (apps/machine-map/SPEC.md). The server pushes its whole client state again
- * on each change. Only the local desktop app gets `tokenHeaders` and `desktopCommands`.
- */
+/** Fork: this server's kitshn client state, pushed whole again on each change. */
 const machineMapState = createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
   label: "environment-data:machine-map:state",
   tag: WS_METHODS.machineMapSubscribe,
+  // The last reader that unmounts ends the stream at once. The server sends the whole state again.
+  idleTtlMs: 0,
 });
 
-export const joinMachineMap = createEnvironmentRpcCommand(connectionAtomRuntime, {
-  label: "environment-data:machine-map:join",
-  tag: WS_METHODS.machineMapJoin,
-  concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
-});
-
-export const leaveMachineMap = createEnvironmentRpcCommand(connectionAtomRuntime, {
-  label: "environment-data:machine-map:leave",
-  tag: WS_METHODS.machineMapLeave,
-  concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
-});
-
-export const reportMachineMapDesktop = createEnvironmentRpcCommand(connectionAtomRuntime, {
-  label: "environment-data:machine-map:report-desktop",
-  tag: WS_METHODS.machineMapReportDesktop,
-  concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
-});
-
-/** MM-411: a change saved for all environments becomes the shared value of the map. */
+/** MM-411 on kitshn: a change saved for all environments goes into the shared `t3.settings`. */
 export const shareMachineMapSettings = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "environment-data:machine-map:share-settings",
   tag: WS_METHODS.machineMapShareSettings,
   concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
 });
+
+/** The owner sets a circle part of `t3.settings` with the person picker of T3 Settings. */
+export const setMachineMapCircleSettings = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:machine-map:set-circle-settings",
+  tag: WS_METHODS.machineMapSetCircleSettings,
+  concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+});
+
+const machineMapStates = Atom.family((environmentIdsKey: string) =>
+  Atom.make((get) => {
+    const states = new Map<EnvironmentId, MachineMapClientState>();
+    for (const environmentId of JSON.parse(environmentIdsKey) as EnvironmentId[]) {
+      const state = AsyncResult.getOrElse(
+        get(machineMapState({ environmentId, input: {} })),
+        () => null,
+      );
+      if (state !== null) states.set(environmentId, state);
+    }
+    return states;
+  }).pipe(Atom.withLabel(`environment-data:machine-map:states:${environmentIdsKey}`)),
+);
+
+/** The kitshn client states of several environments, for rows that compare them. */
+export function useMachineMapStates(
+  environmentIds: ReadonlyArray<EnvironmentId>,
+): ReadonlyMap<EnvironmentId, MachineMapClientState> {
+  return useAtomValue(machineMapStates(JSON.stringify(environmentIds)));
+}
 
 export function useMachineMapState(environmentId: EnvironmentId | null): {
   readonly state: MachineMapClientState | null;
@@ -57,31 +64,14 @@ export function useMachineMapState(environmentId: EnvironmentId | null): {
   return { state: query.data, error: query.error };
 }
 
-/**
- * MM-1701: the map for the Machines panel. Each read is one portal call, so a result stays fresh
- * for 15 seconds and drops soon after the panel closes.
- */
-export const machinesRead = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
-  label: "environment-data:machine-map:read",
-  tag: WS_METHODS.machineMapRead,
+/** K-1609: this environment and the machines that its kitshn links reach, for the Machines panel. */
+export const linkedMachines = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:kitshn:linked-machines",
+  tag: WS_METHODS.machineMapReadableEnvironments,
   staleTimeMs: 15_000,
   idleTtlMs: 30_000,
 });
-
 const readableThreadEnvironmentAtoms = createReadableThreadEnvironmentAtoms(connectionAtomRuntime);
-
-const NO_READABLE_ENVIRONMENTS = Atom.make<ReadonlyArray<ReadableThreadEnvironment>>([]);
-
-/** MM-1907: the composer's environment first, then the machines that its agent reads. */
-export function useReadableThreadEnvironments(
-  environmentId: EnvironmentId | null,
-): ReadonlyArray<ReadableThreadEnvironment> {
-  return useAtomValue(
-    environmentId === null
-      ? NO_READABLE_ENVIRONMENTS
-      : readableThreadEnvironmentAtoms.readable(environmentId),
-  );
-}
 
 /** MM-1906: the readable environment ids of each environment in `environmentIds`. */
 export function useReadableEnvironmentIdsByEnvironment(
@@ -91,7 +81,3 @@ export function useReadableEnvironmentIdsByEnvironment(
     readableThreadEnvironmentAtoms.readableIdsByEnvironment(environmentIds.join("\u0000")),
   );
 }
-
-/** MM-1906: the readable environment ids of `environmentId` once its server answered. */
-export const loadReadableThreadEnvironmentIds = (environmentId: EnvironmentId) =>
-  readableThreadEnvironmentAtoms.loadReadableIds(appAtomRegistry, environmentId);

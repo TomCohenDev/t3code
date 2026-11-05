@@ -22,6 +22,7 @@ import { restrictToHorizontalAxis, restrictToParentElement } from "@dnd-kit/modi
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { showContextMenuFallback } from "~/contextMenuFallback";
+import { requestForkContextMenu } from "~/forkContextMenu";
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -44,7 +45,7 @@ import {
 import { Popover, PopoverPopup } from "../ui/popover";
 import { useSidebar } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ShortcutHint } from "../focusLevels/ShortcutHint";
+import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 import {
   DEFAULT_SIDEBAR_TAB_ID,
@@ -180,7 +181,9 @@ function TabButton(props: {
   const tooltip = tabTooltip(tab);
   return (
     <Tooltip>
-      <TooltipTrigger
+      <ShortcutTrigger
+        command={props.jumpCommand}
+        context={{ sidebarFocus: true }}
         render={
           <button
             ref={(node) => {
@@ -227,7 +230,7 @@ function TabButton(props: {
         }
       >
         <TabLabel tab={tab} project={props.project} squeezed={props.squeezed} />
-      </TooltipTrigger>
+      </ShortcutTrigger>
       <TooltipPopup side="bottom">
         {tooltip}
         <ShortcutHint command={props.jumpCommand} context={{ sidebarFocus: true }} />
@@ -439,10 +442,9 @@ export function SidebarTabBar(props: {
     }
   };
   const openBarMenu = async (position: { x: number; y: number }) => {
-    const clicked = await showContextMenuFallback(
-      [{ id: "new", label: "New tab", disabled: !state.ready }],
-      position,
-    );
+    const items = [{ id: "new", label: "New tab", disabled: !state.ready }];
+    const clicked = await (requestForkContextMenu(items, position) ??
+      showContextMenuFallback(items, position));
     if (clicked === "new") createTabAndEdit();
   };
   return (

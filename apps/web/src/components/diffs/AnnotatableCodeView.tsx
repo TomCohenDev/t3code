@@ -83,7 +83,8 @@ interface AnnotatableCodeViewProps {
   pendingFiles: ReadonlyArray<FileDiffMetadata>;
   sectionId: string;
   sectionTitle: string;
-  composerDraftTarget: ScopedThreadRef | DraftId;
+  /** Null without a composer: the view then offers no comments. */
+  composerDraftTarget: ScopedThreadRef | DraftId | null;
   options: StyledDiffCodeViewOptions<DiffCommentAnnotationGroup>;
   viewerRef?: Ref<AnnotatableCodeViewHandle>;
   className?: string;
@@ -123,7 +124,9 @@ export function AnnotatableCodeView({
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
   const reviewComments = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.reviewComments ?? EMPTY_REVIEW_COMMENTS,
+    (store) =>
+      (composerDraftTarget === null ? null : store.getComposerDraft(composerDraftTarget))
+        ?.reviewComments ?? EMPTY_REVIEW_COMMENTS,
   );
   const [selectedLines, setSelectedLines] = useState<{
     id: string;
@@ -197,7 +200,7 @@ export function AnnotatableCodeView({
     if (draft?.annotation.metadata.entries.some((entry) => entry.id === entryId)) {
       setDraft(null);
       setDraftText("");
-    } else {
+    } else if (composerDraftTarget !== null) {
       removeReviewComment(composerDraftTarget, entryId);
     }
   };
@@ -215,7 +218,7 @@ export function AnnotatableCodeView({
       range: entry.range,
       text,
     });
-    if (comment) addReviewComment(composerDraftTarget, comment);
+    if (comment && composerDraftTarget !== null) addReviewComment(composerDraftTarget, comment);
     setSelectedLines(null);
     setDraft(null);
     setDraftText("");
@@ -225,8 +228,6 @@ export function AnnotatableCodeView({
     if (!range) return;
     const item = context.item;
     if (item.type !== "diff") return;
-    // Read from the item, not the file list, so the compiled callback keeps its identity
-    // as patches arrive; the viewer re-applies its options whenever it changes.
     const id = nextFileCommentId();
     const filePath = resolveFileDiffPath(item.fileDiff);
     const comment = buildDiffReviewComment({
@@ -273,7 +274,7 @@ export function AnnotatableCodeView({
       onRevealSearchMatch={(item) => onRevealSearchMatch(item.id)}
       options={{
         ...options,
-        enableGutterUtility: draft === null,
+        enableGutterUtility: draft === null && composerDraftTarget !== null,
         enableLineSelection: draft === null,
         onGutterUtilityClick: beginComment,
       }}
@@ -285,7 +286,7 @@ export function AnnotatableCodeView({
           ? renderHeaderPrefix(item.fileDiff, item.id, item.collapsed === true)
           : null
       }
-      renderAnnotation={(annotation) => {
+      renderAnnotation={(...[annotation]) => {
         const hasDraft = annotation.metadata.entries.some((entry) => entry.kind === "draft");
         return (
           <div

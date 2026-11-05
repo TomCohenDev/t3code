@@ -20,7 +20,7 @@ export function KeyboardFocusLevelsSettingsRow() {
   return (
     <SettingsRow
       {...searchableSetting("keyboard-focus-levels")}
-      description="Escape moves focus from the composer to the timeline, then to the sidebar. Arrow keys move a cursor there to open threads, switch groups and cite parts of messages."
+      description="Escape moves focus from the composer to the timeline, then to the sidebar. Arrow keys move a cursor there to open threads, switch tabs and cite parts of messages."
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.keyboardFocusLevels ? (
           <SettingResetButton
@@ -80,13 +80,13 @@ export function FocusLevelHighlightSettingsRow() {
 
 const selectTooltipShortcuts = (settings: ClientSettings) => settings.tooltipShortcuts;
 
-/** Fork: `tooltipShortcuts`, control tooltips name the keyboard shortcut of the control. */
+/** Fork: `tooltipShortcuts`, tooltips, menus and the command palette name the keys of an action. */
 export function TooltipShortcutsSettingsRow() {
   const enabled = useClientSettings(selectTooltipShortcuts);
   return (
     <SettingsRow
       {...searchableSetting("tooltip-shortcuts")}
-      description="Show the keyboard shortcut of a control in its tooltip, such as the stash, the runtime mode or the approval buttons."
+      description="Show the keyboard shortcuts of actions in tooltips, menus and the command palette."
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.tooltipShortcuts ? (
           <SettingResetButton

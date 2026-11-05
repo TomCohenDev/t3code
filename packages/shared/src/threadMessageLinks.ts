@@ -20,6 +20,19 @@ export function threadLinkMessageId(href: string): MessageId | null {
 }
 
 /**
+ * Fork: the id to load history through for a link that names `linkedId`. Links that another app
+ * percent-encoded (`msg%3A2`) name a stored id with `:`. Known limit: an id that holds a literal
+ * percent escape of its own loads as its decoded form; revisit if a provider makes such ids.
+ */
+export function linkedMessageLoadId(linkedId: string): string {
+  try {
+    return decodeURIComponent(linkedId);
+  } catch {
+    return linkedId;
+  }
+}
+
+/**
  * Fork: whether a link that names `linkedId` points at `messageId`. Like thread ids, a message id
  * can hold percent escapes of its own, so the id as written comes first and the decoded id second.
  */
@@ -41,6 +54,14 @@ export function messageLinkFromLocation(hash: string, search: string): MessageId
   if (fromHash !== null) return fromHash;
   const message = new URLSearchParams(search).get("message");
   return message === null ? null : Option.getOrNull(decodeMessageId(message));
+}
+
+/** Fork: `href` without its message link, so a reload does not open the message again. */
+export function withoutMessageLink(href: string): string {
+  const url = new URL(href);
+  if (messageLinkFragmentId(url.hash.slice(1)) !== null) url.hash = "";
+  url.searchParams.delete("message");
+  return url.href;
 }
 
 export type MessageLinkStep = "wait" | "scroll" | "expand" | "load" | "missing";

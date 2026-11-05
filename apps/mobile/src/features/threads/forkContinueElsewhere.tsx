@@ -1,9 +1,7 @@
 /**
- * Fork: "Continue on another machine" in the long-press menu of a thread row. It works while the
- * thread's machine is offline: the transcript comes from the machine itself, else from this
- * phone's cached copy or a thread backup on another machine (`threadBackupMachine`). It files a
- * share draft with the transcript as a `.jsonl` file, in the same repository on a connected
- * machine when one has it, so the usual share flow opens the draft.
+ * Fork: "Continue on another machine" in a thread row's long-press menu, also while the thread's
+ * machine is offline (transcript from it, the phone's cache or a `threadBackupMachine` backup).
+ * It files the transcript as a `.jsonl` share draft, so the usual share flow opens it.
  */
 import type { MenuAction } from "@react-native-menu/menu";
 import {
@@ -39,7 +37,7 @@ import { useQuietThreadShell } from "../../state/entities";
 import { environmentProjects } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
-import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import { addIncomingShare } from "../sharing/IncomingShareProvider";
 
 const CONTINUE_EVENT = "fork-continue-elsewhere";
 const MENU_ITEMS: MenuAction[] = [
@@ -70,7 +68,6 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
     reportFailure: false,
   });
   const { connectedEnvironments } = useRemoteConnectionStatus();
-  const { addShare } = useIncomingShare();
 
   return useCallback(
     async (thread: EnvironmentThreadShell) => {
@@ -125,7 +122,7 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
         `${title.replace(/[^\p{L}\p{N}._ -]/gu, "_").slice(0, 64)}.jsonl`,
         contents,
       );
-      await addShare({
+      await addIncomingShare({
         schemaVersion: 1,
         id: `continue-${uuidv4()}`,
         createdAt: new Date().toISOString(),
@@ -147,7 +144,7 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
         warnings: [],
       });
     },
-    [addShare, connectedEnvironments, loadContinuation],
+    [connectedEnvironments, loadContinuation],
   );
 }
 
@@ -174,6 +171,7 @@ export function useContinueElsewhereMenu(thread: EnvironmentThreadShell): {
 export function ContinueElsewhereCoordinator(): null {
   const request = useAtomValue(continueRequestAtom);
   const continueElsewhere = useContinueThreadElsewhere();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- takes each request out of the registry atom that the row menus write
   useEffect(() => {
     if (request === null) return;
     appAtomRegistry.set(continueRequestAtom, null);

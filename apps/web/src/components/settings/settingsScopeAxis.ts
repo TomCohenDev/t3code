@@ -15,19 +15,19 @@ export function settingsScopeEnvironmentAddress(environment: ScopeEnvironment) {
 
 export function settingsScopeEnvironmentLabels(
   environment: ScopeEnvironment,
-  environments?: readonly ScopeEnvironment[],
+  environments: readonly ScopeEnvironment[],
 ) {
-  const duplicates = environments?.filter(
+  const duplicates = environments.filter(
     (other) =>
       other.environmentId !== environment.environmentId && other.label === environment.label,
   );
   const address = settingsScopeEnvironmentAddress(environment);
-  const secondary = duplicates?.some((other) => settingsScopeEnvironmentAddress(other) === address)
+  const secondary = duplicates.some((other) => settingsScopeEnvironmentAddress(other) === address)
     ? environment.displayUrl || environment.environmentId
     : address;
   return {
     primary: environment.label,
-    secondary: environments === undefined || duplicates?.length ? secondary : "",
+    secondary: duplicates.length ? secondary : "",
   };
 }
 
@@ -87,6 +87,7 @@ export function selectEnvironmentAxis(
   const next: SettingsScopeSearch = {};
   if (search.project) next.project = search.project;
   if (value !== ALL_ENVIRONMENTS_VALUE) next.machine = value;
+  if (search.circle) next.circle = search.circle;
   return next;
 }
 
@@ -94,8 +95,33 @@ export function selectProjectAxis(search: SettingsScopeSearch, value: string): S
   const next: SettingsScopeSearch = {};
   if (value !== ALL_PROJECTS_VALUE) next.project = value;
   if (search.machine) next.machine = search.machine;
+  if (search.circle) next.circle = search.circle;
   return next;
 }
+
+/** Fork: the person axis. "All people" writes the shared and machine parts as before. */
+export const ALL_PEOPLE_VALUE = "all";
+
+export function personAxisValue(search: SettingsScopeSearch): string {
+  return search.circle ?? ALL_PEOPLE_VALUE;
+}
+
+export function selectPersonAxis(search: SettingsScopeSearch, value: string): SettingsScopeSearch {
+  const { circle: _circle, ...next } = search;
+  return value === ALL_PEOPLE_VALUE ? next : { ...next, circle: value };
+}
+
+/**
+ * Fork: the settings pages with person settings (`CIRCLE_SETTINGS`), where the owner picks a
+ * circle. Revisit when a page gains or loses its last person setting.
+ */
+export const SETTINGS_PERSON_PATHS: ReadonlySet<string> = new Set([
+  "/settings/general",
+  "/settings/appearance",
+  "/settings/chat",
+  "/settings/diffs",
+  "/settings/browser",
+]);
 
 export function selectSingleEnvironmentScope(
   search: SettingsScopeSearch,

@@ -10,6 +10,9 @@ import { CheckIcon, ChevronRightIcon, LayersIcon } from "lucide-react";
 import * as Equal from "effect/Equal";
 
 import { cn } from "../../lib/utils";
+import { type CircleInheritance, circleInheritance } from "../../machineMap/circleSettings.logic";
+import { useSelectedSettingsCircle } from "../../machineMap/circleSettings";
+import { useMachineMapStates } from "../../state/machineMap";
 import type { EnvironmentPresentation } from "../../state/environments";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { resolveEnvModeLabel, WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
@@ -24,7 +27,7 @@ import { isProjectScopedSettingKey } from "./scopedSettings";
 import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 
 interface InheritanceLayer {
-  readonly key: "project" | "environment" | "t3.json" | "built-in";
+  readonly key: "project" | "circle" | "environment" | "t3.json" | "built-in";
   readonly label: string;
   readonly value: string;
   readonly effective: boolean;
@@ -35,6 +38,13 @@ const WRITING_STYLE_LABELS: Record<string, string> = {
   repo_conventions: "Repository conventions",
   conventional_commits: "Conventional Commits",
   custom: "Custom instructions",
+};
+
+const BACKGROUND_ACTIVITY_PROFILE_LABELS: Record<string, string> = {
+  balanced: "Balanced",
+  performance: "Performance",
+  "battery-saver": "Battery saver",
+  custom: "Advanced",
 };
 
 function formatValue(key: keyof ServerSettings, value: unknown): string {
@@ -75,23 +85,31 @@ function formatValue(key: keyof ServerSettings, value: unknown): string {
   }
   if (Array.isArray(value)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;
   if (typeof value === "object") {
+    if (key === "backgroundActivity" && "profile" in value && typeof value.profile === "string") {
+      return BACKGROUND_ACTIVITY_PROFILE_LABELS[value.profile] ?? value.profile;
+    }
     if ("model" in value && typeof value.model === "string") return value.model;
     if ("mode" in value && typeof value.mode === "string") {
-      return WRITING_STYLE_LABELS[value.mode] ?? value.mode;
+      if (key === "worktreeCleanup") return value.mode === "off" ? "Off" : "Custom";
+      return key === "sourceControlWritingStyle"
+        ? (WRITING_STYLE_LABELS[value.mode] ?? value.mode)
+        : value.mode;
     }
   }
   return "Custom";
 }
 
-/**
- * Same order as `resolveProjectSettings`.
- */
+/** Matches resolveProjectSettings order. Fork: a kitshn circle sits between Project and Environment. */
 export function settingInheritanceLayers(
   target: ScopedSettingsTarget,
   environmentSettings: ServerSettings,
   key: keyof ServerSettings,
+  circle: CircleInheritance | null = null,
 ): readonly InheritanceLayer[] {
-  const environmentValue = environmentSettings[key];
+  const circleSet = circle !== null && circle.value !== undefined;
+  // The server sends a session its circle's value, so the saved value comes with the circle.
+  const environmentValue =
+    circleSet && circle.below !== undefined ? circle.below : environmentSettings[key];
   const source = isProjectScopedSettingKey(key) ? target.sources[key] : "environment";
   const environmentSet = !Equal.equals(environmentValue, DEFAULT_SERVER_SETTINGS[key]);
   const fileBacked = isProjectFileBackedSettingKey(key);
@@ -105,11 +123,20 @@ export function settingInheritanceLayers(
       set: source === "project",
     });
   }
+  if (circle !== null) {
+    layers.push({
+      key: "circle",
+      label: `Circle: ${circle.circle.name}`,
+      value: circleSet ? formatValue(key, circle.value) : "Inherits",
+      effective: source === "environment" && circleSet,
+      set: circleSet,
+    });
+  }
   layers.push({
     key: "environment",
     label: target.label,
     value: environmentSet ? formatValue(key, environmentValue) : "Inherits",
-    effective: source === "environment" && environmentSet,
+    effective: source === "environment" && environmentSet && !circleSet,
     set: environmentSet,
   });
   if (fileBacked && target.projectId !== null) {
@@ -121,8 +148,7 @@ export function settingInheritanceLayers(
       set: source === "t3.json",
     });
   }
-  // For a file-backed key the built-in is what the resolver produced with
-  // nothing set, not the null the schema decodes to.
+  // File-backed defaults come from the resolver, not the schema's decoded null.
   const builtIn = fileBacked
     ? PROJECT_FILE_BACKED_SETTINGS[key].builtIn
     : DEFAULT_SERVER_SETTINGS[key];
@@ -130,7 +156,7 @@ export function settingInheritanceLayers(
     key: "built-in",
     label: "Default",
     value: formatValue(key, builtIn),
-    effective: source === "environment" && !environmentSet,
+    effective: source === "environment" && !environmentSet && !circleSet,
     set: true,
   });
   return layers;
@@ -175,6 +201,10 @@ export function SettingInheritance({
   onClearOverrides?: (entries: readonly ProjectOverrideEntry[]) => void;
 }) {
   const scopeContext = useOptionalSettingsScope();
+  const selectedCircleId = useSelectedSettingsCircle()?.circle.id;
+  const machineMapStates = useMachineMapStates([
+    ...new Set(targets.map((target) => target.environmentId)),
+  ]);
   const key = keys[0];
   if (!key || targets.length === 0) return null;
   const hasMultipleEnvironments = new Set(targets.map((target) => target.environmentId)).size > 1;
@@ -194,7 +224,12 @@ export function SettingInheritance({
     const secondary = [labels.secondary, path?.split(/[\\/]/).filter(Boolean).slice(-2).join("/")]
       .filter(Boolean)
       .join(" · ");
-    const layers = settingInheritanceLayers(target, environment.serverConfig.settings, key);
+    const layers = settingInheritanceLayers(
+      target,
+      environment.serverConfig.settings,
+      key,
+      circleInheritance(machineMapStates.get(target.environmentId) ?? null, selectedCircleId, key),
+    );
     const winningLayer = layers.find((layer) => layer.effective);
     return [
       {

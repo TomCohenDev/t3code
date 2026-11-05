@@ -49,6 +49,7 @@ import {
   StarIcon,
   TagIcon,
   TerminalIcon,
+  UserRoundIcon,
   WrenchIcon,
   ZapIcon,
   type LucideIcon,
@@ -56,7 +57,7 @@ import {
 import { createElement, useSyncExternalStore, type ComponentType, type SVGProps } from "react";
 
 import { cn } from "~/lib/utils";
-import { getActiveThemeIcons, subscribeToActiveThemeIcons } from "../themePalette";
+import { getActiveThemeIcons, subscribeToActiveThemeIcons } from "../forkThemeStyle";
 
 /** A filled dot, the default icon of a tab. */
 function DotIcon(props: SVGProps<SVGSVGElement>) {
@@ -122,6 +123,7 @@ const STATIC_SLOT_ICONS = {
   "status.limited": CircleAlertIcon,
   "status.woke": AlarmClockIcon,
   "status.done": CircleCheckIcon,
+  "status.request": UserRoundIcon,
   "tabs.more": ChevronDownIcon,
   "tabs.new": PlusIcon,
   "tabs.edit": SlidersHorizontalIcon,

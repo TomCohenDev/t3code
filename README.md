@@ -6,32 +6,25 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Remote access**
 
-- **[Cloudflare Access login](docs/fork/features.md#cloudflare-access-login):** the server accepts the Cloudflare Access JWT as the owner login.
 - **[Request headers per environment](docs/fork/features.md#request-headers-per-environment):** a saved environment sends its own headers, for example a Cloudflare Access service token.
 - **[Tunnel pairing](docs/fork/features.md#tunnel-pairing):** a desktop server on loopback makes pairing links with its tunnel URL.
+- **[Guest links over the tunnel](docs/fork/features.md#guest-links-over-the-tunnel):** guest links work through the Cloudflare tunnel without T3 Connect.
 - **[Trusted sibling environments](docs/fork/features.md#trusted-sibling-environments):** one browser page pairs with and reaches the other hosts.
+- **[Quiet reconnect after restart](docs/fork/features.md#quiet-reconnect-after-restart):** right after the app starts, the composer waits before it warns that a server is reconnecting (off by default).
+- **[Sync timings on mobile](docs/fork/features.md#sync-timings-on-mobile):** Settings > Diagnostics shows how long each step of a chat sync takes, per environment.
 
-**Machine map** (all lines need `machineMap`, which a join to a map turns on)
+**kitshn** (each line needs kitshn 2 on the machine, joined to kitshn)
 
-- **[Portal](docs/fork/features.md#machine-map):** one portal at `map.tomcohen.dev` maps every T3 machine, adds phones with an app invite, and sets access between them.
-- **[Environment name from machine map](docs/fork/features.md#environment-name-from-machine-map):** an optional setting keeps environment names equal to machine map names, also after a name change.
-- **[Portal views](docs/fork/features.md#portal-views):** Map, Table, Health, Settings, Queue, Tasks, History, Inbox and Clients.
-- **[Join and install](docs/fork/features.md#join-and-install):** "Add machine" shows one command per system that installs the fork and joins.
-- **[Join feedback](docs/fork/features.md#join-and-install):** the open join dialog shows when a machine uses the code, and whether it connected.
-- **[Emergency pause](docs/fork/features.md#emergency-pause):** a big red button stops all agents and sets all access to none.
-- **[Scheduled tasks](docs/fork/features.md#scheduled-tasks):** the Tasks view lists the scheduled tasks of every machine.
-- **[Health alerts](docs/fork/features.md#health-alerts):** CPU, memory, disk, swap and battery alerts per machine.
-- **[Installable portal](docs/fork/features.md#installable-portal):** the portal installs as an app, with Web Push for alerts.
-- **[Settings and theme sync](docs/fork/features.md#settings-and-theme-sync):** a setting with a shared value syncs to every machine, also themes and keybindings.
-- **[Settings > Machines](docs/fork/features.md#settings--machines):** join or leave the map, and see the machines that this machine can reach.
-- **[Desktop app on the map](docs/fork/features.md#desktop-app-on-the-map):** the desktop app adds each reachable machine as an environment.
-- **[Zoom and pan](docs/fork/features.md#zoom-and-pan):** the map zooms, pans and fits all cards, with "Auto layout".
-- **[Approved clients](docs/fork/features.md#approved-clients):** a new browser waits until the owner approves it.
-- **[Client access](docs/fork/features.md#client-access):** each machine decides which browsers get in through Cloudflare Access; an open browser waits for approval when its access changes.
-- **[Owner-only access changes](docs/fork/features.md#owner-only-access-changes):** only the owner changes `clientAccess` and `machineMap`.
-- **[Sibling client sessions](docs/fork/features.md#sibling-client-sessions):** a browser client session lasts 1 day, also on sibling machines.
-- **[App invites and app tokens](docs/fork/features.md#app-invites-and-app-tokens):** "Invite an app" shows a QR code that a native app uses once.
-- **[Machines panel](docs/fork/features.md#machines-panel):** a read-only map in the right panel of a thread.
+- **[kitshn](docs/fork/features.md#kitshn):** the T3 server is a provider of kitshn. The owner shares access between machines on the kitshn map.
+- **[Cards](docs/fork/features.md#cards):** the T3 card shows the version and busy state, runs the T3 commands, and lists scheduled tasks and client sessions.
+- **[Access from kitshn](docs/fork/features.md#access-from-kitshn):** kitshn grants decide who gets in, with saved grants for 24 hours while kitshn is out of reach.
+- **[Environment name from kitshn](docs/fork/features.md#environment-name-from-kitshn):** an optional setting keeps environment names equal to kitshn map names.
+- **[Work on other machines](docs/fork/features.md#work-on-other-machines):** a kitshn link makes the other machine a linked environment, where agents delegate tasks within their own limits.
+- **[Commands on other machines](docs/fork/features.md#commands-on-other-machines):** `machine_exec` and `t3 machine exec` run commands on another machine with the exec grant.
+- **[Settings and theme sync](docs/fork/features.md#settings-and-theme-sync):** the shared `t3.settings` on kitshn syncs settings, themes and keybindings to every machine.
+- **[Settings > Machines](docs/fork/features.md#settings--machines):** how to join, and notices for the host handover and the desktop machine list.
+- **[Device invites](docs/fork/features.md#device-invites):** a phone or the desktop app joins kitshn with its own device token from a one-time link.
+- **[Machines panel](docs/fork/features.md#machines-panel):** the right panel of a thread lists the machines that the kitshn links reach.
 - **[Continue on another machine](docs/fork/features.md#continue-on-another-machine):** continue a thread on another machine while its own machine is offline, from an optional thread backup.
 
 **Updates and releases**
@@ -39,37 +32,33 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Fork releases](docs/fork/features.md#fork-releases):** nightly desktop builds and Linux server archives from fork main.
 - **[Daily release](docs/fork/operations.md#daily-release):** each morning a VPS task promotes the newest nightly to a release with highlighted notes.
 - **[Android APK](docs/fork/features.md#android-apk):** a signed APK of fork main that installs next to the store app.
-- **[Fork installers](docs/fork/features.md#fork-installers):** one command installs the fork and joins the machine map.
-- **[Install when idle](docs/fork/features.md#install-when-idle):** while agents run, the update offers "Install when idle".
-- **[Server auto-update](docs/fork/features.md#server-auto-update):** a headless server installs each newer fork release when idle.
-- **[Newer update before install](docs/fork/features.md#newer-update-before-install):** the desktop app checks for a newer release before it installs.
+- **[Updates](docs/fork/features.md#updates):** one install command per OS, and one update policy for the desktop app and the server: the newest release, when idle, automatic or manual.
 - **[Changelog](docs/fork/features.md#changelog):** a timeline of fork releases, upstream commits and Fork Sync runs.
-- **[Local deploy](docs/fork/operations.md#deploy-a-local-build):** `scripts/fork-deploy-local.sh <ssh-host>` deploys this checkout to a headless Linux server.
-- **[Local Mac build](docs/fork/operations.md#local-mac-build):** `scripts/fork-desktop-mac.sh` builds and signs the Mac app from this checkout.
+- **[Local deploy](docs/fork/operations.md#deploy-a-local-build):** `scripts/fork-deploy-local.sh` deploys this checkout to a headless Linux server or to the Mac app.
 - **[Central build caches](docs/fork/features.md#central-build-caches):** opt-in Vite caches and Android app outputs outside checkouts, with central-only pruning.
 - **[Fork Sync](docs/fork/operations.md#fork-sync):** a workflow merges Yarden's fork main into fork main every 3 hours.
 - **[Fork CI](docs/fork/operations.md#fork-ci):** runs on each push and pull request to main; branch protection requires "Fork CI result".
-- **[Repair agent](docs/fork/operations.md#repair-agent):** a failed Fork Sync, Fork Release or Fork CI run on main calls an agent on the VPS.
+- **[Repair agent](docs/fork/operations.md#repair-agent):** a failed Fork Sync, Fork Release or Fork CI run on main calls an agent on the VPS, which repairs it with the scripts of the [fork-repair skill](.agents/skills/fork-repair/SKILL.md).
 
 **Agents**
 
+- **[Local usage hubs](docs/fork/features.md#local-usage-hubs):** full-access agents add a local CLIProxyAPI hub through the existing usage source settings.
 - **[Recover interrupted agents](docs/fork/features.md#recover-interrupted-agents):** after a restart, each cut-off thread gets a "Recover and continue" message.
 - **[Background work details](docs/fork/features.md#background-work-details):** background work notifications name their tasks and output files.
 - **[Pull requests from origin](docs/fork/features.md#pull-requests-from-origin):** a fork checkout uses the pull requests of its fork, not of upstream.
 - **[Pull request watch remark filter](docs/fork/features.md#pull-request-watch-remark-filter):** select which comments and reviews wake a watching agent.
 - **[Agent session import limits](docs/fork/features.md#agent-session-import-limits):** the import window and the message limit for imported sessions.
+- **[Publish to kitshn](docs/fork/features.md#publish-to-kitshn):** agents publish a file or folder of their workspace to kitshn through the kitshn daemon of their machine, with no kitshn token.
+- **[kitshn provider](docs/fork/features.md#kitshn-provider):** the server shows itself as a card on the kitshn map, with commands such as Restart server, and its kitshn grants decide tunnel access to the app, shared threads and agent tools (off by default; no site yet).
 - **[Scheduled task model](docs/fork/features.md#scheduled-task-model):** a scheduled task runs on any provider instance, or on the project default model.
 
 **Threads**
 
-- **[Restore worktrees on resume](docs/fork/features.md#restore-worktrees-on-resume):** recover a missing checkout from its saved branch and run project setup before continuing (off by default).
-- **[Artifact-only worktree cleanup](docs/fork/features.md#artifact-only-worktree-cleanup):** evict ignored build outputs before dependencies, keep checkouts and branches, and report logical bytes per folder type (off by default; no orphan cleanup).
+- **[Worktree lifecycle](docs/fork/features.md#worktree-lifecycle):** a path template places new worktrees, idle worktrees lose ignored build outputs and dependencies, cleanup deletes branches that restore can rebuild, and resume recreates a missing checkout with project setup (each part off by default).
 - **[Sidebar tabs](docs/fork/features.md#sidebar-tabs):** tabs above the sidebar list that hold threads, filled by drag or by rules. Mobile shows and edits them too.
-- **[Snooze quick options](docs/fork/features.md#snooze-quick-options):** edit the choices of the snooze menus.
-- **[Worktree path template](docs/fork/features.md#worktree-path-template):** a template decides where new worktrees go.
-- **[Thread link chips](docs/fork/features.md#thread-link-chips):** every thread link in chat shows as an attached-thread chip.
-- **[Message links](docs/fork/features.md#message-links):** copy a link from each message to open the thread at that message.
-- **[Thread addresses open the desktop app](docs/fork/features.md#thread-addresses-open-the-desktop-app):** a thread address from Slack or GitHub opens the desktop app.
+- **[Waiting shelf](docs/fork/features.md#waiting-shelf):** threads that wait on other threads or background work get their own shelf under Working.
+- **[Message pins](docs/fork/features.md#message-pins):** pin messages, and list the pins in thread details, in the sidebar and in the mobile Settings.
+- **[Thread addressing](docs/fork/features.md#thread-addressing):** thread links in chat show as attached-thread chips, each message has a link of its own, and a thread address from Slack or GitHub opens the desktop app (off by default).
 - **[New thread on mobile](docs/fork/features.md#new-thread-on-mobile):** New thread in the mobile app opens the project list, the last project, or no project.
 - **[Camera in the mobile composer](docs/fork/features.md#camera-in-the-mobile-composer):** the plus button of the mobile composer can take a photo.
 - **[Android assistant panel](docs/fork/features.md#android-assistant-panel):** the Android assistant button starts a thread with the screen.
@@ -77,8 +66,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 **Filters**
 
-- **[Repository owner filters](docs/fork/features.md#repository-owner-filters):** filter the pull request page and the sidebar by repository owner.
-- **[Pull request filter chips](docs/fork/features.md#pull-request-filter-chips):** the active pull request filters show as chips.
+- **[Pull request filters](docs/fork/features.md#pull-request-filters):** filter the pull request page and the sidebar by repository owner, and show the active pull request filters as chips.
 
 **Scripts and terminal**
 
@@ -87,6 +75,10 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Keyboard focus levels](docs/fork/features.md#keyboard-focus-levels):** Escape moves focus between composer, timeline and sidebar; arrow keys move a cursor.
 - **[Shortcuts in tooltips](docs/fork/features.md#shortcuts-in-tooltips):** control tooltips show the keys of the control as chips.
 - **[Keyboard cheat sheet](docs/fork/features.md#keyboard-cheat-sheet):** `mod+/` lists every key that works, with the area you are in first.
+- **[Find in settings](docs/fork/features.md#find-in-settings):** `mod+f` on a Settings page hides the rows that do not match (off by default).
+- **[Terminal threads](docs/fork/features.md#terminal-threads):** a thread whose screen is a live terminal; schedules and agents can type into it.
+- **[Terminal key mappings](docs/fork/features.md#terminal-key-mappings):** keys that a terminal sends as fixed bytes, with a preset for zsh editor keys.
+- **[Terminal history](docs/fork/features.md#terminal-history):** how many lines and megabytes of output the server keeps for each terminal.
 - **[Terminal settings](docs/fork/features.md#terminal-settings):** app shortcuts first in the terminal, and a confirmation before a terminal closes.
 
 **Web app and look**
@@ -95,11 +87,11 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Web Push](docs/fork/features.md#web-push):** a phone gets thread notifications while the app is closed, with registration retries and a separate failure status.
 - **[Thread card layouts](docs/fork/features.md#thread-card-layouts):** build the thread card from its elements, for desktop and for mobile.
 - **[Local server groups](docs/fork/features.md#local-server-groups):** the browser Local servers list also shows servers that no T3 terminal started.
-- **[Theme style](docs/fork/features.md#theme-style):** published themes set shape, fonts, a canvas pattern and user CSS.
-- **[Theme icon packs](docs/fork/features.md#theme-icon-packs):** a published theme replaces app icons with its own SVGs.
-- **[Themes on mobile](docs/fork/features.md#themes-on-mobile):** the mobile app uses the published themes of its servers, with their fonts, shape and canvas pattern.
+- **[Themes](docs/fork/features.md#themes):** the theme that you select carries its shape, fonts, canvas pattern, user CSS and icons, and the phone can follow it. The fork app uses the Tick3d lightning icon.
 - **[Fork settings on mobile](docs/fork/features.md#fork-settings-on-mobile):** a Fork page in the mobile Settings.
-- **[Lightning icon](docs/fork/features.md#lightning-icon):** the fork app and the Android APK use their own icon.
+- **[Back and forward](docs/fork/features.md#back-and-forward):** back and forward buttons in the title bar, and a desktop back history that stays after a restart.
+- **[Hide T3 branding](docs/fork/features.md#hide-t3-branding):** a setting hides the sidebar wordmark and the build pill.
+- **[App context menu](docs/fork/features.md#app-context-menu):** right-click menus use the app's own menu with keyboard navigation, also in the desktop app.
 
 **Command line and MCP**
 
@@ -109,11 +101,15 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 ## Fork fixes
 
 - Themes: border width and radius flow through Tailwind tokens. Composer backdrop, outline and banners follow the theme radius. One theme shadow for nested surfaces and for split buttons.
+- Menus: a fallback context menu takes keyboard focus when it opens, also from a focused terminal. Arrow keys move over its items and submenus, and Escape closes it.
 - MCP: `schedule_task`, `t3_project_create` and `t3_project_update` read and write the project model, environment mode, auto-pull and actions through project settings.
 - Desktop updates: the updater never downgrades, so a local build stays installed. The server recovers when quit-and-install does not quit.
 - Worktree launch: a worktree request in Scratch runs in a thread folder. A worktree request outside a Git repository runs in the project folder and says so in the thread. A launch refuses a new worktree branch that already exists.
+- Session checks: environment API requests from the web client skip the browser HTTP cache, so one stuck session check no longer holds back every later one.
 - Queue: a resumed queued turn shows after the turns that ran before it. A paused queue shows while a turn runs. Resume waits for an edit and for a usage limit. Send now on a stopped thread also waits for a usage limit.
-- Machine map: an expired machine arrow ends the sessions that it granted.
+- Queue: a message held after a provider failure runs before a later agent message or wake, which waits behind it. Before, the later run started first and the held message stayed queued until the user came back.
+- Delegated tasks: a later run that a child starts itself, after a background command or a nested delegated task, reports its result to the parent as a new task. A parent that cancelled the child gets no report.
+- Terminal: powerline outlines and half circles (U+E0B1 to U+E0B7) fill their whole cell, so they meet the segments next to them.
 - Device panel: a Homebrew Android SDK (`android-commandlinetools`) works without `ANDROID_HOME`, also when the `adb` on `PATH` has no emulator.
 
 ---
@@ -122,7 +118,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, T3 Code can control them.
 
 ## "Wait, what are you selling me?"
 
@@ -133,7 +129,7 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
+> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, Antigravity, and fx. Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 > - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
@@ -141,6 +137,7 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 > - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
 > - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+> - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the T3 Code server ([setup guide](./docs/user/providers-fx.md))
 
 ### Command line
 
@@ -204,6 +201,16 @@ yay -S t3code-nightly-bin
 
 The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
 
+#### Nix (nixpkgs)
+
+```bash
+nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code
+```
+
+The package is maintained in [nixpkgs](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/t3/t3code)
+and includes the desktop app (`t3code-desktop`) and the `t3` command.
+See [Nix installation](./docs/user/install.md#nix-nixpkgs) for NixOS configuration and updates.
+
 ## Some notes
 
 We are very very early in this project. Expect bugs.
@@ -214,6 +221,7 @@ We are (mostly) not accepting contributions yet. Small fixes may be considered. 
 
 Full docs live in [docs/](./docs). There's no docs site yet.
 
+- [FAQ](./docs/user/faq.md)
 - [Install and first run](./docs/user/install.md)
 - [Permission modes](./docs/user/permission-modes.md)
 - [Keyboard shortcuts](./docs/user/keybindings.md)

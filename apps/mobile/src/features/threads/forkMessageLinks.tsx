@@ -1,7 +1,11 @@
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
-import type { EnvironmentId, RunId } from "@t3tools/contracts";
-import { isLinkedMessage, messageLinkStep } from "@t3tools/shared/threadMessageLinks";
+import { type EnvironmentId, MessageId, type RunId } from "@t3tools/contracts";
+import {
+  isLinkedMessage,
+  linkedMessageLoadId,
+  messageLinkStep,
+} from "@t3tools/shared/threadMessageLinks";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { View } from "react-native";
 
@@ -10,14 +14,10 @@ import type { ThreadFeedEntry } from "../../lib/threadActivity";
 import { useEnvironmentServerConfig } from "../../state/entities";
 
 /*
- * Fork: opens a thread at one message. A thread link with `#<messageId>`, a thread address with
- * `#<messageId>` or `?message=`, and an app link reach the Thread route with the `message` param.
- * The feed loads history through the message, opens its folded turn, scrolls to it and highlights
- * it briefly. A message that the thread does not have shows the note "Message not found".
- *
- * The open upstream PR pingdotgg/t3code#19203 ("link to a message in a thread from anywhere") does
- * the same with the `message` param. When it merges, replace this file with its feed code and keep
- * only the fork entry point: the fragment of a thread link.
+ * Fork: opens a thread at one message. Thread links and addresses with `#<messageId>` or
+ * `?message=`, and app links, reach the Thread route with the `message` param. The feed loads the
+ * message, opens its turn, scrolls to it and highlights it, or shows "Message not found". When
+ * pingdotgg/t3code#19203 merges, use its feed code and keep only the thread link fragment entry.
  */
 
 /** The highlight holds this long, then goes at once. No fade: a fade repaints every frame. */
@@ -34,24 +34,21 @@ export interface ForkMessageLinkRequest {
   readonly onHandled: () => void;
 }
 
-/** Fork: whether `environmentId` has the `messageLinks` server setting on. On until it loads. */
-export function useForkMessageLinksEnabled(environmentId: EnvironmentId | null): boolean {
-  return useEnvironmentServerConfig(environmentId)?.settings.messageLinks !== false;
+/** Fork: whether `environmentId` has the `threadAddressing` server setting on. */
+export function useForkThreadAddressing(environmentId: EnvironmentId | null): boolean {
+  return useEnvironmentServerConfig(environmentId)?.settings.threadAddressing === true;
 }
 
 /**
- * Fork: the message that the `message` param of the Thread route names, while the `messageLinks`
- * setting of its environment is on. Handling it clears the param, so the screen does not scroll
- * there again.
+ * Fork: the message that the `message` param of the Thread route names. Handling it clears the
+ * param, so the screen does not scroll there again.
  */
 export function useForkMessageLinkParam(
   message: string | string[] | undefined,
-  environmentId: EnvironmentId | null,
 ): ForkMessageLinkRequest | undefined {
   const navigation = useNavigation();
-  const enabled = useForkMessageLinksEnabled(environmentId);
   const messageId = (Array.isArray(message) ? message[0] : message)?.trim();
-  if (!enabled || !messageId) return undefined;
+  if (!messageId) return undefined;
   return { messageId, onHandled: () => navigation.setParams({ message: undefined }) };
 }
 
@@ -156,7 +153,9 @@ export function useForkMessageLinkTarget(input: {
     if (step === "load") {
       progress.pages.add(cursor);
       setLoadInFlight(true);
-      void Promise.resolve(history?.onLoadEarlier(messageId)).finally(() => setLoadInFlight(false));
+      void Promise.resolve(
+        history?.onLoadEarlier(MessageId.make(linkedMessageLoadId(messageId))),
+      ).finally(() => setLoadInFlight(false));
       return;
     }
     if (step === "missing") {

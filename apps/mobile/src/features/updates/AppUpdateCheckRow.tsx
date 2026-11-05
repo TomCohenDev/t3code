@@ -17,6 +17,7 @@ export function AppUpdateCheckRow() {
   const [updateState, setUpdateState] = useState<AppUpdateCheckState>("idle");
   const updateInFlight = useRef(false);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer clears the "Up to date" label
   useEffect(() => {
     if (updateState !== "current") return;
     const timer = setTimeout(() => setUpdateState("idle"), 3000);

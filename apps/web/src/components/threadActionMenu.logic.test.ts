@@ -58,6 +58,11 @@ describe("buildThreadActionMenuItems", () => {
             "delete",
           ];
       expect(items.filter((item) => item.disabled).map((item) => item.id)).toEqual(expected);
+      // Both directions of a toggle link to the same keybinding command.
+      const commandOf = (id: string) => items.find((item) => item.id === id)?.keybindingCommand;
+      expect(commandOf(reversed ? "unpin" : "pin")).toBe("thread.pin");
+      expect(commandOf(reversed ? "unsettle" : "settle")).toBe("thread.settle");
+      expect(commandOf(reversed ? "unsnooze" : "snooze")).toBe("thread.snooze");
       expect(
         items.find((item) => item.id === "snooze")?.children?.every((child) => child.disabled) ??
           true,
@@ -65,10 +70,13 @@ describe("buildThreadActionMenuItems", () => {
     },
   );
 
-  it("disables archive while the thread is running", () => {
-    const archiveItem = buildThreadActionMenuItems({ ...baseState, isRunning: true }).find(
-      (item) => item.id === "archive",
-    );
-    expect(archiveItem?.disabled).toBe(true);
+  it("disables archive and turning into a project while the thread is running", () => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      isRunning: true,
+      canTurnIntoProject: true,
+    });
+    expect(items.find((item) => item.id === "archive")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "turn-into-project")?.disabled).toBe(true);
   });
 });

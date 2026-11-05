@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -11,7 +12,7 @@ import { isT3CreatedWorktree } from "./worktreePathTemplate.ts";
 
 const layerTest = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-worktree-template-test-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const git = (cwd: string, args: ReadonlyArray<string>) =>
@@ -79,6 +80,39 @@ it.layer(layerTest)("worktree path template", (it) => {
 
       assert.equal(second.worktree.refName, "fix-sidebar-1");
       assert.equal(second.worktree.path, path.join(container, "fix-sidebar-1"));
+    }),
+  );
+
+  it.effect("uses the fallback branch when every suffix is taken", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      const { container, main } = yield* makeContainer;
+      const head = yield* git(main, ["rev-parse", "HEAD"]);
+      const taken = Array.from({ length: 101 }, (_, suffix) =>
+        suffix === 0 ? "repeat" : `repeat-${suffix}`,
+      );
+      yield* GitVcsDriver.GitVcsDriver.use((git) =>
+        git.execute({
+          operation: "test.git",
+          cwd: main,
+          args: ["update-ref", "--stdin"],
+          stdin: taken.map((branch) => `create refs/heads/${branch} ${head}\n`).join(""),
+          timeoutMs: 10_000,
+        }),
+      );
+
+      const created = yield* driver.createWorktree(
+        { cwd: main, path: null, refName: "main", newRefName: "repeat" },
+        {
+          worktreePathTemplate: "{repoDir}/{branchLeaf}",
+          pickFreeName: true,
+          fallbackBranch: "t3/0a1b2c3d",
+        },
+      );
+
+      assert.equal(created.worktree.refName, "t3/0a1b2c3d");
+      assert.equal(created.worktree.path, path.join(container, "0a1b2c3d"));
     }),
   );
 

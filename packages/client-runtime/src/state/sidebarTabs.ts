@@ -301,25 +301,15 @@ export function moveSidebarThreads(
 }
 
 /**
- * Drops assignments that can do nothing any more: a thread that is gone or archived on an
- * environment whose threads are loaded, or a tab that cannot hold threads. An entry that the
- * rules agree with stays: rules on status, background work or title change over time, and the
- * drag must still hold when they stop matching. An offline environment keeps its entries,
- * because its threads are not known.
+ * Drops assignments to a tab that cannot hold threads. An entry that the rules agree with stays,
+ * because the drag must hold when the rules stop matching. Shells leave out archived and older
+ * settled threads, so a thread the client does not hold keeps its entry. Limit: entries of deleted
+ * threads stay; prune them if the synced settings grow large or shells start to report deletions.
  */
-export function pruneSidebarTabAssignments(
-  settings: SidebarTabs,
-  liveThreads: ReadonlyArray<SidebarTabThread>,
-): SidebarTabs {
+export function pruneSidebarTabAssignments(settings: SidebarTabs): SidebarTabs {
   const compiled = compileSidebarTabs(settings);
-  const liveKeys = new Set(liveThreads.map(sidebarTabThreadKey));
-  const loadedEnvironments = new Set<string>(liveThreads.map((thread) => thread.environmentId));
   const assignments = Object.fromEntries(
-    Object.entries(settings.assignments).filter(
-      ([key, tabId]) =>
-        canHold(compiled, tabId) &&
-        (liveKeys.has(key) || !loadedEnvironments.has(key.slice(0, key.indexOf(":")))),
-    ),
+    Object.entries(settings.assignments).filter(([, tabId]) => canHold(compiled, tabId)),
   );
   return { ...settings, assignments };
 }

@@ -1,5 +1,6 @@
 import * as Dialog from "../../components/ui/Dialog";
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
+import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
 import {
   AuthProvidersManageScope,
   type EnvironmentId,
@@ -17,16 +18,25 @@ import {
   paceRemainingPercent,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
-import { refreshUsageLimits } from "@t3tools/client-runtime/state/usage";
+import { type ReactNode, useContext, useRef, useState } from "react";
+import { Atom } from "effect/reactivity";
 import { Linking, Pressable, View } from "react-native";
 
+import { LongPressMenu } from "../../components/LongPressMenu";
 import { AppText as Text } from "../../components/ui/AppText";
+import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useNowMinuteMs } from "../../lib/clock";
+import {
+  environmentIdsKey,
+  limitsAutoRefreshSetAtom,
+  limitsRefreshFailuresAtom,
+  refreshEnvironmentLimits,
+} from "./usageLimitsRefresh";
 import { usageProviderKind, useProviderColors } from "./usageProviders";
 
 const PACE_LABEL = { ahead: "ahead of pace", on: "on pace", under: "under pace" } as const;
@@ -75,53 +85,65 @@ function WindowRow(props: {
       <View style={{ flex: 100 - remaining }} />
     </View>
   );
+  const usageLine = [`${window.label}: ${remaining}% left`, resetsIn].filter(Boolean).join(" · ");
   return (
-    <View className="gap-1">
-      <View className="flex-row items-baseline justify-between gap-3">
-        <Text className="text-sm text-foreground">{window.label}</Text>
-        <Text className="text-sm font-t3-medium tabular-nums text-foreground">
-          {remaining}% left
-        </Text>
-      </View>
-      <View
-        className="h-3 justify-center"
-        onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
-      >
-        {tickX === null ? (
-          bar
-        ) : (
-          <View className="h-1.5">
-            {/* Clip the same full-width bar so neither fill proportions nor corner radii change. */}
-            {(
-              [
-                [0, tickX - 3],
-                [tickX + 3, barWidth],
-              ] as const
-            ).map(([start, end]) => (
-              <View
-                key={start}
-                className="absolute top-0 bottom-0 overflow-hidden"
-                style={{ left: start, width: end - start }}
-              >
-                <View style={{ marginLeft: -start }}>{bar}</View>
-              </View>
-            ))}
+    <LongPressMenu
+      entries={[
+        {
+          id: "copy-usage",
+          title: "Copy usage",
+          image: "doc.on.doc",
+          run: () => void tryCopyTextWithHaptic(usageLine, { target: "usage" }),
+        },
+      ]}
+    >
+      <View className="gap-1">
+        <View className="flex-row items-baseline justify-between gap-3">
+          <Text className="text-sm text-foreground">{window.label}</Text>
+          <Text className="text-sm font-t3-medium tabular-nums text-foreground">
+            {remaining}% left
+          </Text>
+        </View>
+        <View
+          className="h-3 justify-center"
+          onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
+        >
+          {tickX === null ? (
+            bar
+          ) : (
+            <View className="h-1.5">
+              {/* Clip the same full-width bar so neither fill proportions nor corner radii change. */}
+              {(
+                [
+                  [0, tickX - 3],
+                  [tickX + 3, barWidth],
+                ] as const
+              ).map(([start, end]) => (
+                <View
+                  key={start}
+                  className="absolute top-0 bottom-0 overflow-hidden"
+                  style={{ left: start, width: end - start }}
+                >
+                  <View style={{ marginLeft: -start }}>{bar}</View>
+                </View>
+              ))}
+            </View>
+          )}
+          {tickX !== null ? (
+            <View
+              className="absolute top-px bottom-px w-0.5 rounded-full bg-foreground"
+              style={{ left: tickX - 1 }}
+            />
+          ) : null}
+        </View>
+        {pace || resetsIn ? (
+          <View className="flex-row justify-between gap-3">
+            <Text className="text-xs text-foreground-tertiary">{pace ? PACE_LABEL[pace] : ""}</Text>
+            <Text className="text-xs tabular-nums text-foreground-tertiary">{resetsIn ?? ""}</Text>
           </View>
-        )}
-        {tickX !== null ? (
-          <View
-            className="absolute top-px bottom-px w-0.5 rounded-full bg-foreground"
-            style={{ left: tickX - 1 }}
-          />
         ) : null}
       </View>
-      {pace || resetsIn ? (
-        <View className="flex-row justify-between gap-3">
-          <Text className="text-xs text-foreground-tertiary">{pace ? PACE_LABEL[pace] : ""}</Text>
-          <Text className="text-xs tabular-nums text-foreground-tertiary">{resetsIn ?? ""}</Text>
-        </View>
-      ) : null}
-    </View>
+    </LongPressMenu>
   );
 }
 
@@ -150,6 +172,7 @@ function AccountInstanceLabel({ value }: { readonly value: string }) {
 
 export function AccountLimits(props: {
   readonly driver: Driver;
+  readonly accentColor?: string | undefined;
   readonly label: string;
   readonly instanceLabel: string;
   readonly detail: string | undefined;
@@ -161,7 +184,8 @@ export function AccountLimits(props: {
   readonly footer?: ReactNode;
 }) {
   const { limits, now, dense = false } = props;
-  const color = useBarColor(props.driver);
+  const providerColor = useBarColor(props.driver);
+  const color = normalizeProviderAccentColor(props.accentColor) ?? providerColor;
   if (!limits) return null;
   const notice = limitsNotice(limits);
   const externalUsage = limits.externalUsage;
@@ -308,80 +332,54 @@ export function ResetCredits(props: {
   );
 }
 
+const IDLE_ATOM = Atom.make(undefined);
+
 export function useRefreshLimits(
   selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null = null,
   active = false,
 ) {
+  const registry = useContext(RegistryContext);
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
-    reportFailure: false,
-  });
-  const [now, setNow] = useState(() => Date.now());
+  const now = useNowMinuteMs();
   const [refreshing, setRefreshing] = useState(false);
   const refreshingRef = useRef(false);
-  const [failedEnvironments, setFailedEnvironments] = useState<
-    readonly { environmentId: EnvironmentId; label: string }[]
-  >([]);
-  const refresh = async (automatic = false, afterPending = false) => {
-    const connected = [...presentations].filter(
-      ([environmentId, presentation]) =>
-        presentation.connection.phase === "connected" &&
-        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
+  const selected = [...presentations].filter(
+    ([environmentId]) =>
+      selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId),
+  );
+  const connectedIds = selected
+    .filter(([, presentation]) => presentation.connection.phase === "connected")
+    .map(([environmentId]) => environmentId);
+  const connectedKey = environmentIdsKey(connectedIds);
+  useAtomMount(active && connectedKey !== "" ? limitsAutoRefreshSetAtom(connectedKey) : IDLE_ATOM);
+  const failedIds = new Set(
+    useAtomValue(limitsRefreshFailuresAtom(environmentIdsKey(selected.map(([id]) => id)))),
+  );
+  const failedLabels = selected
+    .filter(([environmentId]) => failedIds.has(environmentId))
+    .map(([, presentation]) => presentation.entry.target.label);
+
+  const refresh = (afterPending: boolean) =>
+    Promise.all(
+      connectedIds.map((environmentId) =>
+        refreshEnvironmentLimits(registry, environmentId, { afterPending }),
+      ),
     );
-    await Promise.all(
-      connected.map(async ([environmentId, presentation]) => {
-        const result = await refreshUsageLimits(
-          environmentId,
-          () => refreshProviders({ environmentId, input: {} }),
-          automatic,
-          afterPending,
-        );
-        if (result === undefined) return;
-        setFailedEnvironments((previous) => [
-          ...previous.filter((failed) => failed.environmentId !== environmentId),
-          ...(result._tag === "Failure"
-            ? [{ environmentId, label: presentation.entry.target.label }]
-            : []),
-        ]);
-      }),
-    ).finally(() => setNow(Date.now()));
-  };
-  // Always toggles `refreshing`, even with nothing to probe: Android's
-  // RefreshControl keeps its spinner up until it sees true then false.
+  // Android RefreshControl needs a true-to-false cycle to stop, even with nothing to probe.
   const refreshManually = async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setRefreshing(true);
-    await refresh().finally(() => {
+    await refresh(false).finally(() => {
       refreshingRef.current = false;
       setRefreshing(false);
     });
   };
-  const connectedLimitsEnvironments = [...presentations]
-    .filter(
-      ([environmentId, presentation]) =>
-        presentation.connection.phase === "connected" &&
-        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
-    )
-    .map(([environmentId]) => environmentId)
-    .sort()
-    .join(",");
-  const autoRefreshLimits = useEffectEvent(() => refresh(true));
-  useEffect(() => {
-    if (active && connectedLimitsEnvironments) void autoRefreshLimits();
-  }, [active, connectedLimitsEnvironments]);
-
-  const failedLabels = failedEnvironments
-    .filter(
-      ({ environmentId }) =>
-        selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId),
-    )
-    .map(({ label }) => label);
   return {
     now,
     refreshing,
     failedLabels,
     refresh: refreshManually,
-    refreshAfterEnable: () => refresh(false, true),
+    refreshAfterEnable: () => refresh(true),
   };
 }

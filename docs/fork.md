@@ -4,7 +4,7 @@ The fork [TomCohenDev/t3code](https://github.com/TomCohenDev/t3code) documents i
 
 - [fork/features.md](fork/features.md): what each fork feature does, its setting, where it works and its limits.
 - [fork/operations.md](fork/operations.md): releases, builds, installs, deploys, the repair agent and secrets.
-- [fork-agents.md](fork-agents.md): the fork tools for agents that operate the machines, the machine map and the deploys.
-- [apps/machine-map/README.md](../apps/machine-map/README.md) and [apps/machine-map/SPEC.md](../apps/machine-map/SPEC.md): the machine map portal and its requirements.
+- [fork/terminal-threads.md](fork/terminal-threads.md): the user guide of terminal threads and the terminal settings.
+- [fork-agents.md](fork-agents.md): the fork tools for agents that operate the machines through kitshn, and the deploys.
 
 The README lists the fork features, up to its first `---` line.

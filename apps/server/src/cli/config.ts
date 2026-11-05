@@ -15,6 +15,7 @@ import * as LogLevel from "effect/LogLevel";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Redacted from "effect/Redacted";
+import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -22,12 +23,8 @@ import { Argument, Flag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
+import { resolveServiceLauncherMode } from "../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../config.ts";
-import {
-  joinedTunnelOrigin,
-  machineMapEnabledInSettings,
-  readJoinedTunnel,
-} from "../fork/machineMap/MachineTunnel.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 
@@ -86,6 +83,12 @@ const tailscaleServeFlag = Flag.Boolean("tailscale-serve").pipe(
 const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
   Flag.withSchema(PortSchema),
   Flag.withDescription("HTTPS port for Tailscale Serve when --tailscale-serve is enabled."),
+  Flag.optional,
+);
+const lanFlag = Flag.Boolean("lan").pipe(
+  Flag.withDescription(
+    "Accept connections from your local network and tailnet, not only this machine (equivalent to T3CODE_LAN).",
+  ),
   Flag.optional,
 );
 
@@ -176,18 +179,7 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  cloudflareAccessTeamDomain: Config.String("T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  cloudflareAccessAud: Config.String("T3CODE_CLOUDFLARE_ACCESS_AUD").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  cloudflareAccessSubjects: Config.String("T3CODE_CLOUDFLARE_ACCESS_SUBJECTS").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
+  lan: Config.Boolean("T3CODE_LAN").pipe(Config.option, Config.map(Option.getOrUndefined)),
 });
 
 const DevAuthTokenConfig = Config.Redacted("T3CODE_DEV_AUTH_TOKEN").pipe(
@@ -223,6 +215,7 @@ export interface CliServerFlags {
   readonly logWebSocketEvents: Option.Option<boolean>;
   readonly tailscaleServeEnabled: Option.Option<boolean>;
   readonly tailscaleServePort: Option.Option<number>;
+  readonly lan: Option.Option<boolean>;
 }
 
 export interface CliAuthLocationFlags {
@@ -257,12 +250,14 @@ export const sharedServerCommandFlags = {
   logWebSocketEvents: logWebSocketEventsFlag,
   tailscaleServeEnabled: tailscaleServeFlag,
   tailscaleServePort: tailscaleServePortFlag,
+  lan: lanFlag,
 } as const;
 
 // Fork: a tunnel URL must be a bare https origin. Anything else fails startup
 // so a typo never leaves pairing silently off or pointed at the wrong place.
 const resolveTunnelPairingUrl = (raw: string | undefined) => {
   const trimmed = raw?.trim();
+  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
   if (trimmed === undefined || trimmed.length === 0) return Effect.succeed(undefined);
   const url = URL.parse(trimmed);
   return url !== null && url.protocol === "https:" && (url.pathname === "/" || url.pathname === "")
@@ -302,42 +297,6 @@ export const resolveTrustedBrowserOrigins = (raw: string | undefined) =>
     },
   );
 
-// Fork: Cloudflare Access login. All three values turn it on, none turn it off,
-// and a partial set fails startup so a missing value never weakens the check.
-export const resolveCloudflareAccess = (raw: {
-  readonly teamDomain: string | undefined;
-  readonly aud: string | undefined;
-  readonly subjects: string | undefined;
-}) => {
-  const teamDomain = raw.teamDomain?.trim() ?? "";
-  const aud = raw.aud?.trim() ?? "";
-  const subjects = (raw.subjects ?? "")
-    .replaceAll("\n", ",")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (teamDomain === "" && aud === "" && subjects.length === 0) {
-    return Effect.succeed(undefined);
-  }
-  const fail = (cause: string) => Effect.fail(new CliError.UserError({ cause }));
-  if (teamDomain === "" || aud === "" || subjects.length === 0) {
-    return fail(
-      "T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN, T3CODE_CLOUDFLARE_ACCESS_AUD and T3CODE_CLOUDFLARE_ACCESS_SUBJECTS must be set together.",
-    );
-  }
-  const teamUrl = URL.parse(`https://${teamDomain}`);
-  if (teamUrl === null || teamUrl.host !== teamDomain || teamUrl.username !== "") {
-    return fail(
-      `T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN must be a host such as team.cloudflareaccess.com, got ${teamDomain}.`,
-    );
-  }
-  return Effect.succeed({
-    teamDomain,
-    aud,
-    subjects,
-  } satisfies ServerConfig.CloudflareAccessConfig);
-};
-
 const resolveOptionPrecedence = <Value>(
   ...values: ReadonlyArray<Option.Option<Value>>
 ): Option.Option<Value> => Option.firstSomeOf(values);
@@ -360,9 +319,13 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     readonly startupPresentation?: ServerConfig.StartupPresentation;
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
     readonly rejectRunningServer?: boolean;
+    readonly selectAutomaticPort?: (
+      preferred: number,
+    ) => Effect.Effect<number, NetService.NetError | CliError.UserError>;
   },
 ) {
   const { findAvailablePort } = yield* NetService.NetService;
+  const selectAutomaticPort = options?.selectAutomaticPort ?? findAvailablePort;
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
   const env = yield* EnvServerConfig;
@@ -379,6 +342,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
     tailscaleServeEnabled: flags.tailscaleServeEnabled ?? Option.none(),
     tailscaleServePort: flags.tailscaleServePort ?? Option.none(),
+    lan: flags.lan ?? Option.none(),
   } satisfies CliServerFlags;
   const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
   const bootstrapEnvelope =
@@ -408,7 +372,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
         if (mode === "desktop") {
           return Effect.succeed(ServerConfig.DEFAULT_PORT);
         }
-        return findAvailablePort(ServerConfig.DEFAULT_PORT);
+        return selectAutomaticPort(ServerConfig.DEFAULT_PORT);
       },
     },
   );
@@ -506,38 +470,33 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     ),
     () => 443,
   );
-  const explicitTunnelUrl = env.tunnelPairingUrl ?? bootstrap?.tunnelPairingUrl;
-  const explicitAccess = {
-    teamDomain: env.cloudflareAccessTeamDomain ?? bootstrap?.cloudflareAccessTeamDomain,
-    aud: env.cloudflareAccessAud ?? bootstrap?.cloudflareAccessAud,
-    subjects: env.cloudflareAccessSubjects ?? bootstrap?.cloudflareAccessSubjects,
-  };
-  // Fork: machine map (MM-1310). The tunnel of a join applies only to a server without its own,
-  // and only while the machine map is on (MM-1301).
-  const joinedTunnel =
-    explicitTunnelUrl === undefined &&
-    (yield* machineMapEnabledInSettings(derivedPaths.settingsPath))
-      ? yield* readJoinedTunnel(derivedPaths.stateDir)
-      : undefined;
   const tunnelPairingUrl = yield* resolveTunnelPairingUrl(
-    explicitTunnelUrl ?? (joinedTunnel && joinedTunnelOrigin(joinedTunnel)),
+    env.tunnelPairingUrl ?? bootstrap?.tunnelPairingUrl,
   );
   const trustedBrowserOrigins = yield* resolveTrustedBrowserOrigins(
     env.trustedBrowserOrigins ?? bootstrap?.trustedBrowserOrigins,
   );
-  const cloudflareAccess = yield* resolveCloudflareAccess(
-    joinedTunnel !== undefined && Object.values(explicitAccess).every((v) => v === undefined)
-      ? { ...joinedTunnel.access, subjects: joinedTunnel.access.subjects.join(",") }
-      : explicitAccess,
-  );
   const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
-  const host = Option.getOrElse(
-    resolveOptionPrecedence(
-      normalizedFlags.host,
-      Option.fromUndefinedOr(env.host),
-      Option.fromUndefinedOr(bootstrap?.host),
-    ),
-    () => (mode === "desktop" ? "127.0.0.1" : undefined),
+  const explicitHost = resolveOptionPrecedence(
+    normalizedFlags.host,
+    Option.fromUndefinedOr(env.host),
+    Option.fromUndefinedOr(bootstrap?.host),
+  );
+  // Private networks only, so clients learn a LAN address and prefer it over
+  // T3 Connect. `t3 service install` writes T3CODE_LAN=false for a new
+  // service; one installed before T3CODE_LAN existed keeps listening.
+  const lan = resolveOptionPrecedence(normalizedFlags.lan, Option.fromUndefinedOr(env.lan));
+  const privateNetworkOnly =
+    Option.isNone(explicitHost) &&
+    mode === "web" &&
+    (Option.isSome(lan)
+      ? lan.value
+      : yield* resolveServiceLauncherMode().pipe(
+          Effect.map((launcher) => launcher.managed),
+          Effect.orElseSucceed(() => false),
+        ));
+  const host = Option.getOrElse(explicitHost, () =>
+    privateNetworkOnly ? "0.0.0.0" : mode === "desktop" ? "127.0.0.1" : undefined,
   );
   const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
@@ -552,22 +511,28 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     otel,
     "traces",
     { url: env.otlpTracesUrl, export: signalExport },
-    bootstrap?.otlpTracesUrl,
-    persistedObservabilitySettings.otlpTracesUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpTracesUrl,
+      settingsUrl: persistedObservabilitySettings.otlpTracesUrl,
+    },
   );
   const metrics = OtelEnvironment.resolveSignalEndpoint(
     otel,
     "metrics",
     { url: env.otlpMetricsUrl, export: signalExport },
-    bootstrap?.otlpMetricsUrl,
-    persistedObservabilitySettings.otlpMetricsUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpMetricsUrl,
+      settingsUrl: persistedObservabilitySettings.otlpMetricsUrl,
+    },
   );
   const logs = OtelEnvironment.resolveSignalEndpoint(
     otel,
     "logs",
     { url: env.otlpLogsUrl, export: signalExport },
-    bootstrap?.otlpLogsUrl,
-    persistedObservabilitySettings.otlpLogsUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpLogsUrl,
+      settingsUrl: persistedObservabilitySettings.otlpLogsUrl,
+    },
   );
 
   const config: ServerConfig.ServerConfig["Service"] = {
@@ -583,6 +548,12 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     otlpTracesExport: traces?.export ?? signalExport,
     otlpMetricsExport: metrics?.export ?? signalExport,
     otlpLogsExport: logs?.export ?? signalExport,
+    ...(traces !== undefined ? { otlpTracesSource: traces.source } : {}),
+    ...(traces?.variable !== undefined ? { otlpTracesVariable: traces.variable } : {}),
+    ...(metrics !== undefined ? { otlpMetricsSource: metrics.source } : {}),
+    ...(metrics?.variable !== undefined ? { otlpMetricsVariable: metrics.variable } : {}),
+    ...(logs !== undefined ? { otlpLogsSource: logs.source } : {}),
+    ...(logs?.variable !== undefined ? { otlpLogsVariable: logs.variable } : {}),
     otelEnvironment: otel,
     mode,
     port,
@@ -591,6 +562,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     ...derivedPaths,
     serverTracePath,
     host,
+    ...(privateNetworkOnly ? { privateNetworkOnly } : {}),
     staticDir,
     devUrl,
     ...(devAuthToken === undefined ? {} : { devAuthToken }),
@@ -611,7 +583,6 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     tailscaleServePort,
     ...(tunnelPairingUrl === undefined ? {} : { tunnelPairingUrl }),
     ...(trustedBrowserOrigins.length === 0 ? {} : { trustedBrowserOrigins }),
-    ...(cloudflareAccess === undefined ? {} : { cloudflareAccess }),
   };
 
   return config;
@@ -620,8 +591,9 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
 export const resolveCliAuthConfig = (
   flags: CliAuthLocationFlags,
   cliLogLevel: Option.Option<LogLevel.LogLevel>,
-) =>
-  resolveServerConfig(
+  options?: { readonly quietLogs?: boolean },
+) => {
+  const resolved = resolveServerConfig(
     {
       mode: Option.none(),
       port: Option.none(),
@@ -635,9 +607,16 @@ export const resolveCliAuthConfig = (
       logWebSocketEvents: Option.none(),
       tailscaleServeEnabled: Option.none(),
       tailscaleServePort: Option.none(),
+      lan: Option.none(),
     },
     cliLogLevel,
   );
+  // Logs go to stdout, where --json and --token-only print, and resolving can
+  // log, for example when it sweeps abandoned attachment uploads.
+  return options?.quietLogs === true
+    ? resolved.pipe(Effect.provideService(References.MinimumLogLevel, "Error"))
+    : resolved;
+};
 
 const DurationShorthandPattern = /^(?<value>\d+)(?<unit>ms|s|m|h|d|w)$/i;
 

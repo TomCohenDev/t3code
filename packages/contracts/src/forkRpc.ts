@@ -11,6 +11,7 @@ import {
   AuthOrchestrationReadScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
+  AuthTerminalOperateScope,
   EnvironmentAuthorizationError,
 } from "./auth.ts";
 import {
@@ -24,15 +25,24 @@ import {
 import { ForkLocalListenerList } from "./forkPreview.ts";
 import { ForkThreadBackup, ForkThreadBackupGetInput } from "./forkThreadBackup.ts";
 import {
+  ForkMoveTerminalToThreadError,
+  ForkMoveTerminalToThreadInput,
+  ForkPrepareDraftWorktreeInput,
+  ForkPrepareDraftWorktreeResult,
+  ForkUpdateTerminalHold,
+  ForkUpdateTerminalHoldInput,
+} from "./forkTerminalThreads.ts";
+import {
   MachineMapClientState,
-  MachineMapDesktopReport,
+  MachineMapSetCircleSettingsInput,
   MachineMapShareSettingsInput,
   MachineMapShareSettingsResult,
-  MachineMapJoinInput,
-  MachineMapPanelState,
   MachineMapReadableEnvironment,
   MachineMapRequestError,
 } from "./machineMapClient.ts";
+import { OrchestrationV2ThreadLaunchError } from "./orchestrationV2.ts";
+import { ForkRecreateThreadWorktreeInput } from "./forkWorktreeRecreate.ts";
+import { WorktreeMcpFailure, WorktreeMcpHandoffResult } from "./worktreeMcp.ts";
 import {
   WebPushEndpointInput,
   WebPushError,
@@ -54,13 +64,10 @@ export const FORK_WS_METHODS = {
   forkChangelogSyncStatus: "forkChangelog.syncStatus",
   forkChangelogStartSync: "forkChangelog.startSync",
 
-  // Fork: machine map (apps/machine-map/SPEC.md)
+  // Fork: kitshn client state; the method names stay from the machine map.
   machineMapSubscribe: "machineMap.subscribe",
-  machineMapJoin: "machineMap.join",
-  machineMapLeave: "machineMap.leave",
-  machineMapReportDesktop: "machineMap.reportDesktop",
   machineMapShareSettings: "machineMap.shareSettings",
-  machineMapRead: "machineMap.read",
+  machineMapSetCircleSettings: "machineMap.setCircleSettings",
   machineMapReadableEnvironments: "machineMap.readableEnvironments",
 
   // Fork: Web Push (webPush.ts)
@@ -75,6 +82,14 @@ export const FORK_WS_METHODS = {
 
   // Fork: thread backups (forkThreadBackup.ts)
   forkThreadBackupGet: "forkThreadBackup.get",
+  // Fork: the new worktree of a draft in Terminal mode (forkTerminalThreads.ts)
+  vcsPrepareDraftWorktree: "vcs.prepareDraftWorktree",
+  // Fork: a drawer terminal becomes a terminal thread (forkTerminalThreads.ts)
+  terminalMoveToThread: "terminal.moveToThread",
+  // Fork: desktop "Install when idle" waits for terminal thread programs (forkTerminalThreads.ts)
+  forkUpdatesTerminalHold: "forkUpdates.terminalHold",
+  // Fork: a thread whose worktree folder is gone moves to a new worktree (forkWorktreeRecreate.ts)
+  threadRecreateWorktree: "thread.recreateWorktree",
 } as const;
 
 const forkChangelogError = Schema.Union([ForkChangelogError, EnvironmentAuthorizationError]);
@@ -112,23 +127,7 @@ const WsMachineMapSubscribeRpc = Rpc.make(FORK_WS_METHODS.machineMapSubscribe, {
   error: machineMapError,
   stream: true,
 });
-const WsMachineMapJoinRpc = Rpc.make(FORK_WS_METHODS.machineMapJoin, {
-  payload: MachineMapJoinInput,
-  success: MachineMapClientState,
-  error: machineMapError,
-});
-const WsMachineMapLeaveRpc = Rpc.make(FORK_WS_METHODS.machineMapLeave, {
-  payload: Schema.Struct({}),
-  success: MachineMapClientState,
-  error: machineMapError,
-});
 /** Fork: only the local desktop app reports. Other sessions get `desktop-only`. */
-const WsMachineMapReportDesktopRpc = Rpc.make(FORK_WS_METHODS.machineMapReportDesktop, {
-  payload: MachineMapDesktopReport,
-  success: Schema.Struct({}),
-  error: machineMapError,
-});
-
 /** Fork: MM-411. A change saved for all environments becomes the shared value of the map. */
 const WsMachineMapShareSettingsRpc = Rpc.make(FORK_WS_METHODS.machineMapShareSettings, {
   payload: MachineMapShareSettingsInput,
@@ -136,13 +135,14 @@ const WsMachineMapShareSettingsRpc = Rpc.make(FORK_WS_METHODS.machineMapShareSet
   error: machineMapError,
 });
 
-/** Fork: MM-1701. `machines_read` through the portal connection, for the Machines panel. */
-const WsMachineMapReadRpc = Rpc.make(FORK_WS_METHODS.machineMapRead, {
-  payload: Schema.Struct({}),
-  success: MachineMapPanelState,
+/** Fork: the owner sets a circle part of `t3.settings` with the person picker of T3 Settings. */
+const WsMachineMapSetCircleSettingsRpc = Rpc.make(FORK_WS_METHODS.machineMapSetCircleSettings, {
+  payload: MachineMapSetCircleSettingsInput,
+  success: Schema.Struct({}),
   error: machineMapError,
 });
 
+/** Fork: MM-1701. `machines_read` through the portal connection, for the Machines panel. */
 /** MM-1907: the environments whose threads the agents of this server can read. */
 const WsMachineMapReadableEnvironmentsRpc = Rpc.make(
   FORK_WS_METHODS.machineMapReadableEnvironments,
@@ -196,6 +196,32 @@ const WsForkThreadBackupGetRpc = Rpc.make(FORK_WS_METHODS.forkThreadBackupGet, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsVcsPrepareDraftWorktreeRpc = Rpc.make(FORK_WS_METHODS.vcsPrepareDraftWorktree, {
+  payload: ForkPrepareDraftWorktreeInput,
+  success: ForkPrepareDraftWorktreeResult,
+  error: Schema.Union([OrchestrationV2ThreadLaunchError, EnvironmentAuthorizationError]),
+});
+
+const WsTerminalMoveToThreadRpc = Rpc.make(FORK_WS_METHODS.terminalMoveToThread, {
+  payload: ForkMoveTerminalToThreadInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([ForkMoveTerminalToThreadError, EnvironmentAuthorizationError]),
+});
+
+/** Fork: emits again when the hold changes. The server prints the notice in held terminals. */
+const WsForkUpdatesTerminalHoldRpc = Rpc.make(FORK_WS_METHODS.forkUpdatesTerminalHold, {
+  payload: ForkUpdateTerminalHoldInput,
+  success: ForkUpdateTerminalHold,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsThreadRecreateWorktreeRpc = Rpc.make(FORK_WS_METHODS.threadRecreateWorktree, {
+  payload: ForkRecreateThreadWorktreeInput,
+  success: WorktreeMcpHandoffResult,
+  error: Schema.Union([WorktreeMcpFailure, EnvironmentAuthorizationError]),
+});
+
 export const ForkWsRpcGroup = RpcGroup.make(
   WsForkChangelogListReleasesRpc,
   WsForkChangelogReleaseChangesRpc,
@@ -203,33 +229,39 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsForkChangelogSyncStatusRpc,
   WsForkChangelogStartSyncRpc,
   WsMachineMapSubscribeRpc,
-  WsMachineMapJoinRpc,
-  WsMachineMapLeaveRpc,
-  WsMachineMapReportDesktopRpc,
   WsMachineMapShareSettingsRpc,
-  WsMachineMapReadRpc,
   WsMachineMapReadableEnvironmentsRpc,
+  WsMachineMapSetCircleSettingsRpc,
   WsWebPushPublicKeyRpc,
   WsWebPushSubscribeRpc,
   WsWebPushTestRpc,
   WsVoiceInputTranscribeRpc,
   WsForkPreviewSubscribeLocalListenersRpc,
   WsForkThreadBackupGetRpc,
+  WsVcsPrepareDraftWorktreeRpc,
+  WsTerminalMoveToThreadRpc,
+  WsForkUpdatesTerminalHoldRpc,
+  WsThreadRecreateWorktreeRpc,
 );
 
 /** The fork part of `CLIENT_GUARDED_RPC_SCOPES`. */
 export const FORK_CLIENT_GUARDED_RPC_SCOPES = {
   // Fork: starts the Fork Sync workflow, which pushes to fork main on GitHub.
   [FORK_WS_METHODS.forkChangelogStartSync]: AuthSourceControlWriteScope,
-  // Fork: joining or leaving the machine map turns the `machineMap` setting on or off.
-  [FORK_WS_METHODS.machineMapJoin]: AuthSettingsWriteScope,
-  [FORK_WS_METHODS.machineMapLeave]: AuthSettingsWriteScope,
   // Fork: MM-411. Sets shared values of the map, like a settings change on every machine.
   [FORK_WS_METHODS.machineMapShareSettings]: AuthSettingsWriteScope,
+  // Fork: sets the values of a circle of people on every machine.
+  [FORK_WS_METHODS.machineMapSetCircleSettings]: AuthSettingsWriteScope,
   // Fork: the local desktop app reports desktop command results and its waiting update.
-  [FORK_WS_METHODS.machineMapReportDesktop]: AuthEnvironmentMaintainScope,
   // Fork: spends the environment's OpenAI key, the grant that uploading attachments needs.
   [FORK_WS_METHODS.voiceInputTranscribe]: AuthOrchestrationOperateScope,
+  // Fork: creates a worktree, as `vcs.createWorktree` does, and runs the project setup script.
+  [FORK_WS_METHODS.vcsPrepareDraftWorktree]: AuthSourceControlWriteScope,
+  // Fork: takes over a running terminal, as `terminal.open` and `terminal.close` need.
+  [FORK_WS_METHODS.terminalMoveToThread]: AuthTerminalOperateScope,
+  // Fork: creates a worktree and a branch, as `vcs.createWorktree` does. The server also requires
+  // orchestration operate, because it rebinds the thread and sends a message.
+  [FORK_WS_METHODS.threadRecreateWorktree]: AuthSourceControlWriteScope,
 } as const;
 
 /** The fork RPCs that the server's `RPC_REQUIRED_SCOPES` adds to `CLIENT_GUARDED_RPC_SCOPES`. */
@@ -241,7 +273,6 @@ export const FORK_RPC_READ_SCOPES = {
   // Fork: machine map state for this server's clients. Only the desktop gets the token.
   [FORK_WS_METHODS.machineMapSubscribe]: AuthOrchestrationReadScope,
   // Fork: MM-1701. The same data that an agent with read access gets from `machines_read`.
-  [FORK_WS_METHODS.machineMapRead]: AuthOrchestrationReadScope,
   // Fork: MM-1907. Names the machines whose threads this server's agents can read.
   [FORK_WS_METHODS.machineMapReadableEnvironments]: AuthOrchestrationReadScope,
   // Fork: a subscription receives the thread titles of this server, which reading allows already.
@@ -252,4 +283,6 @@ export const FORK_RPC_READ_SCOPES = {
   [FORK_WS_METHODS.forkPreviewSubscribeLocalListeners]: AuthOrchestrationReadScope,
   // Fork: thread content that the source machine allowed this one to hold.
   [FORK_WS_METHODS.forkThreadBackupGet]: AuthOrchestrationReadScope,
+  // Fork: prints the update notice in held terminals, as the desktop update reports need.
+  [FORK_WS_METHODS.forkUpdatesTerminalHold]: AuthEnvironmentMaintainScope,
 } as const;

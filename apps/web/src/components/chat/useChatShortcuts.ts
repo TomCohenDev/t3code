@@ -7,6 +7,7 @@ import {
   preventRepeatedTerminalCloseShortcut,
   preventTerminalCloseShortcut,
 } from "../../lib/terminalCloseShortcut";
+import { isInSideChatPane } from "../../lib/sideChatPane";
 import { getTerminalFocusOwner, type TerminalFocusOwner } from "../../lib/terminalFocus";
 import { focusLevelContext } from "../focusLevels/focusLevels";
 import type { ComposerHandleRef } from "../../composerHandleContext";
@@ -14,7 +15,7 @@ import type { BranchToolbarHandle } from "../BranchToolbar";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
 import { composerShortcutCommands } from "./composerShortcuts";
 
-/** Runs a command. Returning false lets the key event through untouched. */
+/** Returning false lets the key event through untouched. */
 export type ChatShortcutHandler = (context: {
   readonly event: KeyboardEvent;
   readonly terminalFocusOwner: TerminalFocusOwner | null;
@@ -22,16 +23,28 @@ export type ChatShortcutHandler = (context: {
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
 
-export interface ChatShortcutsInput {
+interface ChatShortcutsInput {
   readonly enabled: boolean;
+  /**
+   * A side chat inside another chat leaves the window to the outer chat. It runs only
+   * composer chords, for keys pressed inside `composerElement`.
+   */
+  readonly embedded?: boolean;
+  readonly composerElement?: HTMLElement | null;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly scriptKeybindings: ResolvedKeybindingsConfig;
-  readonly getShortcutContext: (target: EventTarget | null) => ShortcutMatchContext & {
+  /** Fork: `event` is the key event, so a terminal thread can tell an app chord (`isTerminalFocused`). */
+  readonly getShortcutContext: (
+    target: EventTarget | null,
+    event?: KeyboardEvent,
+  ) => ShortcutMatchContext & {
     readonly modelPickerOpen: boolean;
   };
   readonly threadFindActive: boolean;
   /** Takes type-to-focus keys and the composer and branch toolbar chords. */
   readonly composerRef: ComposerHandleRef;
+  /** Fork: takes type-to-focus keys in place of `composerRef`, as a terminal thread's shell does. */
+  readonly typeIntoComposer?: (key: string) => boolean;
   readonly branchToolbarRef: { readonly current: BranchToolbarHandle | null };
   readonly closeThreadFind: () => void;
   readonly commands: ChatShortcutCommands;
@@ -45,6 +58,8 @@ export interface ChatShortcutsInput {
  * act on the current render without re-registering on every change.
  */
 export function useChatShortcuts(input: ChatShortcutsInput) {
+  const embedded = input.embedded === true;
+  const composerElement = embedded ? (input.composerElement ?? null) : null;
   const handleShortcut = useEffectEvent((event: KeyboardEvent) => {
     const { keybindings } = input;
     if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
@@ -56,17 +71,18 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.stopPropagation();
       return;
     }
-    if (!input.enabled || isCommandPaletteOpen()) return;
+    if (!input.enabled || isCommandPaletteOpen() || isInSideChatPane(event.target)) return;
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
-    const shortcutContext = input.getShortcutContext(event.target);
+    const shortcutContext = input.getShortcutContext(event.target, event);
 
     if (
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       !focusLevelContext(event.target).sidebarFocus &&
       shouldTypeToFocusComposer(event) &&
-      input.composerRef.current?.insertTextAtEnd(event.key) === true
+      (input.typeIntoComposer?.(event.key) ??
+        input.composerRef.current?.insertTextAtEnd(event.key)) === true
     ) {
       event.preventDefault();
       event.stopPropagation();
@@ -92,7 +108,8 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.defaultPrevented ||
       event.isComposing ||
       event.keyCode === 229 ||
-      isCommandPaletteOpen()
+      isCommandPaletteOpen() ||
+      isInSideChatPane(event.target)
     )
       return;
     const context = input.getShortcutContext(event.target);
@@ -100,7 +117,26 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     event.preventDefault();
     input.closeThreadFind();
   });
+  const handleComposerShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || isCommandPaletteOpen()) return;
+    const command = resolveChatShortcutCommand(event, input.keybindings, input.scriptKeybindings, {
+      context: input.getShortcutContext(event.target),
+    });
+    const run = command
+      ? composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command]
+      : undefined;
+    if (!run || run({ event, terminalFocusOwner: null }) === false) return;
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- attaches keydown listeners for chat shortcuts and find dismissal: on the window, or on an embedded chat's composer
   useEffect(() => {
+    if (embedded) {
+      if (composerElement === null) return;
+      const onComposerKeyDown = (event: KeyboardEvent) => handleComposerShortcut(event);
+      composerElement.addEventListener("keydown", onComposerKeyDown, true);
+      return () => composerElement.removeEventListener("keydown", onComposerKeyDown, true);
+    }
     const onKeyDownCapture = (event: KeyboardEvent) => handleShortcut(event);
     const onKeyDown = (event: KeyboardEvent) => dismissFind(event);
     window.addEventListener("keydown", onKeyDownCapture, true);
@@ -109,5 +145,5 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       window.removeEventListener("keydown", onKeyDownCapture, true);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [composerElement, embedded]);
 }

@@ -22,7 +22,8 @@ block. What you typed is what the agent receives, markers and numbering
 included, and `#1234` without a space still looks up a pull request.
 
 Enter sends. In a list or quote, **Shift+Enter** continues it, and Shift+Enter
-on an empty line leaves it; **Tab** nests a list item. In a code block, Enter
+on an empty line moves out one level, then leaves it; **Tab** nests a list item
+under the one above and **Shift+Tab** moves it back out. In a code block, Enter
 starts a new line at the current indentation, **Tab** and **Shift+Tab** indent
 the selected lines, and a closing ` ``` ` followed by Enter, or two blank lines
 at the end, leave the block. **Backspace** at the start of a code block turns it
@@ -36,7 +37,8 @@ Attach up to 100 files per message. Each image can be up to 10 MiB, with at most
 50 MiB each, subject to the environment's upload support and limit. The agent
 receives them on the environment's machine. Provider and model limits still
 apply, including images already in the conversation. A video attachment gives
-the agent a file path; it does not enable native video input.
+the agent a file path; only [Antigravity](./providers-antigravity.md#skills-and-attachments)
+sends supported videos to Gemini models as video.
 
 Uploads begin when you add an attachment. All uploads must finish before the
 message can send. Retry or remove a failed upload. On web and desktop, reloading
@@ -46,15 +48,17 @@ You can drag or paste images into the web or desktop composer. HEIC and HEIF
 photos are converted to JPEG there and when selected from the mobile photo
 library; photos over the image limit are also resized to fit. On mobile, you can
 also send files to T3 Code through another app's system share sheet.
+On Android, you can also drag images from another app into the message input
+in split screen.
 
 See [images and videos](#images-and-videos-in-messages) for previewing and saving media.
 
 ## Send while the agent is working
 
-On web and desktop, choose **Settings → General → Follow-up behavior** to queue
+On web and desktop, choose **Settings → Chat → Follow-up behavior** to queue
 new messages for a later turn or steer the running turn immediately. The setting
 applies to this client; already queued messages keep their place. Queued messages
-are saved on the server and can be edited, reordered, or removed above the composer.
+are saved on the server and can be edited or removed before they send.
 When Enter sends, `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux uses
 the opposite action: it steers when your default is Queue and queues when your
 default is Steer.
@@ -72,7 +76,7 @@ Press `Option+Up` on macOS or `Alt+Up` on Windows and Linux with the cursor at t
 start of the composer to edit the most recently queued message. Change
 `thread.editQueuedMessage` to use another shortcut.
 
-Mobile has the same choice under **Settings → Follow-ups**. While a turn is
+Mobile has the same choice under **Settings → Chat**. While a turn is
 running the send button shows which action it will take. Long-press it to use the
 other action for a single message, or hold `Cmd` while sending from a hardware
 keyboard. The button only offers Steer when the running agent supports it.
@@ -177,27 +181,32 @@ and use **Attach again** or remove the missing file before sending.
 
 Use the composer's microphone to record, then confirm to transcribe. Text is
 inserted where your selection was when recording started, ready for you to review
-and edit before sending. Recordings can be up to five minutes long. Canceling,
-leaving the screen, or an audio interruption discards the recording and preserves
-your existing draft.
+and edit before sending. Recordings can be up to five minutes long. Canceling or an
+audio interruption discards the recording and preserves your existing draft.
 
-On web, desktop, and Android, add an OpenAI API key under **Settings →
-General → Voice input** (or **Settings → Microphone** on mobile). The environment
-sends the recording to OpenAI and deletes it after transcription; only the
-message text is sent when you submit.
+On web and desktop, add an OpenAI API key under **Settings → General → Voice input**.
+On mobile, the same key is under **Settings → Voice input**. The environment sends the
+recording to OpenAI and deletes it after transcription; only the message text is sent
+when you submit.
 
-On supported iPhones with iOS 26 or later, transcription runs on the device.
-The first use may download Apple's speech model and needs a network connection;
-later transcription works offline for that language. When on-device transcription
-is unavailable, the same OpenAI key is used as a fallback. While recording,
-the screen stays awake; it can sleep normally once recording stops.
+On mobile, transcription runs on the device when it can: Apple's speech
+transcription on iPhones with iOS 26 or later, and compatible Google speech services
+on Android 12 or later. The first use may download a speech model and needs a network
+connection; later transcription works offline for that language. When on-device
+transcription is unavailable, the environment's OpenAI key is used instead. On
+Android, keep T3 Code open while recording and transcribing. Navigating to another
+screen keeps dictation active; use the floating controls to finish or cancel. While
+recording, the screen stays awake; it can sleep normally once recording stops.
 
-On iPhone, voice input records from the first connected microphone in
-**Settings → Microphone**. The list mixes kinds (built-in, other wired, other
-Bluetooth, CarPlay) with wired and Bluetooth devices you have dictated with,
-listed by name. Drag to rank them together: for example, put **Other Bluetooth**
-above your AirPods so a new headset is preferred while the AirPods microphone
-stays low. By default, CarPlay comes after the built-in microphone.
+Choose a preferred order in **Settings → Microphone**. Voice input requests the first
+connected microphone in the list. The list mixes kinds (built-in, other wired, other
+Bluetooth, and CarPlay on iOS) with wired and Bluetooth devices you have dictated
+with, listed by name. Drag to rank them together:
+for example, put **Other Bluetooth** above your AirPods so a new headset is preferred
+while the AirPods microphone stays low. By default, CarPlay comes after the built-in
+microphone on iOS. Swipe a device left to forget it. Android may use another input
+when the preferred microphone cannot be routed. Devices with the same name may share
+a saved preference, but simultaneous same-name inputs remain separately selectable.
 
 ## Android assistant
 
@@ -212,7 +221,9 @@ button in any app to start a thread about what is on the screen.
 The panel opens over the current app. Type or tap the microphone, then tap the
 send button. To add the message to an existing thread or to pick another
 project, tap the title of the panel and search or pick from the list. With more
-than one machine, tap the machine icon to pick the machine first.
+than one machine, tap the machine icon to pick the machine first. To continue in
+the app instead, tap the arrow on top of the panel or drag it up. It opens the
+thread, or the new thread screen, with what you typed and attached.
 
 To ask about something in another app, you can also share it: pick **Ask T3 Code**
 in the Android share sheet.
@@ -221,16 +232,25 @@ Context pills above the text show what goes along: what you shared, the screensh
 the screen text, text you selected on screen, the page link, and the clipboard. In
 **Settings → Voice → Context pills** you can also turn on your newest photo and your
 location. Tap a pill to attach it or leave it out. Hold a pill to read and edit its
-text, or to draw on an image. The clipboard, the photo and the location are left out
-until you tap them, and password fields are never included.
+text, or to crop or draw on an image. The clipboard, the photo and the location are
+left out until you tap them, and password fields are never included. The **+** pill
+lists every pill with a check mark to attach or leave it out, and adds photos, a new
+photo from the camera, files, your newest photo, or your location.
+The screen text pill names what is on screen, such as "Video · YouTube · 6:52",
+"Chat · WhatsApp", or "Page · theverge.com". On a Chrome page it holds the whole
+page; turn this off with **Settings → Voice → Whole page in Chrome**. On a video, the
+link opens where you were watching. On the home
+screen, the screenshot and the screen text are left out until you tap them.
 
 If you close the panel without sending, your text comes back when you open it
 again within a minute.
 
 **Settings → Voice** sets what the panel does: send to a new thread or to the
-thread you opened last, open with the keyboard or with the speech dialog, start
-the thread right after you speak, open the new thread, or stay open and read the
-first reply aloud. It also sets the project of new threads.
+thread you opened last, open with the keyboard or with the speech dialog, and start
+the thread right after you speak. **After sending** closes the panel, opens the
+thread, or shows the reply in the panel so you can answer from there. The panel can
+also read the first reply aloud. **Edge glow** sets how long the glow around the
+screen stays. **Settings → Voice** also sets the project of new threads.
 T3 Code replaces your current assistant while it is selected. To go back, pick the
 other assistant on the same Android page.
 
@@ -252,19 +272,21 @@ Steer. Click it or press your send shortcut to use that action. Hold `Cmd` on ma
 Windows and Linux to switch the button to the opposite action, then click, or use the opposite-action
 shortcut described above.
 
-Queued messages appear above the composer. Rows show a thumbnail of any attached image alongside
-the text. Drag a row by its handle to reorder it, use the handle's arrow keys, promote the message
-to a steer, or remove it.
+On web and desktop, queued messages appear at the end of the thread as dashed messages that have
+not been sent yet. On mobile they appear above the composer. Each shows its text and any attached
+images. **Send now** sends a message right away, into the running turn if there is one. You can
+also edit or remove it. While a thread compacts, the button reads **Skip compaction and send**: it
+stops the compaction and sends the message.
 
 If you stop the agent or the server restarts, queued messages keep their order and are held.
-Press **Resume** in an empty composer on web and desktop, or **Resume queue** on mobile, to
-continue. Sending a new message also resumes the queue, unless it steers a turn that is already
-running. You can edit, reorder, or remove held messages without starting them.
+Press **Resume** in an empty composer to continue. **Resume** also continues a stopped
+run or one that hit a usage limit, even with nothing queued. Sending a new message also resumes the queue, unless it steers a turn that is already
+running. You can edit or remove held messages without starting them.
 
-The pencil on a queued row opens that message in the composer for editing. The original message
-stays in the queue until you save, and its row is highlighted while you edit. The message's
+The pencil on a queued message opens it in the composer for editing. The original message
+stays in the queue until you save, and it is highlighted while you edit. The message's
 attachments appear above the text with a remove control, and new images can be added the usual way.
-The checkmark saves the queued message in place; **Cancel** on its row leaves it unchanged. Whatever
+The checkmark saves the queued message in place; **Cancel** next to it leaves it unchanged. Whatever
 you had typed in the composer before starting the edit is restored afterwards. If the queued
 message starts or is removed while you are editing, the edit ends: changed content moves into the
 composer when it is empty, and is discarded otherwise.
@@ -275,8 +297,8 @@ Type `/` for commands or `$` to add a skill from the selected environment and
 provider. On mobile, both are also available before starting a thread on
 **New task**.
 
-The slash menu also includes skills unless you turn off **Settings → General →
-Show skills in slash menu**. Only skills enabled for the provider are listed.
+The slash menu also includes skills unless you turn off **Settings → Chat →
+Show skills in slash menu**, under Advanced. Only skills enabled for the provider are listed.
 
 After you add or change skills, plugins, or MCP servers, use **Restart agent
 session** in the command palette on web and desktop. The conversation continues,
@@ -286,7 +308,13 @@ Provider commands must start the message to run. T3 Code commands such as
 `/model` and `/plan`, and skill mentions, work on any line.
 
 Send `/compact` in an existing conversation to reduce context usage when the
-provider supports it. Web and desktop also offer compaction from the context meter.
+provider supports it, even with the context meter turned off.
+
+On web and desktop, turn on **Settings → Labs → Legacy → Context
+window indicator (legacy)** to see context usage. The meter is off by default
+and appears once the provider reports usage. Open it for usage details and
+**Compact context** when the provider supports compaction.
+`chat.compactContext` (`mod+alt+shift+c` by default) runs **Compact context** from the keyboard.
 
 Claude instances can also compact idle threads for you. See
 [compact long conversations](./providers-claude.md#compact-long-conversations).
@@ -296,13 +324,18 @@ Claude instances can also compact idle threads for you. See
 With Codex and Claude, send `/goal` followed by what "done" means, for example
 `/goal all tests in packages/api pass`. The agent keeps working across turns
 until it judges the goal met. The thread shows **Goal** while it works, and a
-row above the composer shows the goal and its progress.
+line at the end of the thread (above the composer on mobile) shows the goal and
+its progress.
 
 - `/goal` alone shows the current goal. `/goal clear` removes it.
 - Codex also supports `/goal pause` and `/goal resume`. Stopping a Codex goal
-  pauses it.
+  pauses it, and so does Codex ending its work without meeting the goal.
 - Stopping Claude ends the current turn, but the goal stays set. Claude checks it
   again at the end of your next message.
+- Sending a new goal, or `/goal resume`, while the agent works stops the current
+  turn and starts the goal, unless you queue it. `/goal clear` and `/goal pause`
+  stop the turn only when it is working on the goal. Other goal commands wait for
+  the turn to end.
 
 ## Context in your message
 
@@ -323,13 +356,17 @@ pull request is older than the recent list. Type a single word after `#` to sear
 the repository by text. Choose a result to insert it as a chip.
 
 Another thread can be context too. Type `@` followed by part of its title to pick one from
-the same server, or on web and desktop drag a thread out of the sidebar and drop it on the
-composer; a multi-selection drops together. The chip shows the thread's current title and
-opens it when selected. Your prompt only carries a reference: the agent reads the thread's
+the same server, or from a machine it links to while the Linked environments beta is on; those
+show the machine's name. On web and desktop you can also drag a thread out of the sidebar and
+drop it on the composer; a multi-selection drops together. On any client, **Copy thread** copies a
+link to the thread that pastes into a composer as its chip. The chip shows the thread's
+current title and opens it when selected. Your prompt only carries a reference: the agent reads the thread's
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
 thread does not change it, and the agent cannot send messages to it unless you ask.
 
-Dropping a thread from another environment attaches a saved transcript file. The source
+A thread from a linked machine, picked, pasted or dropped, stays a reference that the agent reads
+on that machine. A pasted link to a thread on any other machine stays a link. Dropping a thread
+from any other environment attaches a saved transcript file. The source
 environment must be connected and up to date. The transcript includes the visible history and
 saved text context at the time of the drop; later messages and the contents of attached files
 are not copied. The agent can read the saved transcript after the source disconnects. Normal
@@ -365,7 +402,9 @@ file: a header row with the view toggle, **Copy contents** and **Save file**. On
 open in the same file screen as workspace files; its menu holds **Copy contents**, **Save or
 share** and **Open in file viewer**. Pictures, videos and PDFs keep their native viewers, and
 other document formats such as Word or Pages open in the device's own viewer when it has one.
-If nothing on the device can show a format, save or share it to open it elsewhere.
+If nothing on the device can show a format, save or share it to open it elsewhere. A ZIP up to
+50 MB opens as a folder list on every surface; on mobile, select a file inside it to preview,
+save, or add it to chat.
 
 ## Images and videos in messages
 

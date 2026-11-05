@@ -15,15 +15,12 @@ import {
   type UnifiedSettings,
 } from "@t3tools/contracts";
 
-import {
-  persistClientSettingsPatch,
-  useMergedSettings,
-  useMigrateModelPreferences,
-} from "../../hooks/useSettings";
+import { persistClientSettingsPatch, useMergedSettings } from "../../hooks/useSettings";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { toastManager } from "../ui/toast";
 import { useShareToMachineMap } from "../../machineMap/shareSettings";
+import { useSelectedCircleSettings, useWriteSelectedCircle } from "../../machineMap/circleSettings";
 import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
 import {
   persistScopedSettingsPatch,
@@ -40,8 +37,13 @@ export function useScopedSettings<T = UnifiedSettings>(
   selector?: (settings: UnifiedSettings) => T,
 ): T {
   const { target } = useSettingsScope();
-  useMigrateModelPreferences(target?.environmentId ?? null, target?.settings ?? null);
-  return useMergedSettings(target?.settings ?? DEFAULT_SERVER_SETTINGS, selector);
+  // Fork: with a circle picked, the rows show that circle's values over the saved ones.
+  const circleValues = useSelectedCircleSettings();
+  return useMergedSettings(target?.settings ?? DEFAULT_SERVER_SETTINGS, (settings) => {
+    const shown =
+      Object.keys(circleValues).length === 0 ? settings : { ...settings, ...circleValues };
+    return selector ? selector(shown) : (shown as T);
+  });
 }
 
 export function useScopedSettingsMixed(keys: readonly (keyof ServerSettings)[]): boolean {
@@ -58,15 +60,21 @@ function useRunScopedPlan() {
   const persistServer = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
   return (
     plan: ReturnType<typeof planScopedSettingsPatch>,
-    // Fork: MM-411. Runs after the save with the environments that saved it.
-    onSaved?: (saved: readonly { readonly environmentId: EnvironmentId }[]) => void,
+    options?: {
+      readonly onFailed?: () => void;
+      // Fork: MM-411. Runs after the save with the environments that saved it.
+      readonly onSaved?: (saved: readonly { readonly environmentId: EnvironmentId }[]) => void;
+    },
   ) => {
+    const onFailed = options?.onFailed;
+    const onSaved = options?.onSaved;
     if (plan.unavailableReason) {
       toastManager.add({
         type: "warning",
         title: "Setting not saved",
         description: plan.unavailableReason,
       });
+      onFailed?.();
       return;
     }
     void persistScopedSettingsPatch(
@@ -90,6 +98,7 @@ function useRunScopedPlan() {
     ).then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
       onSaved?.(savedEnvironments);
       if (failedEnvironments.length === 0) return;
+      onFailed?.();
       toastManager.add({
         type: "error",
         title:
@@ -111,10 +120,23 @@ export function useUpdateScopedSettings() {
   const { scope, environments } = useSettingsScope();
   const run = useRunScopedPlan();
   const shareToMachineMap = useShareToMachineMap();
-  return (patch: ScopedSettingsPatch) => {
+  const writeCircle = useWriteSelectedCircle();
+  const selectedCircle = useOptionalSettingsScope()?.search.circle;
+  /** `onFailed` runs when any target rejects or drops the patch, so a draft can fall back. */
+  return (patch: ScopedSettingsPatch, options?: { readonly onFailed?: () => void }) => {
+    // Fork: with a circle picked, the change goes into that circle's part only.
+    if (writeCircle !== null) return writeCircle(patch, options);
+    // Fork: a picked circle that the map no longer lists must not fall through to another scope.
+    if (selectedCircle !== undefined) {
+      options?.onFailed?.();
+      return;
+    }
     const plan = planScopedSettingsPatch(scope, environments, patch);
-    // Fork: MM-411. A change for all environments also becomes the shared value of the map.
-    run(plan, scope.kind === "all" ? (saved) => shareToMachineMap(plan, saved) : undefined);
+    run(plan, {
+      ...(options?.onFailed === undefined ? {} : { onFailed: options.onFailed }),
+      // Fork: MM-411. A change for all environments also becomes the shared value of the map.
+      ...(scope.kind === "all" ? { onSaved: (saved) => shareToMachineMap(plan, saved) } : {}),
+    });
   };
 }
 

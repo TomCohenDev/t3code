@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useNavigation } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { formatComposerContextHref } from "@t3tools/shared/composerContextReferences";
@@ -22,7 +21,7 @@ import { enrichedContextLinkCustomization } from "../../native/useEnrichedLinkVa
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { environmentThreadDetails } from "../../state/threads";
-import { useForkMessageLinksEnabled } from "./forkMessageLinks";
+import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
 // The pill of an attached thread with no record, so both looks stay one.
 const threadPill = enrichedContextLinkCustomization(
@@ -30,17 +29,14 @@ const threadPill = enrichedContextLinkCustomization(
 );
 
 /**
- * Fork: thread links in a feed of `environmentId` while its server setting `threadLinkChips` is on.
- * A `t3-thread://` link and a web address of a thread in an environment that this app knows
- * (`parseThreadAddress`) get the attached-thread pill. Such a web address opens the thread here,
- * not in the phone browser. With the setting off, both return nothing and links stay as they are.
- * With `messageLinks` on, a link that names a message opens the thread at it (`messageParams`), and
- * its pill shows a message icon.
+ * Fork: thread links in a feed of `environmentId` while its server setting `threadAddressing` is on.
+ * A `t3-thread://` link or a known web thread address (`parseThreadAddress`) gets the attached
+ * thread pill and opens here, not in the browser. A message link opens the
+ * thread at it (`messageParams`) with a message icon. With the setting off, both return nothing.
  */
 export function useForkThreadLinks(environmentId: EnvironmentId) {
-  const navigation = useNavigation();
-  const chips = useEnvironmentServerConfig(environmentId)?.settings.threadLinkChips === true;
-  const messageLinks = useForkMessageLinksEnabled(environmentId);
+  const selectDetail = useSelectWorkspaceDetail();
+  const chips = useEnvironmentServerConfig(environmentId)?.settings.threadAddressing === true;
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
   const knownThreadAddress = useCallback(
     (href: string) => {
@@ -53,33 +49,32 @@ export function useForkThreadLinks(environmentId: EnvironmentId) {
     (href: string) => {
       const address = knownThreadAddress(href);
       if (!address) return false;
-      navigation.navigate("Thread", {
-        environmentId: String(address.environmentId),
-        threadId: String(address.threadId),
-        ...(messageLinks && address.messageId ? { message: String(address.messageId) } : {}),
+      selectDetail({
+        name: "Thread",
+        params: {
+          environmentId: String(address.environmentId),
+          threadId: String(address.threadId),
+          ...(address.messageId ? { message: String(address.messageId) } : {}),
+        },
       });
       return true;
     },
-    [knownThreadAddress, messageLinks, navigation],
+    [knownThreadAddress, selectDetail],
   );
   /** The Thread route param that opens a `t3-thread://` link at its message. */
-  const messageParams = useCallback(
-    (href: string): { readonly message?: string } => {
-      const messageId = messageLinks ? threadLinkMessageId(href) : null;
-      return messageId === null ? {} : { message: messageId };
-    },
-    [messageLinks],
-  );
+  const messageParams = useCallback((href: string): { readonly message?: string } => {
+    const messageId = threadLinkMessageId(href);
+    return messageId === null ? {} : { message: messageId };
+  }, []);
   const linkCustomization = useCallback(
     (href: string): MarkdownLinkCustomization | undefined =>
       threadPill && chips && (parseThreadLinkHref(href) !== null || knownThreadAddress(href))
-        ? messageLinks &&
-          (threadLinkMessageId(href) !== null || knownThreadAddress(href)?.messageId)
+        ? threadLinkMessageId(href) !== null || knownThreadAddress(href)?.messageId
           ? // The message bubble icon of review comment chips marks a message link.
             { ...threadPill, icon: CONTEXT_CHIP_ICON_SOURCES["message-circle"] }
           : threadPill
         : undefined,
-    [chips, knownThreadAddress, messageLinks],
+    [chips, knownThreadAddress],
   );
   return useMemo(
     () => ({ openKnownThread, messageParams, linkCustomization }),
@@ -91,12 +86,12 @@ const NO_MARKER_TARGETS: ThreadMarkerTargets = new Map();
 // Null, not an empty Map: `Atom.make` reads an iterable as something other than a plain value.
 const NO_MARKER_TARGETS_ATOM = Atom.make<ThreadMarkerTargets | null>(null);
 
-/** Fork: `threadMarkerTargets` of a thread, while its server setting `threadLinkChips` is on. */
+/** Fork: `threadMarkerTargets` of a thread, while its server setting `threadAddressing` is on. */
 const threadMarkerTargetsAtom = Atom.family((key: string) => {
   const [environmentId, threadId] = key.split("\u0000") as [EnvironmentId, ThreadId];
   const ref = scopeThreadRef(environmentId, threadId);
   return Atom.make((get): ThreadMarkerTargets => {
-    if (get(serverEnvironment.configValueAtom(environmentId))?.settings.threadLinkChips !== true) {
+    if (get(serverEnvironment.configValueAtom(environmentId))?.settings.threadAddressing !== true) {
       return NO_MARKER_TARGETS;
     }
     const messages = get(environmentThreadDetails.threadAtom(ref))?.projection.messages ?? [];

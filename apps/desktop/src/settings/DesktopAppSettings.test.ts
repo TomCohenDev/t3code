@@ -1,9 +1,11 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Tracer from "effect/Tracer";
 
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -27,12 +29,6 @@ const DesktopSettingsPatch = Schema.Struct({
   serverExposureMode: Schema.optionalKey(Schema.Literals(["local-only", "network-accessible"])),
   tailscaleServeEnabled: Schema.optionalKey(Schema.Boolean),
   tailscaleServePort: Schema.optionalKey(Schema.Number),
-  tunnelPairingEnabled: Schema.optionalKey(Schema.Boolean),
-  tunnelPairingUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  trustedBrowserOrigins: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessTeamDomain: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessAud: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessSubjects: Schema.optionalKey(Schema.NullOr(Schema.String)),
   updateChannel: Schema.optionalKey(Schema.Literals(["latest", "nightly"])),
   updateChannelConfiguredByUser: Schema.optionalKey(Schema.Boolean),
   wslBackendEnabled: Schema.optionalKey(Schema.Boolean),
@@ -57,7 +53,11 @@ function layerEnvironment(baseDir: string, appVersion = "0.0.17") {
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        DesktopConfig.layerTest({ T3CODE_HOME: baseDir }),
+      ),
     ),
   );
 }
@@ -79,11 +79,11 @@ const withSettings = <A, E, R>(
       Effect.provide(
         DesktopAppSettings.layer.pipe(
           Layer.provideMerge(layerEnvironment(baseDir, options?.appVersion)),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     );
-  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped);
 
 function writeSettingsPatch(patch: typeof DesktopSettingsPatch.Type) {
   return Effect.gen(function* () {
@@ -96,6 +96,37 @@ function writeSettingsPatch(patch: typeof DesktopSettingsPatch.Type) {
 }
 
 describe("DesktopSettings", () => {
+  it.effect("records one bounds operation span with its input attributes", () =>
+    Effect.gen(function* () {
+      const spans: Array<Tracer.Span> = [];
+      const tracer = Tracer.make({
+        span: (options) => {
+          const span = new Tracer.NativeSpan(options);
+          spans.push(span);
+          return span;
+        },
+      });
+      yield* withSettings(
+        Effect.gen(function* () {
+          const settings = yield* DesktopAppSettings.DesktopAppSettings;
+          yield* settings.setMainWindowBounds({ x: 10, y: 20, width: 900, height: 600 }, true);
+        }),
+      ).pipe(Effect.provideService(Tracer.Tracer, tracer));
+      const operationSpans = spans.filter(
+        (span) => span.name === "desktop.settings.setMainWindowBounds",
+      );
+      assert.lengthOf(operationSpans, 1);
+      assert.deepEqual(Object.fromEntries(operationSpans[0]!.attributes), {
+        x: 10,
+        y: 20,
+        width: 900,
+        height: 600,
+        isMaximized: true,
+      });
+      assert.equal(operationSpans[0]!.status._tag, "Ended");
+    }),
+  );
+
   it.effect(
     "persists disabling and re-enabling local execution without clearing backend settings",
     () =>
@@ -158,9 +189,6 @@ describe("DesktopSettings", () => {
           tunnelPairingEnabled: false,
           tunnelPairingUrl: null,
           trustedBrowserOrigins: null,
-          cloudflareAccessTeamDomain: null,
-          cloudflareAccessAud: null,
-          cloudflareAccessSubjects: null,
           updateChannel: "latest",
           updateChannelConfiguredByUser: false,
           wslBackendEnabled: false,
@@ -239,6 +267,29 @@ describe("DesktopSettings", () => {
     ),
   );
 
+  it.effect("removes its temporary file when replacing the settings file fails", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        yield* fileSystem.makeDirectory(`${environment.desktopSettingsPath}/occupied`, {
+          recursive: true,
+        });
+
+        const error = yield* settings.setServerExposureMode("network-accessible").pipe(Effect.flip);
+
+        assert.equal(error.operation, "replace-settings-file");
+        assert.deepEqual(
+          (yield* fileSystem.readDirectory(environment.stateDir)).filter((name) =>
+            name.endsWith(".tmp"),
+          ),
+          [],
+        );
+      }),
+    ),
+  );
+
   it.effect("migrates legacy implicit update channels to the runtime default", () =>
     withSettings(
       Effect.gen(function* () {
@@ -259,9 +310,6 @@ describe("DesktopSettings", () => {
           tunnelPairingEnabled: false,
           tunnelPairingUrl: null,
           trustedBrowserOrigins: null,
-          cloudflareAccessTeamDomain: null,
-          cloudflareAccessAud: null,
-          cloudflareAccessSubjects: null,
           updateChannel: "nightly",
           updateChannelConfiguredByUser: false,
           wslBackendEnabled: false,
@@ -273,7 +321,8 @@ describe("DesktopSettings", () => {
     ),
   );
 
-  it.effect("preserves explicit stable update channel on nightly builds", () =>
+  // Fork: the fork publishes only nightly builds.
+  it.effect("reads an explicit stable update channel as nightly", () =>
     withSettings(
       Effect.gen(function* () {
         const settings = yield* DesktopAppSettings.DesktopAppSettings;
@@ -294,10 +343,7 @@ describe("DesktopSettings", () => {
           tunnelPairingEnabled: false,
           tunnelPairingUrl: null,
           trustedBrowserOrigins: null,
-          cloudflareAccessTeamDomain: null,
-          cloudflareAccessAud: null,
-          cloudflareAccessSubjects: null,
-          updateChannel: "latest",
+          updateChannel: "nightly",
           updateChannelConfiguredByUser: true,
           wslBackendEnabled: false,
           wslOnly: false,
@@ -305,26 +351,6 @@ describe("DesktopSettings", () => {
         } satisfies DesktopAppSettings.DesktopSettings);
       }),
       { appVersion: "0.0.17-nightly.20260415.1" },
-    ),
-  );
-
-  it.effect("loads tunnel pairing only with a valid https tunnel URL", () =>
-    withSettings(
-      Effect.gen(function* () {
-        const settings = yield* DesktopAppSettings.DesktopAppSettings;
-        yield* writeSettingsPatch({
-          tunnelPairingEnabled: true,
-          tunnelPairingUrl: "https://t3.example.com",
-        });
-        const valid = yield* settings.load;
-        assert.equal(valid.tunnelPairingEnabled, true);
-        assert.equal(valid.tunnelPairingUrl, "https://t3.example.com");
-
-        yield* writeSettingsPatch({ tunnelPairingEnabled: true, tunnelPairingUrl: "not a url" });
-        const invalid = yield* settings.load;
-        assert.equal(invalid.tunnelPairingEnabled, false);
-        assert.equal(invalid.tunnelPairingUrl, null);
-      }),
     ),
   );
 

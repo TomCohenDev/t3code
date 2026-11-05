@@ -1,31 +1,30 @@
 /**
- * Fork: uses a portal invite (MM-913) from Add environment. The invite gives
- * this app its own Cloudflare Access service token; the app saves it for the
- * portal and every machine, then pairs with each machine. A machine that fails
- * does not stop the others, and the app keeps the token, so the app token repair
- * pairs it later.
+ * Fork: uses a kitshn device invite (K-1601) from Add environment. The app saves the invite's
+ * Cloudflare Access service token for kitshn and every machine, then pairs with each machine. A
+ * failed machine does not stop the others; the app token repair pairs it later.
  */
 import { requestHeaderOrigin } from "@t3tools/client-runtime/connection";
 import { useAtomSet } from "@effect/atom-react";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
-import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/reactivity";
 import { useCallback } from "react";
 
 import {
-  type ClientInvite,
+  type DeviceEnrollResult,
+  type DeviceInvite,
+  enrollWithDeviceInvite,
+  exchangeDeviceInvite,
+  parseDeviceInvite,
+} from "@t3tools/client-runtime/fork/deviceInvite";
+
+import {
+  deviceName,
   issueMachinePairingCredential,
-  parseClientInvite,
-  redeemClientInvite,
+  kitshnTransport,
 } from "../../connection/clientEnroll";
-import { type ClientEnrollResult, enrollWithInvite } from "../../connection/clientEnrollSteps";
 import { requestAppTokenSync } from "../../connection/forkAppTokenRepair";
 import { updateMobilePreferencesAtom } from "../../state/preferences";
-import {
-  setPendingConnectionError,
-  useRemoteConnections,
-} from "../../state/use-remote-environment-registry";
+import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useSaveCloudflareAccessToken } from "./CloudflareAccessFields";
 import { buildPairingUrl } from "./pairing";
 
@@ -38,16 +37,19 @@ function useEnrollClient() {
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const { onConnectPress } = useRemoteConnections();
   return useCallback(
-    (invite: ClientInvite): Promise<ClientEnrollResult> =>
-      enrollWithInvite(invite, {
-        redeem: redeemClientInvite,
+    (invite: DeviceInvite): Promise<DeviceEnrollResult> =>
+      enrollWithDeviceInvite(invite, {
+        exchange: (next) => exchangeDeviceInvite(next, deviceName(), kitshnTransport),
         origin: requestHeaderOrigin,
-        saveToken,
+        saveToken: async (origin, token) => {
+          const saved = await saveToken(origin, token);
+          if ("error" in saved) throw new Error(saved.error);
+        },
         saveClient: (client) => savePreferences({ appTokenClient: client }),
         pair: async (machine) => {
           const credential = await issueMachinePairingCredential(machine.origin);
-          const result = await onConnectPress(buildPairingUrl(machine.origin, credential));
-          if (!AsyncResult.isSuccess(result)) throw Cause.squash(result.cause);
+          const outcome = await onConnectPress(buildPairingUrl(machine.origin, credential));
+          if (!outcome.ok) throw new Error(outcome.error ?? "Could not pair with the machine.");
         },
       }),
     [onConnectPress, savePreferences, saveToken],
@@ -56,15 +58,18 @@ function useEnrollClient() {
 
 /**
  * Returns `enrollInvite(text)`. It starts the enroll and returns true when
- * `text` is a portal invite, and returns false for any other text.
+ * `text` is a kitshn device invite, and returns false for any other text.
  */
-export function useClientEnroll(setSubmitting: (submitting: boolean) => void) {
+export function useClientEnroll(
+  setSubmitting: (submitting: boolean) => void,
+  setError: (error: string | null) => void,
+) {
   const enrollClient = useEnrollClient();
   const navigation = useNavigation();
   const run = useCallback(
-    async (invite: ClientInvite) => {
+    async (invite: DeviceInvite) => {
       setSubmitting(true);
-      setPendingConnectionError(null);
+      setError(null);
       // No `finally`: the React Compiler cannot compile a try/finally.
       let result: Awaited<ReturnType<typeof enrollClient>>;
       try {
@@ -72,7 +77,7 @@ export function useClientEnroll(setSubmitting: (submitting: boolean) => void) {
       } catch (cause) {
         setSubmitting(false);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setPendingConnectionError(message(cause));
+        setError(message(cause));
         return;
       }
       setSubmitting(false);
@@ -87,9 +92,9 @@ export function useClientEnroll(setSubmitting: (submitting: boolean) => void) {
         return;
       }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setPendingConnectionError(
+      setError(
         result.paired.length === 0 && failures.length === 0
-          ? `"${result.name}" has no machines yet. Give it access in the portal; this phone then adds them by itself.`
+          ? `"${result.name}" has no machines yet. Share T3 app cards with it on the kitshn map; this phone then adds them by itself.`
           : [
               `Paired: ${result.paired.join(", ") || "none"}.`,
               ...failures,
@@ -97,11 +102,11 @@ export function useClientEnroll(setSubmitting: (submitting: boolean) => void) {
             ].join("\n"),
       );
     },
-    [enrollClient, navigation, setSubmitting],
+    [enrollClient, navigation, setError, setSubmitting],
   );
   return useCallback(
     (text: string): boolean => {
-      const invite = parseClientInvite(text);
+      const invite = parseDeviceInvite(text);
       if (invite === null) return false;
       void run(invite);
       return true;

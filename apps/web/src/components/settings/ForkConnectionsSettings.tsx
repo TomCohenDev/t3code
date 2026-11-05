@@ -33,7 +33,7 @@ import {
 } from "./RequestHeadersEditor";
 import { SettingsRow } from "./settingsLayout";
 
-export { TunnelPairingSettingsRow } from "./TunnelPairingSettingsRow";
+export { ForkSettingsSlot } from "./ForkSettingsSlot";
 
 /** Request headers and the Access state of one saved backend row. */
 export function useEnvironmentRequestHeaders(
@@ -213,20 +213,11 @@ export function AddBackendRequestHeadersFields({
 
 // Trusted siblings that could not pair yet. Most often the browser has no
 // Cloudflare Access cookie for them: opening one signs in, and the page tries
-// again when it gets focus. A browser key can also wait for approval (MM-918),
-// or the machine map can be paused (MM-718).
+// again when it gets focus.
 const SIBLING_ISSUE_TEXT: Record<SiblingIssue, { title: string; description: string }> = {
   "sign-in": {
     title: "Sign in at",
     description: "Open it once to sign in with Cloudflare Access, then come back to this tab.",
-  },
-  waiting: {
-    title: "Waiting for approval at",
-    description: "Approve this browser in the machine map portal. The page checks every minute.",
-  },
-  paused: {
-    title: "Paused at",
-    description: "The machine map is paused. The page tries again in 10 minutes.",
   },
 };
 

@@ -1,9 +1,8 @@
 /**
- * Fork: focus levels. The composer, timeline, right panel and sidebar are areas of the screen
- * that keyboard focus moves between. The DOM is the only state: the level is the area that
- * holds `document.activeElement`, found through markers that the areas already render.
- * Chat shortcut code low in the import graph imports this module, so it imports nothing from
- * the app; an app import here once closed an import cycle.
+ * Fork: focus levels are the screen areas (composer, timeline, right panel, sidebar) that keyboard
+ * focus moves between. The DOM is the only state: the level is the area that holds
+ * `document.activeElement`. Chat shortcut code low in the import graph imports this module, so it
+ * imports nothing from the app.
  */
 
 export type FocusLevel = "composer" | "timeline" | "rightPanel" | "sidebar";
@@ -53,6 +52,14 @@ export function focusLevelElement(level: FocusLevel): HTMLElement | null {
   return document.querySelector<HTMLElement>(levelSelector(level));
 }
 
+/** The `when` flags of the focus levels while `keyboardFocusLevels` is off. */
+export const FOCUS_LEVELS_OFF = {
+  composerFocus: false,
+  timelineFocus: false,
+  rightPanelFocus: false,
+  sidebarFocus: false,
+} as const;
+
 /**
  * The `when` flags of the focus levels. All are false while `keyboardFocusLevels` is off, so the
  * level keys fall back to the upstream rules for the same keys, such as `mod+f` for thread find.
@@ -69,6 +76,10 @@ export function focusLevelContext(target: EventTarget | null) {
 
 function focusTarget(level: FocusLevel): HTMLElement | null {
   const root = focusLevelElement(level);
+  // Fork: on a terminal thread, its shell takes the place of the composer.
+  if (!root && level === "composer") {
+    return document.querySelector<HTMLElement>('[data-terminal-owner="terminal-thread"] textarea');
+  }
   if (!root) return null;
   switch (level) {
     case "composer":

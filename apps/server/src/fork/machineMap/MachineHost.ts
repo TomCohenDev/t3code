@@ -1,8 +1,6 @@
 /**
- * Fork: machine map. This machine as the portal sees it: its status (MM-1002) and the commands it
- * runs itself (MM-501). The desktop commands (`installUpdate`, `reloadWindows`) are not here:
- * `MachineMap` hands them to the desktop app (MM-1402). A server that runs as the background
- * service runs `installUpdate` itself (MM-505, `ForkUpdates`).
+ * Fork: the commands that this machine runs itself (MM-501), for its kitshn card. A server that
+ * runs as the background service runs `installUpdate` itself (MM-505, `ForkUpdates`).
  */
 import {
   AuthSessionId,
@@ -10,6 +8,7 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type MachineClientSession,
   type MachineCommand,
+  type MachineCommandInput,
   type MachineCommandKind,
   type MachineScheduledTask,
   type MachineStatus,
@@ -18,6 +17,7 @@ import {
   ScheduledTaskId,
   type ScheduledTask,
 } from "@t3tools/contracts";
+import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
@@ -27,7 +27,9 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as Ref from "effect/Ref";
 
 import * as EnvironmentAuth from "../../auth/EnvironmentAuth.ts";
@@ -41,12 +43,12 @@ import * as ThreadManagement from "../../orchestration-v2/ThreadManagementServic
 import * as ProcessRunner from "../../processRunner.ts";
 import * as ProjectService from "../../project/ProjectService.ts";
 import * as HostResources from "../../resourceTelemetry/HostResources.ts";
+import * as ResourceTelemetry from "../../resourceTelemetry/ResourceTelemetry.ts";
 import * as ScheduledTasks from "../../scheduledTasks/ScheduledTaskService.ts";
 import { getAutoBootstrapThreadModelSelection } from "../../serverRuntimeStartup.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ForkUpdates from "../ForkUpdates.ts";
-import * as MachineMapState from "./MachineMapState.ts";
-import * as MachinePeers from "./MachinePeers.ts";
+import { programName, redactSecretsInText } from "../redactUrlSecrets.ts";
 
 /** What a command reports to the portal (`commandResult`). */
 export interface CommandOutcome {
@@ -72,8 +74,11 @@ const SERVER_COMMAND_KINDS: ReadonlyArray<MachineCommandKind> = [
   "startThread",
   "revokeClient",
   "collectDiagnostics",
-  "testArrow",
 ];
+
+const PausedTaskIds = Schema.fromJsonString(Schema.Array(Schema.String));
+const decodePausedTaskIds = Schema.decodeUnknownEffect(PausedTaskIds);
+const encodePausedTaskIds = Schema.encodeEffect(PausedTaskIds);
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -94,6 +99,8 @@ function scheduleText(schedule: ScheduledTask["schedule"]): string {
           : days.map((day) => WEEKDAY[day] ?? String(day)).join(", ");
       return `${when} at ${schedule.timeOfDay}`;
     }
+    case "once":
+      return `Once at ${schedule.runAt}`;
     case "webhook":
       return "On webhook";
   }
@@ -155,6 +162,14 @@ export class MachineHost extends Context.Service<
     readonly status: (input: StatusInput) => Effect.Effect<MachineStatus>;
     /** MM-501: runs one server command. Never fails; the outcome carries the error. */
     readonly run: (command: MachineCommand) => Effect.Effect<CommandOutcome>;
+    /**
+     * Runs one server command input without a portal command, as the kitshn provider does.
+     * `commandId` makes the ids of the orchestration commands that it starts. Never fails.
+     */
+    readonly runInput: (
+      commandId: string,
+      input: MachineCommandInput,
+    ) => Effect.Effect<CommandOutcome>;
     /** Ends this process so that its supervisor starts the server again. */
     readonly restartProcess: Effect.Effect<void>;
     /** A supervisor starts the server again after `restartProcess`. */
@@ -175,10 +190,27 @@ const make = Effect.gen(function* () {
   const hostResources = yield* HostResources.HostResources;
   const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
   const traceDiagnostics = yield* TraceDiagnostics.TraceDiagnostics;
+  const telemetry = yield* ResourceTelemetry.ResourceTelemetry;
   const launcher = yield* ServiceLauncherClient.ServiceLauncherClient;
   const processRunner = yield* ProcessRunner.ProcessRunner;
-  const state = yield* MachineMapState.MachineMapState;
-  const peers = yield* MachinePeers.MachinePeers;
+  const fileSystem = yield* FileSystem.FileSystem;
+  // Scheduled tasks that `pauseScheduledTasks` turned off; `resumeScheduledTasks` turns on only those.
+  const pausedTasksPath = path.join(config.stateDir, "paused-scheduled-tasks.json");
+  const readPausedTaskIds = fileSystem.readFileString(pausedTasksPath).pipe(
+    Effect.flatMap(decodePausedTaskIds),
+    Effect.orElseSucceed((): ReadonlyArray<string> => []),
+  );
+  const writePausedTaskIds = (ids: ReadonlyArray<string>) =>
+    encodePausedTaskIds(ids).pipe(
+      Effect.flatMap((contents) =>
+        writeFileStringAtomically({ filePath: pausedTasksPath, contents }),
+      ),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not save the paused scheduled tasks.", { cause: String(cause) }),
+      ),
+    );
   const forkUpdates = yield* ForkUpdates.ForkUpdates;
 
   const startedAtMs = yield* Clock.currentTimeMillis;
@@ -306,7 +338,7 @@ const make = Effect.gen(function* () {
   const succeed = (result: unknown): CommandOutcome => ({ ok: true, result, error: null });
   const fail = (error: string): CommandOutcome => ({ ok: false, result: null, error });
 
-  const stopAllAgents = Effect.fn("MachineHost.stopAllAgents")(function* (command: MachineCommand) {
+  const stopAllAgents = Effect.fn("MachineHost.stopAllAgents")(function* (commandId: string) {
     const snapshot = yield* threads.getShellSnapshot();
     const running = snapshot.threads.filter((thread) => thread.activeRunId !== null);
     const results = yield* Effect.forEach(
@@ -315,7 +347,7 @@ const make = Effect.gen(function* () {
         threads
           .interruptThread({
             projectId: thread.projectId,
-            commandId: CommandId.make(`machine-map:${command.id}:${thread.id}`),
+            commandId: CommandId.make(`machine-map:${commandId}:${thread.id}`),
             threadId: thread.id,
             reason: "Stopped from the machine map.",
           })
@@ -339,18 +371,15 @@ const make = Effect.gen(function* () {
       if (result._tag === "Success") paused.push(task.id);
     }
     // Remember every task this machine turned off, so resume turns on only those.
-    yield* state.updateSaved((saved) => ({
-      ...saved,
-      pausedTaskIds: [...new Set([...saved.pausedTaskIds, ...paused])],
-    }));
+    yield* writePausedTaskIds([...new Set([...(yield* readPausedTaskIds), ...paused])]);
     return succeed({ paused: paused.length, failed: enabled.length - paused.length });
   });
 
   const resumeScheduledTasks = Effect.gen(function* () {
-    const { saved } = yield* state.snapshot;
+    const pausedTaskIds = yield* readPausedTaskIds;
     const { tasks } = yield* scheduledTasks.list();
     const existing = new Set<string>(tasks.map((task) => task.id));
-    const toResume = saved.pausedTaskIds.filter((id) => existing.has(id));
+    const toResume = pausedTaskIds.filter((id) => existing.has(id));
     const failed: Array<string> = [];
     for (const id of toResume) {
       const result = yield* scheduledTasks
@@ -358,12 +387,12 @@ const make = Effect.gen(function* () {
         .pipe(Effect.result);
       if (result._tag === "Failure") failed.push(id);
     }
-    yield* state.updateSaved((current) => ({ ...current, pausedTaskIds: failed }));
+    yield* writePausedTaskIds(failed);
     return succeed({ resumed: toResume.length - failed.length, failed: failed.length });
   });
 
   const startThread = Effect.fn("MachineHost.startThread")(function* (
-    command: MachineCommand,
+    commandId: string,
     input: Extract<MachineCommand["input"], { readonly _tag: "startThread" }>,
   ) {
     const projectId = ProjectId.make(input.projectId);
@@ -373,7 +402,7 @@ const make = Effect.gen(function* () {
     const resolved = resolveProjectSettings(current, projectId, project.value).settings;
     // Same as `t3_thread_launch` with no choices: the project defaults, in its root.
     const launched = yield* threadLaunch.launch({
-      commandId: CommandId.make(`machine-map:${command.id}`),
+      commandId: CommandId.make(`machine-map:${commandId}`),
       projectId,
       title: input.title,
       modelSelection: resolved.defaultModelSelection ?? getAutoBootstrapThreadModelSelection(),
@@ -396,6 +425,11 @@ const make = Effect.gen(function* () {
       }),
       hostResources.read,
     ]);
+    // `read` refreshed the snapshot, so `latest` holds the same processes, with their names.
+    const names = new Map(
+      (yield* telemetry.latest).processes.map((entry) => [entry.identity.pid, entry.name]),
+    );
+    // The portal and the kitshn provider both send this out, so nothing secret goes in.
     return succeed({
       versions: {
         t3: descriptor.serverVersion,
@@ -413,13 +447,13 @@ const make = Effect.gen(function* () {
         ...traces.latestFailures.slice(0, 10).map((failure) => ({
           kind: "failure",
           name: failure.name,
-          message: failure.cause.slice(0, 300),
+          message: redactSecretsInText(failure.cause).slice(0, 300),
           at: DateTime.formatIso(failure.endedAt),
         })),
         ...traces.latestWarningAndErrorLogs.slice(0, 10).map((log) => ({
           kind: log.level,
           name: log.spanName,
-          message: log.message.slice(0, 300),
+          message: redactSecretsInText(log.message).slice(0, 300),
           at: DateTime.formatIso(log.seenAt),
         })),
       ],
@@ -428,25 +462,27 @@ const make = Effect.gen(function* () {
         cpuPercent: entry.cpuPercent,
         rssBytes: entry.rssBytes,
         elapsed: entry.elapsed,
-        command: entry.command.slice(0, 160),
+        command: programName(names.get(entry.pid), entry.command).slice(0, 160),
       })),
     });
   });
 
-  const run: MachineHost["Service"]["run"] = Effect.fnUntraced(
-    function* (command) {
-      const nowMs = yield* Clock.currentTimeMillis;
-      if (Date.parse(command.expiresAt) <= nowMs) {
-        return fail("The command expired before it reached this machine.");
-      }
-      const input = command.input;
+  const runInput: MachineHost["Service"]["runInput"] = Effect.fnUntraced(
+    function* (commandId, input) {
       switch (input._tag) {
+        // The portal's arrow test; kitshn links have no test command (K-1620 is not built).
+        case "testArrow":
+          return {
+            ok: false,
+            result: null,
+            error: "testArrow is replaced by kitshn links.",
+          } satisfies CommandOutcome;
         case "restartServer":
           return supervised
             ? { ...succeed({ restarting: true }), restartAfterReply: true as const }
             : fail("No supervisor restarts this server, so it does not stop itself.");
         case "stopAllAgents":
-          return yield* stopAllAgents(command);
+          return yield* stopAllAgents(commandId);
         case "pauseScheduledTasks":
           return yield* pauseScheduledTasks;
         case "resumeScheduledTasks":
@@ -460,15 +496,13 @@ const make = Effect.gen(function* () {
         case "runScheduledTask":
           return succeed(yield* scheduledTasks.runNow({ id: ScheduledTaskId.make(input.taskId) }));
         case "startThread":
-          return yield* startThread(command, input);
+          return yield* startThread(commandId, input);
         case "revokeClient":
           return succeed({
             revoked: yield* auth.revokeSession(AuthSessionId.make(input.sessionId)),
           });
         case "collectDiagnostics":
           return yield* collectDiagnostics;
-        case "testArrow":
-          return succeed(yield* peers.testArrow(input.to));
         case "installUpdate":
           return forkUpdates.available
             ? succeed(yield* forkUpdates.install({ whenIdle: input.whenIdle }))
@@ -477,12 +511,20 @@ const make = Effect.gen(function* () {
           return fail("This command runs in the desktop app.");
       }
     },
-    (effect, command) =>
+    (effect, _commandId, input) =>
       effect.pipe(
         Effect.catch((cause) => Effect.succeed(fail(errorText(cause)))),
-        Effect.withSpan("MachineHost.run", { attributes: { kind: command.input._tag } }),
+        Effect.withSpan("MachineHost.run", { attributes: { kind: input._tag } }),
       ),
   );
+
+  const run: MachineHost["Service"]["run"] = Effect.fnUntraced(function* (command) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    if (Date.parse(command.expiresAt) <= nowMs) {
+      return fail("The command expired before it reached this machine.");
+    }
+    return yield* runInput(command.id, command.input);
+  });
 
   const restartProcess = Effect.sync(() => {
     // SIGTERM runs the normal shutdown: provider sessions stop and finalizers run.
@@ -494,6 +536,7 @@ const make = Effect.gen(function* () {
     supportedCommands,
     status,
     run,
+    runInput,
     restartProcess,
     supervised,
   });

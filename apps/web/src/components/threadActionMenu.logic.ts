@@ -1,10 +1,13 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, KeybindingCommand } from "@t3tools/contracts";
+import { TERMINAL_PROGRAM_ARCHIVE_BLOCK_MESSAGE } from "@t3tools/client-runtime/state/fork-terminal-threads";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "find"
   | "new-thread-on-branch"
   | "continue-elsewhere"
   | "filter-by-project"
+  | "turn-into-project"
   | "project-settings"
   | "pin"
   | "unpin"
@@ -19,12 +22,37 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "share-guest"
   | "copy"
   | "copy-path"
   | "copy-branch"
+  | "copy-thread"
   | "copy-thread-id"
   | "archive"
   | "delete";
+
+/** The thread menu items that each thread keybinding command runs, in order of preference. */
+export const THREAD_ACTION_KEYBINDINGS = {
+  "thread.pin": ["pin", "unpin"],
+  "thread.settle": ["settle", "unsettle"],
+  "thread.snooze": ["snooze", "unsnooze"],
+  "thread.rename": ["rename"],
+  "thread.markUnread": ["mark-unread"],
+  "thread.archive": ["archive"],
+} as const satisfies Partial<Record<KeybindingCommand, ReadonlyArray<ThreadActionMenuId>>>;
+
+const THREAD_ACTION_COMMAND_BY_ID = new Map<ThreadActionMenuId, KeybindingCommand>(
+  Object.entries(THREAD_ACTION_KEYBINDINGS).flatMap(([command, ids]) =>
+    ids.map((id) => [id, command as keyof typeof THREAD_ACTION_KEYBINDINGS] as const),
+  ),
+);
+
+function withThreadActionKeybinding(
+  item: ContextMenuItem<ThreadActionMenuId>,
+): ContextMenuItem<ThreadActionMenuId> {
+  const keybindingCommand = THREAD_ACTION_COMMAND_BY_ID.get(item.id);
+  return keybindingCommand ? { ...item, keybindingCommand } : item;
+}
 
 export type DraftActionMenuId =
   | "copy"
@@ -64,8 +92,31 @@ export function buildDraftActionMenuItems(options: {
   ];
 }
 
+/**
+ * Fork: why Archive refuses a thread now. Archive ends a program that runs in a terminal thread,
+ * so the program blocks it like an agent run.
+ */
+export type ThreadArchiveBlock = "agent" | "program";
+
+export const THREAD_ARCHIVE_BLOCK_REASON: Record<
+  ThreadArchiveBlock,
+  { readonly menu: string; readonly message: string }
+> = {
+  agent: { menu: "Stop the agent first", message: "Cannot archive while the provider is active." },
+  program: {
+    menu: "Stop the program first",
+    message: TERMINAL_PROGRAM_ARCHIVE_BLOCK_MESSAGE,
+  },
+};
+
+function forkArchiveThreadLabel(block: ThreadArchiveBlock | null): string {
+  if (block === null) return "Archive thread";
+  return `Archive thread (${THREAD_ARCHIVE_BLOCK_REASON[block].menu.toLowerCase()})`;
+}
+
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
+  readonly canFind?: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
     readonly label: string;
@@ -77,29 +128,45 @@ export interface ThreadActionMenuState {
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
-  /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
+  /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
+  /**
+   * Fork: why Archive refuses the thread now. A running program also blocks it, and the label
+   * says why, because a native menu shows no tooltip.
+   */
+  readonly forkArchiveBlock?: ThreadArchiveBlock | null;
+  /** Fork: Mark unread needs a finished run; without one the server refuses it. */
+  readonly canMarkUnread?: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
+    /** Fork: a terminal thread has no Mark unread (`readForkThreadMenuState`). */
+    readonly markUnread?: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
+  readonly canShareWithGuest?: boolean;
+  /** A No project thread with its own folder, on a server that can promote it. */
+  readonly canTurnIntoProject?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
+    "find",
     "new-thread-on-branch",
     // Fork: reads the thread and opens a draft elsewhere; the thread itself is unchanged.
     "continue-elsewhere",
     "project-settings",
     "mark-unread",
+    "share-guest",
     "copy",
     "copy-path",
     "copy-branch",
+    "copy-thread",
     "copy-thread-id",
   ].includes(action);
 }
@@ -107,7 +174,10 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
-  const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+  const menuItems: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+    ...(state.canFind
+      ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
+      : []),
     ...(state.branch
       ? [
           {
@@ -147,7 +217,11 @@ export function buildThreadActionMenuItems(
                     id: `snooze:${preset.id}` as const,
                     label: `${preset.label} (${preset.whenLabel})`,
                   })),
-                  { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
+                  {
+                    id: "snooze:custom" as const,
+                    label: "Custom…",
+                    separatorBefore: state.snoozePresets.length > 0,
+                  },
                 ],
               },
         ]
@@ -163,7 +237,19 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
-    { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+    ...(state.supports.markUnread !== false
+      ? [
+          {
+            id: "mark-unread" as const,
+            label: "Mark unread",
+            icon: "mail-open",
+            disabled: state.canMarkUnread === false,
+          },
+        ]
+      : []),
+    ...(state.canShareWithGuest
+      ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
+      : []),
     ...(state.projectFilter
       ? [
           {
@@ -172,6 +258,16 @@ export function buildThreadActionMenuItems(
               ? "Show all projects"
               : `Filter by ${state.projectFilter.label}`,
             icon: "folder-tree",
+          },
+        ]
+      : []),
+    ...(state.canTurnIntoProject
+      ? [
+          {
+            id: "turn-into-project" as const,
+            label: "Turn into project",
+            icon: "folder-plus",
+            disabled: state.isRunning,
           },
         ]
       : []),
@@ -206,15 +302,16 @@ export function buildThreadActionMenuItems(
         ...(state.branch
           ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
           : []),
+        { id: "copy-thread", label: "Thread", icon: "message-square" },
         { id: "copy-thread-id", label: "Thread ID", icon: "hash" },
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
     {
       id: "archive",
-      label: "Archive thread",
+      label: forkArchiveThreadLabel(state.forkArchiveBlock ?? null),
       icon: "archive",
-      disabled: state.isRunning,
+      disabled: state.isRunning || (state.forkArchiveBlock ?? null) !== null,
       separatorBefore: true,
     },
     {
@@ -224,6 +321,7 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
+  const items = menuItems.map(withThreadActionKeybinding);
   return state.canOperate
     ? items
     : items.map((item) =>

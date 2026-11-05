@@ -12,16 +12,17 @@ import {
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ShortcutHint } from "../focusLevels/ShortcutHint";
+import { Tooltip, TooltipPopup } from "../ui/tooltip";
+import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import type { KeybindingCommand } from "@t3tools/contracts";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
   /** Fork: the repository owner filter menu, rendered before the project scope. */
   ownerFilter?: ReactNode;
+  /** Fork: the new terminal thread button, rendered before the new thread button. */
+  terminalThreadButton?: ReactNode;
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
@@ -38,10 +39,10 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   ownerFilter,
+  terminalThreadButton,
   onNewProject,
   onNewThread,
   newThreadDisabled,
@@ -57,9 +58,7 @@ export function SidebarThreadHeader({
   onClearSearch,
 }: SidebarThreadHeaderProps) {
   const resultsVisible = isSearching && searchResultCount > 0;
-  // Results shrink as the query narrows, so the active index can outrun the
-  // list; pointing aria-activedescendant at a removed option strands the
-  // screen reader on nothing.
+  // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   const newThreadLabel = (
     <>
@@ -70,10 +69,7 @@ export function SidebarThreadHeader({
 
   return (
     <div className="flex items-center gap-1">
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-      >
+      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
         <AppIcon slot="sidebar.search" className="text-(--sidebar-icon-color)" />
         <SidebarInput
           ref={searchInputRef}
@@ -121,8 +117,10 @@ export function SidebarThreadHeader({
             </SidebarHeaderIconButton>
           </>
         ) : null}
+        {terminalThreadButton}
         <SidebarHeaderIconButton
           label="New thread"
+          command={newThreadCommand}
           tooltip={
             showNewThreadInProjectHint ? (
               <span className="flex flex-col gap-0.5">
@@ -149,12 +147,15 @@ export function SidebarThreadHeader({
 export function SidebarHeaderIconButton({
   label,
   tooltip = label,
+  command = null,
   className,
   children,
   ...rest
 }: {
   label: string;
   tooltip?: ReactNode;
+  /** The keybinding command that the button runs; its key shows in `tooltip`. */
+  command?: KeybindingCommand | null;
   className?: string | undefined;
   children?: ReactNode;
 } & Omit<
@@ -163,7 +164,8 @@ export function SidebarHeaderIconButton({
 >) {
   return (
     <Tooltip>
-      <TooltipTrigger
+      <ShortcutTrigger
+        command={command}
         render={
           <SidebarMenuButton
             size="icon"
@@ -179,7 +181,7 @@ export function SidebarHeaderIconButton({
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
         />
-      </TooltipTrigger>
+      </ShortcutTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
   );

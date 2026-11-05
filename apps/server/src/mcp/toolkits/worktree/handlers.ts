@@ -1,6 +1,5 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import * as GitWorkflow from "../../../git/GitWorkflowService.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import { readThread, unavailable } from "../../threadAccess.ts";
 import * as Effect from "effect/Effect";
@@ -9,6 +8,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as WorktreeMcpService from "../../WorktreeMcpService.ts";
 import { WorktreeToolkit } from "./tools.ts";
+import { forkWorktreeHandoff } from "../../../fork/forkWorktreeHandoffTool.ts";
 
 const handlers = {
   t3_worktree_list: McpToolAccess.reads((input) =>
@@ -30,19 +30,17 @@ const handlers = {
           code: "invalid_request",
           message: "The project was not found.",
         });
-      const git = yield* GitWorkflow.GitWorkflowService;
-      return yield* git
-        .listRefs({ ...refs, cwd: thread.worktreePath ?? project.value.workspaceRoot })
+      const service = yield* WorktreeMcpService.WorktreeMcpService;
+      return yield* service
+        .listRefs({
+          ...refs,
+          worktreePath: thread.worktreePath,
+          workspaceRoot: project.value.workspaceRoot,
+        })
         .pipe(Effect.mapError(unavailable));
     }),
   ),
-  t3_worktree_handoff: McpToolAccess.actsAsCaller((input) =>
-    Effect.gen(function* () {
-      const scope = yield* McpInvocationContext.McpInvocationContext;
-      const service = yield* WorktreeMcpService.WorktreeMcpService;
-      return yield* service.handoff(scope, input);
-    }),
-  ),
+  t3_worktree_handoff: forkWorktreeHandoff, // Fork: `threadId` moves a thread whose folder is gone.
   t3_worktree_status: McpToolAccess.readsAsCaller(() =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;

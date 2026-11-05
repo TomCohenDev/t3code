@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -9,19 +10,25 @@ import {
   ProviderThreadId,
   ProviderInstanceId,
   type OrchestrationV2AppThread,
+  type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
+  type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Config from "../config.ts";
+import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
+import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProviderRuntimeRecovery from "../orchestration-v2/ProviderRuntimeRecoveryService.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as Setup from "../project/ProjectSetupScriptRunner.ts";
 import * as Settings from "../serverSettings.ts";
@@ -35,8 +42,16 @@ import { makeWorkspaceDependencies } from "./forkWorkspaceDependencies.ts";
 const layerGit = Git.layer.pipe(
   Layer.provide(VcsProcess.layer),
   Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "fork-worktree-resume-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
+
+interface PrepareOptions {
+  readonly restore?: boolean;
+  readonly exitCode?: number;
+  readonly tracker?: Layer.Layer<Tracker.WorktreeSetupTracker>;
+  readonly completion?: Effect.Effect<Setup.ProjectSetupScriptCompletion>;
+  readonly branch?: string | null;
+}
 
 const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -72,35 +87,38 @@ const fixture = Effect.gen(function* () {
     providerThreadId: ProviderThreadId.make("resume-provider-thread"),
     turnItems: [],
   };
-  const activities: unknown[] = [];
+  const activities: OrchestrationV2DomainEvent[] = [];
   let setups = 0;
-  const layer = (
-    enabled = true,
+  const layer = ({
+    restore = true,
     exitCode = 0,
-    trackerLayer = Tracker.layer,
-    worktreeArtifactEviction = false,
-  ) =>
+    tracker = Tracker.layer,
+    completion,
+  }: PrepareOptions) =>
     Resume.layer.pipe(
-      Layer.provide(trackerLayer),
+      Layer.provide(tracker),
       Layer.provide(
         Layer.mergeAll(
-          Settings.layerTest({ restoreWorktreesOnResume: enabled, worktreeArtifactEviction }),
+          Settings.layerTest({ restoreWorktreesOnResume: restore }),
           IdAllocator.layer,
           Layer.mock(Projects.ProjectService)({
             getById: () =>
-              Effect.succeed(
-                Option.some({
-                  id: input.thread.projectId,
-                  workspaceRoot: repository,
-                  scripts: [],
-                } as never),
-              ),
+              Effect.succeedSome({
+                id: input.thread.projectId,
+                workspaceRoot: repository,
+                scripts: [],
+              } as never),
           }),
           Layer.mock(EventSink.EventSinkV2)({
             writeIfRunCurrent: (request) =>
               Effect.sync(() => {
                 activities.push(...request.events);
                 return { committed: true, storedEvents: [] } as never;
+              }),
+            write: (request) =>
+              Effect.sync(() => {
+                activities.push(...request.events);
+                return [];
               }),
           }),
           Layer.mock(Setup.ProjectSetupScriptRunner)({
@@ -117,30 +135,46 @@ const fixture = Effect.gen(function* () {
                   terminalId: "setup",
                   cwd,
                   async: false,
-                  completion: Effect.gen(function* () {
-                    if (exitCode === 0)
-                      for (const relative of yield* dependencies(cwd).pipe(Effect.orDie))
-                        yield* fs
-                          .makeDirectory(path.join(cwd, relative), { recursive: true })
-                          .pipe(Effect.orDie);
-                    return { exitCode, durationMs: 1 };
-                  }),
+                  completion:
+                    completion ??
+                    Effect.gen(function* () {
+                      if (exitCode === 0)
+                        for (const relative of yield* dependencies(cwd).pipe(Effect.orDie))
+                          yield* fs
+                            .makeDirectory(path.join(cwd, relative), { recursive: true })
+                            .pipe(Effect.orDie);
+                      return { exitCode, durationMs: 1 };
+                    }),
                 };
               }),
           }),
         ),
       ),
     );
-  const prepare = (
-    enabled = true,
-    exitCode = 0,
-    trackerLayer = Tracker.layer,
-    worktreeArtifactEviction = false,
-  ) =>
+  const prepare = (options: PrepareOptions = {}) =>
     Effect.gen(function* () {
-      yield* (yield* Resume.ForkWorktreeResume).prepare(input);
-    }).pipe(Effect.provide(layer(enabled, exitCode, trackerLayer, worktreeArtifactEviction)));
-  return { fs, path, exec, cwd, repository, input, activities, prepare, setups: () => setups };
+      yield* (yield* Resume.ForkWorktreeResume).prepare(
+        options.branch === undefined
+          ? input
+          : { ...input, thread: { ...input.thread, branch: options.branch } },
+      );
+    }).pipe(Effect.provide(layer(options)));
+  const activityStatuses = () =>
+    activities.flatMap((event) =>
+      event.type === "turn-item.updated" ? [event.payload.status] : [],
+    );
+  return {
+    fs,
+    path,
+    exec,
+    cwd,
+    repository,
+    input,
+    activities,
+    activityStatuses,
+    prepare,
+    setups: () => setups,
+  };
 });
 
 it.effect("restores the same branch and path, waits for setup, and publishes activity", () =>
@@ -161,19 +195,27 @@ it.effect("restores the same branch and path, waits for setup, and publishes act
   }).pipe(Effect.provide(layerGit)),
 );
 
-it.effect("runs setup for missing dependencies without changing dirty files or HEAD", () =>
-  Effect.gen(function* () {
-    const f = yield* fixture;
-    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
-    yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), '{"dirty":true}');
-    yield* f.prepare();
-    yield* f.prepare();
-    assert.strictEqual(
-      yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
-      '{"dirty":true}',
-    );
-    assert.strictEqual(f.setups(), 1);
-  }).pipe(Effect.provide(layerGit)),
+// An agent may have switched the branch; only the folder's identity is checked.
+it.effect.each([{ branch: "saved" }, { branch: "switched" }])(
+  "runs setup for evicted dependencies without changing dirty files or HEAD (on $branch)",
+  ({ branch }) =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      yield* f.exec(
+        branch === "saved"
+          ? ["worktree", "add", f.cwd, "saved"]
+          : ["worktree", "add", "-b", branch, f.cwd],
+      );
+      yield* f.fs.writeFileString(f.path.join(f.cwd, "package.json"), '{"dirty":true}');
+      yield* (yield* (yield* makeSetupMarker)(f.cwd)).mark;
+      yield* f.prepare();
+      yield* f.prepare();
+      assert.strictEqual(
+        yield* f.fs.readFileString(f.path.join(f.cwd, "package.json")),
+        '{"dirty":true}',
+      );
+      assert.strictEqual(f.setups(), 1);
+    }).pipe(Effect.provide(layerGit)),
 );
 
 it.effect(
@@ -236,36 +278,47 @@ it.effect(
 it.effect("does nothing while off", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    yield* f.prepare(false);
+    yield* f.prepare({ restore: false });
     assert.isFalse(yield* f.fs.exists(f.cwd));
     assert.strictEqual(f.setups(), 0);
   }).pipe(Effect.provide(layerGit)),
 );
 
-it.effect("leaves a missing checkout to upstream recovery while off, even with eviction on", () =>
-  Effect.gen(function* () {
-    const f = yield* fixture;
-    yield* f.prepare(false, 0, Tracker.layer, true);
-    assert.isFalse(yield* f.fs.exists(f.cwd));
-    assert.strictEqual(f.setups(), 0);
-    assert.deepStrictEqual(f.activities, []);
-  }).pipe(Effect.provide(layerGit)),
-);
-
-it.effect("missing node_modules in a declared workspace package runs setup before returning", () =>
+it.effect("a checkout without node_modules reruns setup only after eviction removed them", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.exec(["worktree", "add", f.cwd, "saved"]);
-    yield* f.fs.makeDirectory(f.path.join(f.cwd, "node_modules"));
-    yield* f.fs.makeDirectory(f.path.join(f.cwd, "apps/mobile"), { recursive: true });
-    yield* f.fs.writeFileString(f.path.join(f.cwd, "apps/mobile/package.json"), "{}");
-    yield* f.fs.writeFileString(
-      f.path.join(f.cwd, "pnpm-workspace.yaml"),
-      "packages:\n  - apps/*\n",
-    );
-    yield* f.prepare();
+    yield* f.prepare({});
+    yield* f.prepare({});
+    assert.strictEqual(f.setups(), 0);
+    yield* (yield* (yield* makeSetupMarker)(f.cwd)).mark;
+    // Evicted dependencies come back whatever the restore setting is.
+    yield* f.prepare({ restore: false });
     assert.strictEqual(f.setups(), 1);
-    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "apps/mobile/node_modules")));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("a stopped setup closes its activity as interrupted", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const started = yield* Deferred.make<void>();
+    const startup = yield* f
+      .prepare({
+        completion: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+      })
+      .pipe(Effect.forkChild({ startImmediately: true }));
+    yield* Deferred.await(started);
+    yield* Fiber.interrupt(startup);
+    assert.deepStrictEqual(f.activityStatuses(), ["running", "interrupted"]);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("a crashed setup closes its activity as failed", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const exit = yield* f.prepare({ completion: Effect.die("setup crashed") }).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(exit));
+    assert.deepStrictEqual(f.activityStatuses(), ["running", "failed"]);
   }).pipe(Effect.provide(layerGit)),
 );
 
@@ -286,7 +339,7 @@ it.effect("restores evicted dependencies even when the restore setting is off", 
     yield* f.exec(["worktree", "add", f.cwd, "saved"]);
     const marker = yield* (yield* makeSetupMarker)(f.cwd);
     yield* marker.mark;
-    yield* f.prepare(false);
+    yield* f.prepare({ restore: false });
     assert.strictEqual(f.setups(), 1);
     assert.isFalse(yield* marker.pending);
     assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules")));
@@ -297,6 +350,8 @@ it.effect("waits for the launcher's existing async setup instead of starting ano
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    const marker = yield* (yield* makeSetupMarker)(f.cwd);
+    yield* marker.mark;
     const waiting = yield* Deferred.make<void>();
     const complete = yield* Deferred.make<void>();
     const trackerLayer = Layer.mock(Tracker.WorktreeSetupTracker)({
@@ -314,13 +369,46 @@ it.effect("waits for the launcher's existing async setup instead of starting ano
         ),
     });
     const startup = yield* f
-      .prepare(true, 0, trackerLayer)
+      .prepare({ tracker: trackerLayer })
       .pipe(Effect.forkChild({ startImmediately: true }));
     yield* Deferred.await(waiting);
     assert.strictEqual(f.setups(), 0);
     yield* f.fs.makeDirectory(f.path.join(f.cwd, "node_modules"));
     yield* Deferred.succeed(complete, undefined);
     yield* Fiber.join(startup);
+    assert.strictEqual(f.setups(), 0);
+    assert.isFalse(yield* marker.pending);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+// Agents switch branches and scratch threads have none; nothing here needs a repair.
+it.effect("starts in an existing folder whose branch changed or that has no branch", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", "-b", "switched", f.cwd]);
+    yield* f.prepare();
+    yield* f.exec(["branch", "-D", "saved"]);
+    yield* f.prepare();
+    yield* f.prepare({ branch: null });
+    assert.strictEqual(f.setups(), 0);
+    assert.deepStrictEqual(f.activities, []);
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("a launch's running setup does not hold the start of its existing checkout", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.exec(["worktree", "add", f.cwd, "saved"]);
+    const trackerLayer = Layer.mock(Tracker.WorktreeSetupTracker)({
+      get: () =>
+        Effect.succeed({
+          phase: "running",
+          stages: [{ id: "setup-script", status: "running" }],
+        } as never),
+      // A setup whose completion is never seen keeps this snapshot running forever.
+      stream: () => Stream.die("start must not wait for the launch's setup"),
+    });
+    yield* f.prepare({ tracker: trackerLayer });
     assert.strictEqual(f.setups(), 0);
   }).pipe(Effect.provide(layerGit)),
 );
@@ -391,8 +479,9 @@ it.effect("a deleted branch does not allow replacing an occupied saved path", ()
     yield* f.exec(["branch", "-D", "saved"]);
     yield* f.fs.makeDirectory(f.cwd);
     yield* f.fs.writeFileString(f.path.join(f.cwd, "private"), "keep");
+    yield* (yield* (yield* makeSetupMarker)(f.cwd)).mark;
     const error = yield* f.prepare().pipe(Effect.flip);
-    assert.include(error.message, "local branch does not exist");
+    assert.include(error.message, "not the expected worktree");
     assert.strictEqual(yield* f.fs.readFileString(f.path.join(f.cwd, "private")), "keep");
     yield* f.exec(["show-ref", "--verify", "refs/heads/saved"]).pipe(Effect.flip);
     assert.strictEqual(f.setups(), 0);
@@ -404,10 +493,14 @@ it.effect("leaves a conflicting path and symbolic link untouched", () =>
     const f = yield* fixture;
     yield* f.fs.makeDirectory(f.cwd);
     yield* f.fs.writeFileString(f.path.join(f.cwd, "private"), "keep");
+    // Strict checks guard only a setup run in an existing folder.
+    yield* (yield* (yield* makeSetupMarker)(f.cwd)).mark;
     yield* f.prepare().pipe(Effect.flip);
     assert.strictEqual(yield* f.fs.readFileString(f.path.join(f.cwd, "private")), "keep");
     yield* f.fs.remove(f.cwd, { recursive: true });
     yield* f.fs.symlink(f.repository, f.cwd);
+    // The marker keys on the real path, which is now the link target.
+    yield* (yield* (yield* makeSetupMarker)(f.cwd)).mark;
     const error = yield* f.prepare().pipe(Effect.flip);
     assert.include(error.message, "symbolic link");
     assert.strictEqual(f.setups(), 0);
@@ -417,10 +510,80 @@ it.effect("leaves a conflicting path and symbolic link untouched", () =>
 it.effect("fails before starting the agent when setup fails, preserving the checkout", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
-    const error = yield* f.prepare(true, 1).pipe(Effect.flip);
+    const error = yield* f.prepare({ exitCode: 1 }).pipe(Effect.flip);
     assert.include(error.message, "setup exited with 1");
     assert.isTrue(yield* f.fs.exists(f.cwd));
     yield* f.prepare();
     assert.strictEqual(f.setups(), 2);
   }).pipe(Effect.provide(layerGit)),
+);
+
+// A server restart during setup is covered by upstream startup recovery, not by fork code.
+// This pins that the fork's restore row is one of the rows it closes.
+it.effect("server start closes a restore row that a restart left running", () =>
+  Effect.gen(function* () {
+    const ids = yield* IdAllocator.IdAllocatorV2;
+    const threadId = ThreadId.make("restart-thread");
+    const runId = RunId.make("restart-run");
+    const restoreId = ids.derive.runSignalTurnItem({ runId, signal: "fork-worktree-restore" });
+    const projection = {
+      thread: { id: threadId, providerInstanceId: ProviderInstanceId.make("codex") },
+      runtimeRequests: [],
+      providerSessions: [],
+      providerThreads: [],
+      runs: [{ id: runId, status: "interrupted", providerInstanceId: "codex" }],
+      nodes: [],
+      turnItems: [
+        {
+          id: restoreId,
+          threadId,
+          runId,
+          nodeId: null,
+          type: "command_execution",
+          status: "running",
+          title: "Restoring worktree dependencies",
+          input: "Project setup",
+        },
+      ],
+    } as unknown as OrchestrationV2ThreadProjection;
+    const committed: OrchestrationV2DomainEvent[] = [];
+    yield* Effect.gen(function* () {
+      yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService).recover;
+    }).pipe(
+      Effect.provide(
+        ProviderRuntimeRecovery.layer.pipe(
+          Layer.provide(Settings.layerTest()),
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProjectionStore.ProjectionStoreV2)({
+                getRecoveryThreadIds: () => Effect.succeed([threadId]),
+                getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+              }),
+              Layer.mock(EventSink.EventSinkV2)({
+                commitCommand: (input) =>
+                  Effect.sync(() => {
+                    committed.push(...input.events);
+                    return { committed: true, cancelledEffectCount: 0 } as never;
+                  }),
+              }),
+              IdAllocator.layer,
+              Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({
+                runRecoveryOnce: Effect.succeed(false),
+              }),
+              Layer.mock(EffectOutbox.EffectOutboxV2)({
+                reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+                cancelUnsettled: () => Effect.succeed([]),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    assert.deepStrictEqual(
+      committed.flatMap((event) =>
+        event.type === "turn-item.updated" ? [[event.payload.id, event.payload.status]] : [],
+      ),
+      [[restoreId, "cancelled"]],
+    );
+  }).pipe(Effect.provide(IdAllocator.layer)),
 );

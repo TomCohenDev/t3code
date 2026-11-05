@@ -5,12 +5,25 @@ const isGated = ({ pr }: CodeRabbitContext) => !UNGATED_AUTHORS.has(pr?.authorAs
 
 export default defineConfig((ctx) => ({
   reviews: {
+    // Fork: quiet, fast reviews that also cover drafts. Bot reviews stay advisory, not a gate.
+    profile: "quiet",
+    changed_files_summary: false,
+    sequence_diagrams: false,
+    estimate_code_review_effort: false,
+    related_issues: false,
+    related_prs: false,
+    suggested_labels: false,
+    suggested_reviewers: false,
+    poem: false,
     high_level_summary: false,
     review_status: false,
     request_changes_workflow: false,
     allow_author_approval: !isGated(ctx),
     auto_review: {
       enabled: true,
+      drafts: true,
+      auto_incremental_review: true,
+      auto_pause_after_reviewed_commits: 0,
     },
     pre_merge_checks: {
       docstrings: { mode: "off" },
@@ -26,6 +39,11 @@ export default defineConfig((ctx) => ({
         path: "apps/web/src/**/*.{tsx,css}",
         instructions: "Hold changed code to the rules in docs/internals/web-ui.md.",
       },
+      {
+        path: "**/*.test.*",
+        instructions:
+          "Hold changed tests to the rules in docs/internals/testing.md. Request tests only as those rules allow.",
+      },
     ],
   },
   knowledge_base: {
@@ -33,6 +51,7 @@ export default defineConfig((ctx) => ({
       filePatterns: [
         { files: "docs/internals/effect-services.md", applyTo: "{apps,packages,infra}/**/*.ts" },
         { files: "docs/internals/web-ui.md", applyTo: "apps/web/src/**/*.{tsx,css}" },
+        { files: "docs/internals/testing.md", applyTo: "{apps,packages,infra}/**/*.{ts,tsx}" },
       ],
     },
   },

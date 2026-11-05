@@ -1,6 +1,6 @@
 {
   "name": "@t3tools/contracts",
-  "version": "0.1.2",
+  "version": "0.1.7",
   "private": true,
   "files": [
     "dist"
@@ -26,10 +26,6 @@
     "./machineMap": {
       "types": "./src/machineMap.ts",
       "import": "./src/machineMap.ts"
-    },
-    "./machineMapResources": {
-      "types": "./src/machineMapResources.ts",
-      "import": "./src/machineMapResources.ts"
     },
     "./sidebarTabs": {
       "types": "./src/sidebarTabs.ts",

@@ -2,7 +2,8 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { describe, expect, it } from "vite-plus/test";
 import { formatInlineContextReference } from "../../lib/composerContextReferences";
-import { threadContextRecord, threadContextReference } from "../../lib/composerContextRecords";
+import { threadContextReference } from "../../lib/composerContextRecords";
+import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 import {
   approvalRedirectNotice,
   loadBalancingSendWarning,
@@ -43,16 +44,6 @@ describe("loadBalancingSendWarning", () => {
         candidateReadableEnvironmentIds: [[local], [remote]],
       }).description,
     ).toMatch(/No machine can read every attached thread/);
-  });
-
-  it("accepts a machine that reads the other machine through the machine map (MM-1906)", () => {
-    expect(
-      loadBalancingSendWarning({
-        pending: false,
-        threadContexts: [localThread, remoteThread],
-        candidateReadableEnvironmentIds: [[remote], [local, remote]],
-      }).description,
-    ).toMatch(/No eligible machine has available resources/);
   });
 
   it("blames resources when one machine can read every attached thread", () => {

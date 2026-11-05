@@ -1,0 +1,475 @@
+import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import { normalizePreviewUrl } from "@t3tools/shared/preview";
+import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+
+// Always on, no setting: a stored secret leaks to every client and copy of the thread.
+// Only preview tool calls get this. Known limit: other tools keep secrets in stored URLs, because
+// a change would show output that the tool never returned. Revisit when another tool leaks one.
+// `token` is also the fragment key of the T3 pairing URL (packages/shared/src/remote.ts).
+const SECRET_KEYS: ReadonlySet<string> = new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "auth",
+  "code",
+  "key",
+  "api_key",
+  "apikey",
+  "secret",
+  "client_secret",
+  "password",
+  "pairing",
+]);
+
+const REDACTED = "REDACTED";
+
+// Free text and JSON text put these characters around a URL.
+const URL_TERMINATORS: ReadonlySet<string> = new Set(['"', "`", "<", ">", "\\"]);
+
+const isSchemeChar = (char: string) =>
+  (char >= "a" && char <= "z") ||
+  (char >= "A" && char <= "Z") ||
+  (char >= "0" && char <= "9") ||
+  char === "+" ||
+  char === "-" ||
+  char === ".";
+
+const isUrlEnd = (char: string) => char.trim() === "" || URL_TERMINATORS.has(char);
+
+// Sentence punctuation after a URL in prose belongs to the sentence. A `'` can sit inside a
+// URL, so only a trailing one ends it, as in `'http://x'`.
+const TRAILING_PUNCTUATION: ReadonlySet<string> = new Set([".", ",", ";", ":", "!", "?", "'"]);
+// A closing bracket belongs to the URL only when the URL opened it, as in `http://[::1]/`.
+const BRACKET_PAIRS: ReadonlyMap<string, string> = new Map([
+  [")", "("],
+  ["]", "["],
+  ["}", "{"],
+]);
+
+const count = (text: string, char: string) => text.split(char).length - 1;
+
+function belongsToSurroundingText(candidate: string): boolean {
+  const last = candidate.at(-1)!;
+  if (TRAILING_PUNCTUATION.has(last)) return true;
+  const opener = BRACKET_PAIRS.get(last);
+  return opener !== undefined && count(candidate, last) > count(candidate, opener);
+}
+
+// A URL in text can run on into the text after it, as in `[a](http://a/?token=x),[b](…)`.
+// Known limit: a secret value that holds a bracket keeps the part after it. Revisit if a
+// real token format uses these characters.
+function textAfterValue(value: string): string {
+  const ends = [")", "]", "}", "(", "[", "{"]
+    .map((char) => value.indexOf(char))
+    .filter((index) => index >= 0);
+  return ends.length === 0 ? "" : value.slice(Math.min(...ends));
+}
+
+const isSecretEntry = ([name, value]: [string, string]) =>
+  value !== REDACTED && SECRET_KEYS.has(name.toLowerCase());
+
+/**
+ * Returns the params text with secret values replaced, or undefined when none holds a secret.
+ * Other params keep their exact text, so text that runs on after a URL is not re-encoded.
+ */
+function redactParams(text: string): string | undefined {
+  let changed = false;
+  const pieces = (text.startsWith("?") ? text.slice(1) : text).split("&").map((piece) => {
+    const [entry] = new URLSearchParams(piece);
+    const valueStart = piece.indexOf("=") + 1;
+    if (entry === undefined || valueStart === 0 || !isSecretEntry(entry)) return piece;
+    const redacted = `${piece.slice(0, valueStart)}${REDACTED}${textAfterValue(piece.slice(valueStart))}`;
+    if (redacted !== piece) changed = true;
+    return redacted;
+  });
+  return changed ? pieces.join("&") : undefined;
+}
+
+/** Plain anchors (`#section`) stay; `#a=b` and hash routes (`#/pair?a=b`) hold params. */
+function redactFragment(fragment: string): string | undefined {
+  const queryStart = fragment.indexOf("?");
+  const route = queryStart >= 0 ? fragment.slice(0, queryStart) : fragment;
+  // `#token=a&next=/p?x=1` is all params: the `?` sits inside a value.
+  if (route.includes("=")) return redactParams(fragment);
+  if (queryStart < 0) return undefined;
+  const params = redactParams(fragment.slice(queryStart + 1));
+  return params && `${route}?${params}`;
+}
+
+/** Hides credentials and secret query or fragment values. A string that is not a URL stays. */
+export function redactUrlSecrets(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return value;
+  }
+  let changed = false;
+  if (url.username !== "" && url.username !== REDACTED) {
+    url.username = REDACTED;
+    changed = true;
+  }
+  if (url.password !== "" && url.password !== REDACTED) {
+    url.password = REDACTED;
+    changed = true;
+  }
+  const search = redactParams(url.search);
+  if (search !== undefined) {
+    url.search = search;
+    changed = true;
+  }
+  const fragment = redactFragment(url.hash.slice(1));
+  if (fragment !== undefined) {
+    url.hash = fragment;
+    changed = true;
+  }
+  // Return the input untouched when nothing is secret, so parsing never reformats it.
+  return changed ? url.href : value;
+}
+
+const isLetter = (char: string) => (char >= "a" && char <= "z") || (char >= "A" && char <= "Z");
+
+const schemeStart = (text: string, marker: number, floor: number) => {
+  let start = marker;
+  while (start > floor && isSchemeChar(text[start - 1]!)) start -= 1;
+  // A scheme starts with a letter, so `1http` starts at `h` and `123` is no scheme.
+  while (start < marker && !isLetter(text[start]!)) start += 1;
+  return start;
+};
+
+/** Applies {@link redactUrlSecrets} to every URL inside free text. */
+export function redactUrlSecretsInText(text: string): string {
+  let result = "";
+  let copiedUpTo = 0;
+  let marker = text.indexOf("://");
+  while (marker >= 0) {
+    const start = schemeStart(text, marker, copiedUpTo);
+    let end = marker + 3;
+    while (end < text.length && !isUrlEnd(text[end]!)) end += 1;
+    // Each URL gets its own pass, as in `[a](http://x),[b](http://y)`. Known limit: in
+    // `http://a/?u=http://b&token=x` the token parses as part of `http://b` and stays.
+    // Revisit if agents pass such unencoded nested URLs with secrets.
+    const next = text.indexOf("://", marker + 3);
+    // A `://` without a scheme, as in `?a=://b&token=x`, stays part of this URL.
+    for (let later = next; later >= 0 && later < end; later = text.indexOf("://", later + 3)) {
+      const laterStart = schemeStart(text, later, marker + 3);
+      if (laterStart < later) {
+        end = laterStart;
+        break;
+      }
+    }
+    while (end > marker + 3 && belongsToSurroundingText(text.slice(start, end))) end -= 1;
+    if (start < marker) {
+      const candidate = text.slice(start, end);
+      const redacted = redactUrlSecrets(candidate);
+      if (redacted !== candidate) {
+        result += text.slice(copiedUpTo, start) + redacted;
+        copiedUpTo = end;
+      }
+    }
+    marker = next;
+  }
+  return copiedUpTo === 0 ? text : result + text.slice(copiedUpTo);
+}
+
+// URL fields of the preview tool inputs and results (packages/contracts/src/previewAutomation.ts).
+const PREVIEW_URL_KEYS: ReadonlySet<string> = new Set(["url", "requestedUrl", "resolvedUrl"]);
+
+/** `preview_*` and `t3_preview_*`, under any adapter's name for the T3 MCP server. */
+function isPreviewTool(toolName: string): boolean {
+  // Cheap check first: this runs for each stored update of every tool call.
+  if (!toolName.includes("preview_")) return false;
+  const id = resolveT3McpToolId(toolName);
+  return id !== null && (id.startsWith("preview_") || id.startsWith("t3_preview_"));
+}
+
+/** A preview `url` input can be schemeless, such as `localhost:5173/pair#token=…`. */
+function redactPreviewUrl(value: string): string {
+  // Normalize first: `alice:pass@host` would otherwise parse with `alice:` as its scheme.
+  let normalized: string;
+  try {
+    normalized = normalizePreviewUrl(value);
+  } catch {
+    return redactUrlSecrets(value);
+  }
+  const redacted = redactUrlSecrets(normalized);
+  return redacted === normalized ? value : redacted;
+}
+
+/** Walks JSON-like data. Returns the same reference when nothing changed. */
+function redactStrings(
+  value: unknown,
+  redactString: (text: string, key: string | undefined) => string,
+  key?: string,
+): unknown {
+  if (typeof value === "string") return redactString(value, key);
+  if (Array.isArray(value)) {
+    const next = value.map((entry) => redactStrings(entry, redactString, key));
+    return next.some((entry, index) => entry !== value[index]) ? next : value;
+  }
+  if (typeof value === "object" && value !== null) {
+    let changed = false;
+    const next = Object.fromEntries(
+      Object.entries(value).map(([entryKey, entry]) => {
+        const redacted = redactStrings(entry, redactString, entryKey);
+        if (redacted !== entry) changed = true;
+        return [entryKey, redacted];
+      }),
+    );
+    return changed ? next : value;
+  }
+  return value;
+}
+
+const redactInputUrl = (text: string, key: string | undefined) =>
+  key !== undefined && PREVIEW_URL_KEYS.has(key) ? redactPreviewUrl(text) : text;
+
+// Results also repeat URLs in text, such as MCP text content or page text.
+const redactOutputText = (text: string, key: string | undefined) =>
+  key !== undefined && PREVIEW_URL_KEYS.has(key)
+    ? redactPreviewUrl(text)
+    : redactUrlSecretsInText(text);
+
+/**
+ * Claude asks with `<tool name>: <input JSON>` when no SDK title is set, and cuts a long input.
+ * So find the URL fields by their JSON key, which also works on cut JSON.
+ */
+function redactApprovalPrompt(prompt: string): string {
+  const separator = prompt.indexOf(": ");
+  if (separator < 0 || !isPreviewTool(prompt.slice(0, separator))) return prompt;
+  let result = prompt;
+  for (const key of PREVIEW_URL_KEYS) {
+    const field = `"${key}":"`;
+    for (let start = result.indexOf(field); start >= 0; start = result.indexOf(field, start)) {
+      start += field.length;
+      const quote = result.indexOf('"', start);
+      const end = quote < 0 ? result.length : quote;
+      const redacted = redactPreviewUrl(result.slice(start, end));
+      result = result.slice(0, start) + redacted + result.slice(end);
+    }
+  }
+  // The scan also covers URLs outside the URL fields, as in a `preview_evaluate` expression.
+  return redactUrlSecretsInText(result);
+}
+
+/**
+ * Hides URL secrets of preview tool calls before the item is stored or sent to clients, as when
+ * an agent opens a pairing URL in a preview tab. The tab itself still opens the real URL.
+ */
+export function redactTurnItemUrlSecrets(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
+  switch (item.type) {
+    case "dynamic_tool":
+      if (item.toolName === null || !isPreviewTool(item.toolName)) return item;
+      return {
+        ...item,
+        title: item.title === null ? null : redactUrlSecretsInText(item.title),
+        input: redactStrings(item.input, redactInputUrl),
+        ...(item.output === undefined
+          ? {}
+          : { output: redactStrings(item.output, redactOutputText) }),
+      };
+    case "approval_request": {
+      const prompt = item.prompt === undefined ? undefined : redactApprovalPrompt(item.prompt);
+      return prompt === item.prompt ? item : { ...item, prompt };
+    }
+    default:
+      return item;
+  }
+}
+
+// Known token formats. A word must be longer than its prefix by 8, so `ASIA` alone stays.
+const TOKEN_PREFIXES = [
+  "ghp_",
+  "gho_",
+  "ghs_",
+  "ghu_",
+  "ghr_",
+  "github_pat_",
+  "glpat-",
+  "npm_",
+  "sk-",
+  "xapp-",
+  "eyJ",
+  "AKIA",
+  "ASIA",
+  "AIza",
+  "ya29.",
+];
+// A key whose name holds one of these words has a secret value, as in `accessToken=x`.
+const SECRET_WORDS = [
+  "token",
+  "secret",
+  "password",
+  "passwd",
+  "pwd",
+  "api_key",
+  "apikey",
+  "private_key",
+  "access_key",
+  "account_key",
+  "auth",
+  "credential",
+  "session",
+  "cookie",
+];
+// Bare words that announce a secret. `token` or `password` alone does not, so
+// `Unexpected token '<'` and `password authentication failed` stay readable.
+const SECRET_LEADS: ReadonlySet<string> = new Set(["bearer", "basic"]);
+// After a secret key, these name the scheme, as in `Authorization: token x`. The scheme stays.
+const AUTH_SCHEMES: ReadonlySet<string> = new Set(["bearer", "basic", "token", "digest"]);
+// Quotes and JSON punctuation around a word, as in `"token":"abc",`.
+const WRAPPERS: ReadonlySet<string> = new Set([
+  '"',
+  "'",
+  "`",
+  ",",
+  ";",
+  "{",
+  "}",
+  "[",
+  "]",
+  "(",
+  ")",
+]);
+
+const unwrap = (text: string) => {
+  let start = 0;
+  let end = text.length;
+  while (start < end && WRAPPERS.has(text[start]!)) start += 1;
+  while (end > start && WRAPPERS.has(text[end - 1]!)) end -= 1;
+  return { start, end, core: text.slice(start, end) };
+};
+
+const isLower = (char: string) => (char >= "a" && char <= "z") || (char >= "0" && char <= "9");
+const isUpper = (char: string) => char >= "A" && char <= "Z";
+
+/** `--api-key`, `X-Api-Key`, `apiKey` and `API_KEY` all become `api_key`. */
+const keyName = (raw: string) => {
+  let start = 0;
+  while (raw[start] === "-") start += 1;
+  const core = unwrap(raw.slice(start)).core;
+  let name = "";
+  for (let index = 0; index < core.length; index += 1) {
+    const char = core[index]!;
+    if (index > 0 && isUpper(char) && isLower(core[index - 1]!)) name += "_";
+    name += char;
+  }
+  return name.toLowerCase().replaceAll("-", "_");
+};
+
+const isSecretKey = (raw: string) => {
+  const name = keyName(raw);
+  return SECRET_WORDS.some((word) => name.includes(word));
+};
+
+const isToken = (text: string) => {
+  const core = unwrap(text).core;
+  // `npm_config_cache=/x` is a key: redactPair checks its value.
+  if (core.includes("=") || core.includes(":")) return false;
+  const slack = core.startsWith("xox") && isLower(core[3] ?? "") && core[4] === "-";
+  return (
+    slack ||
+    TOKEN_PREFIXES.some((prefix) => core.startsWith(prefix) && core.length >= prefix.length + 8)
+  );
+};
+
+/** One `key=value` or `key:value`, as in `AccountKey=x` or `"token":"x"`. */
+function redactPair(pair: string): string {
+  for (const separator of ["=", ":"]) {
+    const at = pair.indexOf(separator);
+    if (at <= 0) continue;
+    const value = pair.slice(at + 1);
+    const valueStart = unwrap(value).start;
+    const secret = value.slice(valueStart);
+    if (secret === "" || secret === REDACTED) return pair;
+    if (AUTH_SCHEMES.has(unwrap(secret).core.toLowerCase())) return pair;
+    if (isSecretKey(pair.slice(0, at)) || isToken(secret)) {
+      return `${pair.slice(0, at + 1)}${value.slice(0, valueStart)}${REDACTED}`;
+    }
+    return pair;
+  }
+  return pair;
+}
+
+/** True when the word announces a secret in the next word: `Bearer`, `token:`, `x-api-key:`, `--token`. */
+function leadsSecret(word: string): boolean {
+  const core = unwrap(word).core;
+  if (core.endsWith(":") || core.endsWith("=")) return isSecretKey(core.slice(0, -1));
+  if (core.startsWith("--")) return !core.includes("=") && isSecretKey(core);
+  // `"Authorization":"token` keeps its scheme, and the next word is the secret.
+  for (const separator of ["=", ":"]) {
+    const at = core.indexOf(separator);
+    if (at > 0 && isSecretKey(core.slice(0, at))) {
+      return AUTH_SCHEMES.has(unwrap(core.slice(at + 1)).core.toLowerCase());
+    }
+  }
+  return SECRET_LEADS.has(keyName(core));
+}
+
+/** Hides the body of each PEM private key block, also of a block that a cut left open. */
+function redactPrivateKeys(text: string): string {
+  let result = text;
+  for (
+    let at = result.indexOf("-----BEGIN ");
+    at >= 0;
+    at = result.indexOf("-----BEGIN ", at + 1)
+  ) {
+    const headerEnd = result.indexOf("-----", at + 11);
+    if (headerEnd < 0 || !result.slice(at, headerEnd).includes("PRIVATE KEY")) continue;
+    const bodyStart = headerEnd + 5;
+    const footer = result.indexOf("-----END", bodyStart);
+    const bodyEnd = footer < 0 ? result.length : footer;
+    result = `${result.slice(0, bodyStart)}${REDACTED}${result.slice(bodyEnd)}`;
+  }
+  return result;
+}
+
+/**
+ * Hides URL secrets, private key blocks, known token formats, values of keys whose name holds a
+ * secret word (`k=v`, `k: v`, `"k":"v"`), and the word after `Bearer`, `Basic` or `--token`.
+ * Known limits: short flags (`-p x`), a quoted secret with a space, and `user:pass@host` without
+ * a scheme stay. Revisit if diagnostics leak one.
+ */
+export function redactSecretsInText(text: string): string {
+  const source = redactPrivateKeys(redactUrlSecretsInText(text));
+  let result = "";
+  let lead = false;
+  let index = 0;
+  while (index < source.length) {
+    let end = index;
+    const isSpace = source[index]!.trim() === "";
+    while (end < source.length && (source[end]!.trim() === "") === isSpace) end += 1;
+    const word = source.slice(index, end);
+    index = end;
+    if (isSpace) {
+      result += word;
+      continue;
+    }
+    const { start, end: coreEnd, core } = unwrap(word);
+    if (lead && AUTH_SCHEMES.has(core.toLowerCase())) {
+      result += word;
+      continue;
+    }
+    const redacted =
+      core === "" || core === REDACTED
+        ? word
+        : lead || isToken(core)
+          ? `${word.slice(0, start)}${REDACTED}${word.slice(coreEnd)}`
+          : `${word.slice(0, start)}${core.split(";").map(redactPair).join(";")}${word.slice(coreEnd)}`;
+    result += redacted;
+    lead = !lead && leadsSecret(word);
+  }
+  return result;
+}
+
+/**
+ * The program of a process for diagnostics: its process name, else the base name of the first
+ * word of its command line. The arguments can hold tokens, so they never leave the machine.
+ * Known limit: the fallback cuts a path with a space. Revisit if telemetry often lacks names.
+ */
+export function programName(processName: string | undefined, commandLine: string): string {
+  if (processName !== undefined && processName.trim() !== "") return processName.trim();
+  const program = commandLine.trim().split(" ")[0] ?? "";
+  return program.slice(program.lastIndexOf("/") + 1);
+}

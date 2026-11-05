@@ -1,19 +1,19 @@
-import type {
-  EnvironmentId,
-  MachineMapReadableEnvironment,
-  ScopedThreadRef,
-  ThreadId,
+import {
+  isListedThreadLineage,
+  type EnvironmentId,
+  type EnvironmentMachineKind,
+  type ScopedThreadRef,
+  type ThreadId,
 } from "@t3tools/contracts";
+import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
+
+import type { EnvironmentThreadShell } from "./state/models.ts";
+import { threadSearchSubject, type ThreadSearchShell } from "./state/threadSearch.ts";
 
 const COMPOSER_THREAD_RESULT_LIMIT = 5;
 
-export interface ComposerThreadCandidate {
-  readonly environmentId: EnvironmentId;
-  readonly id: ThreadId;
-  readonly title: string;
-  readonly updatedAt: string;
-  readonly archivedAt: string | null;
-}
+export type ComposerThreadCandidate = ThreadSearchShell &
+  Pick<EnvironmentThreadShell, "archivedAt" | "lineage">;
 
 export interface ComposerThreadItem {
   readonly id: string;
@@ -23,60 +23,93 @@ export interface ComposerThreadItem {
   readonly description: string;
 }
 
-/** An environment whose threads the composer's agent can read, with its machine name if known. */
-export interface ReadableThreadEnvironment {
-  readonly environmentId: EnvironmentId;
-  readonly name: string | null;
-}
-
 /**
- * Fork: MM-1906, MM-1907. The composer's environment first, then the machines that its server
- * reads through the machine map (`machineMap.readableEnvironments`). Without that answer, for
- * example from a server without the machine map, the agent reads only its own environment.
- */
-export function readableThreadEnvironments(
-  environmentId: EnvironmentId,
-  served: ReadonlyArray<MachineMapReadableEnvironment> | null,
-): ReadonlyArray<ReadableThreadEnvironment> {
-  const self = served?.find((entry) => entry.environmentId === environmentId);
-  return [
-    { environmentId, name: self?.name ?? null },
-    ...(served ?? []).filter((entry) => entry.environmentId !== environmentId),
-  ];
-}
-
-/**
- * The agent reads threads on its own server and, through the machine map, on the machines in
- * `readable`. With more than one machine, each item names its machine.
+ * Threads to reference from the composer, matched and ranked like the command
+ * palette, without subagent or side chat threads. The agent reads threads on its own server
+ * and on the machines it links to, so candidates stay within those, and a linked
+ * machine's threads say which machine they are on.
  */
 export function matchComposerThreadItems(input: {
   shells: ReadonlyArray<ComposerThreadCandidate>;
-  readable: ReadonlyArray<ReadableThreadEnvironment>;
+  environmentId: EnvironmentId;
+  /** The machines the composer's environment links to, by name. */
+  linkedEnvironments: ReadonlyMap<EnvironmentId, string>;
   excludeThreadId: ThreadId | null;
   query: string;
+  /** Recency is measured against this time. */
+  now: number;
 }): ComposerThreadItem[] {
-  const query = input.query.trim().toLowerCase();
+  const query = foldSearchQuery(input.query);
   if (query.length === 0) return [];
-  const names = new Map(input.readable.map((entry) => [entry.environmentId, entry.name]));
-  const namesMachines = input.readable.length > 1;
-  return input.shells
-    .filter(
-      (shell) =>
-        names.has(shell.environmentId) &&
-        shell.id !== input.excludeThreadId &&
-        shell.archivedAt === null &&
-        shell.title.toLowerCase().includes(query),
-    )
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  const candidates = input.shells.filter(
+    (shell) =>
+      (shell.environmentId === input.environmentId ||
+        input.linkedEnvironments.has(shell.environmentId)) &&
+      shell.id !== input.excludeThreadId &&
+      shell.archivedAt === null &&
+      isListedThreadLineage(shell.lineage),
+  );
+  return rankSearchItems(candidates, (shell, options) =>
+    scoreThreadSearch(query, threadSearchSubject(shell, null), input.now, {
+      ...options,
+      picks: false,
+    }),
+  )
     .slice(0, COMPOSER_THREAD_RESULT_LIMIT)
-    .map((shell) => {
-      const machine = namesMachines ? names.get(shell.environmentId) : null;
+    .map(({ item: shell }) => {
+      const machine =
+        shell.environmentId === input.environmentId
+          ? undefined
+          : input.linkedEnvironments.get(shell.environmentId);
       return {
         id: `thread:${shell.environmentId}:${shell.id}`,
         type: "thread",
         thread: { environmentId: shell.environmentId, threadId: shell.id },
         label: shell.title,
-        description: machine ? `Thread · ${machine}` : "Thread",
+        description: machine === undefined ? "Thread" : `Thread on ${machine}`,
       };
     });
+}
+
+export interface ComposerEnvironmentCandidate {
+  readonly environmentId: EnvironmentId;
+  readonly label: string;
+  readonly machine: EnvironmentMachineKind;
+}
+
+export interface ComposerEnvironmentItem {
+  readonly id: string;
+  readonly type: "environment";
+  readonly environmentId: EnvironmentId;
+  readonly machine: EnvironmentMachineKind;
+  readonly label: string;
+  readonly description: string;
+}
+
+/**
+ * The user's machines the `@` picker offers, so the agent can link or work there. The
+ * composer's own environment is left out. Like threads, they need a query: bare `@` stays a
+ * file picker.
+ */
+export function matchComposerEnvironmentItems(input: {
+  environments: ReadonlyArray<ComposerEnvironmentCandidate>;
+  environmentId: EnvironmentId;
+  query: string;
+}): ComposerEnvironmentItem[] {
+  const query = input.query.trim().toLowerCase();
+  if (query.length === 0) return [];
+  return input.environments
+    .filter(
+      (environment) =>
+        environment.environmentId !== input.environmentId &&
+        environment.label.toLowerCase().includes(query),
+    )
+    .map((environment) => ({
+      id: `environment:${environment.environmentId}`,
+      type: "environment",
+      environmentId: environment.environmentId,
+      machine: environment.machine,
+      label: environment.label,
+      description: "Machine",
+    }));
 }

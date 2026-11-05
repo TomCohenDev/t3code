@@ -1,12 +1,11 @@
-import type { AdvertisedEndpoint, DesktopWslState } from "@t3tools/contracts";
+import type { DesktopWslState } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   applyWslEnableSelection,
+  resolveTailscaleServeBaseUrl,
   selectQrEndpointOption,
-  selectVisibleNetworkEndpoints,
   togglePairingScopeSelection,
 } from "./ConnectionsSettings.logic";
-import { resolveDesktopPairingUrl } from "./pairingUrls";
 
 describe("togglePairingScopeSelection", () => {
   it.each([
@@ -40,6 +39,26 @@ describe("togglePairingScopeSelection", () => {
     },
   ] as const)("$label", ({ current, scope, checked, expected }) => {
     expect(togglePairingScopeSelection(current, scope, checked)).toEqual(expected);
+  });
+});
+
+describe("resolveTailscaleServeBaseUrl", () => {
+  it.each([
+    ["https://host.tail.ts.net:441/", 443, "https://host.tail.ts.net"],
+    ["https://host.tail.ts.net:441/", 444, "https://host.tail.ts.net:444"],
+  ] as const)("previews %s on port %i", (httpBaseUrl, port, expected) => {
+    expect(resolveTailscaleServeBaseUrl({ httpBaseUrl }, port, true)).toBe(expected);
+  });
+
+  it("returns null without a pending endpoint", () => {
+    expect(resolveTailscaleServeBaseUrl(null, 443, true)).toBeNull();
+  });
+
+  it.each([
+    ["https://host.tail.ts.net:441/", 0, false],
+    ["not a URL", 443, true],
+  ] as const)("preserves %s when port %i cannot be previewed", (httpBaseUrl, port, isPortValid) => {
+    expect(resolveTailscaleServeBaseUrl({ httpBaseUrl }, port, isPortValid)).toBe(httpBaseUrl);
   });
 });
 
@@ -123,50 +142,5 @@ describe("selectQrEndpointOption", () => {
     expect(selectQrEndpointOption(options, "tailscale-ip:gone", "nope")?.id).toBe(
       "tailscale-ip:http://100.84.12.7:4780",
     );
-  });
-});
-
-function makeEndpoint(overrides: Partial<AdvertisedEndpoint>): AdvertisedEndpoint {
-  return {
-    id: "desktop-lan:http://192.168.1.42:4780",
-    label: "Local network",
-    provider: { id: "desktop-core", label: "Desktop", kind: "core", isAddon: false },
-    httpBaseUrl: "http://192.168.1.42:4780",
-    wsBaseUrl: "ws://192.168.1.42:4780",
-    reachability: "lan",
-    compatibility: { hostedHttpsApp: "unknown", desktopApp: "compatible" },
-    source: "desktop-core",
-    status: "available",
-    ...overrides,
-  };
-}
-
-describe("selectVisibleNetworkEndpoints", () => {
-  const loopback = makeEndpoint({ id: "desktop-loopback:3773", reachability: "loopback" });
-  const tunnel = makeEndpoint({
-    id: "tunnel:https://t3-mac.example.com",
-    httpBaseUrl: "https://t3-mac.example.com",
-  });
-
-  it("keeps the tunnel endpoint on a loopback-only backend", () => {
-    const visible = selectVisibleNetworkEndpoints({
-      endpoints: [loopback, tunnel],
-      isNetworkAccessible: false,
-    });
-    expect(visible).toEqual([tunnel]);
-    // The copied link then opens the tunnel page, never t3code://app.
-    expect(resolveDesktopPairingUrl(tunnel.httpBaseUrl, "TOKEN")).toBe(
-      "https://t3-mac.example.com/pair#token=TOKEN",
-    );
-  });
-
-  it("keeps every non-Tailscale-HTTPS endpoint on a network-accessible backend", () => {
-    const magicDns = makeEndpoint({ id: "tailscale-magicdns:https://mac.ts.net" });
-    expect(
-      selectVisibleNetworkEndpoints({
-        endpoints: [loopback, tunnel, magicDns],
-        isNetworkAccessible: true,
-      }),
-    ).toEqual([loopback, tunnel]);
   });
 });

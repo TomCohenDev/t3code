@@ -10,6 +10,8 @@ export interface SettingsScopeSearch {
   project?: string | undefined;
   machine?: string | undefined;
   checkout?: string | undefined;
+  /** Fork: a kitshn circle id. The owner's changes go into that circle's part. */
+  circle?: string | undefined;
 }
 
 type ScopeTargets = {
@@ -47,10 +49,12 @@ export function validateSettingsScopeSearch(raw: Record<string, unknown>): Setti
   const project = stringValue(raw.project);
   const machine = stringValue(raw.machine);
   const checkout = stringValue(raw.checkout);
+  const circle = stringValue(raw.circle);
   return {
     ...(project === undefined ? {} : { project }),
     ...(machine === undefined ? {} : { machine }),
     ...(checkout === undefined ? {} : { checkout }),
+    ...(circle === undefined ? {} : { circle }),
   };
 }
 

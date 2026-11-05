@@ -5,6 +5,7 @@ import {
   type GhosttyColor,
   type GhosttySnapshot,
 } from "./core";
+import { forkDrawPowerlines, forkPowerlineText } from "./forkPowerline";
 
 export interface GhosttyCellMetrics {
   readonly width: number;
@@ -26,9 +27,7 @@ function cssColor(color: GhosttyColor): string {
 }
 
 function sameTextStyle(left: GhosttyCell, right: GhosttyCell): boolean {
-  // Selection deliberately does not participate: it only tints the background
-  // overlay, and splitting a text run at a selection boundary visibly shifts
-  // glyph spacing whenever the face's true advance differs from the cell width.
+  // Selection only tints the background; splitting text runs shifts glyph spacing when advances differ from cell width.
   return (
     ghosttyColorsEqual(left.foreground, right.foreground) &&
     left.bold === right.bold &&
@@ -235,8 +234,9 @@ export function renderGhosttySnapshot(options: {
       const runEnd = ghosttyTextRunEnd(row.cells, runStart, (cell) => sameTextStyle(cell, first));
       const text = row.cells
         .slice(runStart, runEnd)
-        .map((cell) => cell.text)
+        .map((cell) => forkPowerlineText(cell.text))
         .join("");
+      forkDrawPowerlines(context, row.cells, runStart, runEnd, padding, top, metrics);
       if (!first.invisible && text.trim().length > 0) {
         context.save();
         context.beginPath();

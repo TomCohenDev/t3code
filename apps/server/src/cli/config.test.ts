@@ -23,15 +23,34 @@ import * as NetService from "@t3tools/shared/Net";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { deriveServerPaths } from "../config.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import packageJson from "../../package.json" with { type: "json" };
+import { ServiceLauncherHostProcess } from "../cloud/serviceLauncherClient.ts";
 import {
-  resolveCloudflareAccess,
-  resolveServerConfig,
-  resolveTrustedBrowserOrigins,
-} from "./config.ts";
+  SERVICE_LAUNCHER_CONTEXT_ENV,
+  SERVICE_LAUNCHER_PROTOCOL,
+} from "../cloud/serviceProtocol.ts";
+import { deriveServerPaths } from "../config.ts";
+import { resolveServerConfig } from "./config.ts";
 
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
   deriveServerPaths(baseDir, devUrl, { baseDirIsExplicit: true });
+
+const minimalDesktopFlags = (baseDir: string) => ({
+  mode: Option.some("desktop" as const),
+  port: Option.some(4888),
+  host: Option.none<string>(),
+  baseDir: Option.some(baseDir),
+  cwd: Option.none<string>(),
+  devUrl: Option.none<URL>(),
+  noBrowser: Option.none<boolean>(),
+  bootstrapFd: Option.none<number>(),
+  autoBootstrapProjectFromCwd: Option.none<boolean>(),
+  logWebSocketEvents: Option.none<boolean>(),
+  tailscaleServeEnabled: Option.none<boolean>(),
+  tailscaleServePort: Option.none<number>(),
+  lan: Option.none<boolean>(),
+});
 
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
 const encodeUnknownJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -90,8 +109,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     yield* fs.writeFileString(filePath, `${encoded}\n`);
     return yield* Effect.acquireRelease(
       Effect.sync(() => NodeFS.openSync(filePath, "r")),
-      // Without a /proc or /dev/fd path to reopen, the reader consumes the fd
-      // itself (autoClose), so on Windows it is already closed here.
+      // Windows cannot reopen the fd through /proc or /dev/fd, so the reader closes it.
       (fd) =>
         Effect.sync(() => {
           try {
@@ -155,48 +173,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
-  // MM-1310: an existing machine keeps its own tunnel and Access login after a join.
-  it.effect(
-    "uses the joined machine map tunnel only while the map is on and without an explicit tunnel",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-joined-tunnel-" });
-        yield* fs.makeDirectory(path.join(baseDir, "userdata"), { recursive: true });
-        yield* fs.writeFileString(
-          path.join(baseDir, "userdata", "machine-map-tunnel.json"),
-          yield* encodeUnknownJson({
-            hostname: "t3-oracle.example.com",
-            access: { teamDomain: "team.cloudflareaccess.com", aud: "aud", subjects: ["a@b.c"] },
-          }),
-        );
-        const resolve = (env: Record<string, string>) =>
-          resolveServerConfig(minimalWebFlags(baseDir), Option.none()).pipe(
-            Effect.provide(
-              Layer.merge(NetService.layer, ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
-            ),
-          );
-
-        // MM-1301: the joined tunnel applies only while the machine map is on.
-        expect((yield* resolve({})).tunnelPairingUrl).toBeUndefined();
-        yield* fs.writeFileString(
-          path.join(baseDir, "userdata", "settings.json"),
-          yield* encodeUnknownJson({ machineMap: { enabled: true } }),
-        );
-
-        const joined = yield* resolve({});
-        expect(joined.tunnelPairingUrl).toBe("https://t3-oracle.example.com");
-        expect(joined.cloudflareAccess?.subjects).toEqual(["a@b.c"]);
-
-        const explicit = yield* resolve({
-          T3CODE_TUNNEL_PAIRING_URL: "https://t3-own.example.com",
-        });
-        expect(explicit.tunnelPairingUrl).toBe("https://t3-own.example.com");
-        expect(explicit.cloudflareAccess).toBeUndefined();
-      }),
-  );
-
   it.effect(
     "refuses a manual web launch when a runtime record belongs to another live process",
     () =>
@@ -256,6 +232,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromEnv({
@@ -300,6 +277,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromEnv({ env: { T3CODE_DEV_AUTH_TOKEN: secret } }),
@@ -355,6 +333,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.some(false),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.none(),
       ).pipe(
@@ -431,6 +410,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.some("Debug"),
       ).pipe(
@@ -475,6 +455,77 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect("reports the desktop bootstrap as the source of endpoints it supplied", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-cli-config-otlp-bootstrap-",
+      });
+      const fd = yield* openBootstrapFd(
+        makeDesktopBootstrap({
+          otlpTracesUrl: "http://localhost:4318/v1/traces",
+          otlpMetricsUrl: "http://localhost:4318/v1/metrics",
+          otlpLogsUrl: "http://localhost:4318/v1/logs",
+        }),
+      );
+
+      const resolved = yield* resolveServerConfig(
+        { ...minimalDesktopFlags(baseDir), bootstrapFd: Option.some(fd) },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved).toMatchObject({
+        otlpTracesUrl: "http://localhost:4318/v1/traces",
+        otlpTracesSource: "bootstrap",
+        otlpMetricsSource: "bootstrap",
+        otlpLogsSource: "bootstrap",
+      });
+    }),
+  );
+
+  it.effect("reports saved settings as the source of endpoints read from settings.json", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-config-otlp-settings-" });
+      const derivedPaths = yield* deriveExplicitServerPaths(baseDir, undefined);
+      yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
+      yield* fs.writeFileString(
+        derivedPaths.settingsPath,
+        `${JSON.stringify({
+          observability: {
+            otlpTracesUrl: "http://localhost:4318/v1/traces",
+            otlpMetricsUrl: "http://localhost:4318/v1/metrics",
+            otlpLogsUrl: "http://localhost:4318/v1/logs",
+          },
+        })}\n`,
+      );
+
+      const resolved = yield* resolveServerConfig(minimalDesktopFlags(baseDir), Option.none()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved).toMatchObject({
+        otlpTracesUrl: "http://localhost:4318/v1/traces",
+        otlpTracesSource: "settings",
+        otlpMetricsSource: "settings",
+        otlpLogsSource: "settings",
+      });
+    }),
+  );
+
   it.effect("zeroes an endpoint stored in Settings when the SDK is disabled", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -507,6 +558,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.none(),
       ).pipe(
@@ -555,6 +607,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.none(),
       ).pipe(
@@ -595,6 +648,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.none(),
         {
@@ -657,6 +711,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          lan: Option.none(),
         },
         Option.none(),
       ).pipe(
@@ -696,7 +751,45 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     logWebSocketEvents: Option.none<boolean>(),
     tailscaleServeEnabled: Option.none<boolean>(),
     tailscaleServePort: Option.none<number>(),
+    lan: Option.none<boolean>(),
   });
+
+  it.effect("uses the automatic port selector only when no port is configured", () =>
+    Effect.gen(function* () {
+      const baseDir = yield* FileSystem.FileSystem.pipe(
+        Effect.flatMap((fs) => fs.makeTempDirectoryScoped({ prefix: "t3-cli-auto-port-" })),
+      );
+      const selected: number[] = [];
+      const selectAutomaticPort = (preferred: number) =>
+        Effect.sync(() => {
+          selected.push(preferred);
+          return 50_123;
+        });
+      const resolvePort = (flags: {
+        readonly mode?: Option.Option<"web" | "desktop">;
+        readonly port: Option.Option<number>;
+      }) =>
+        resolveServerConfig({ ...minimalWebFlags(baseDir), ...flags }, Option.none(), {
+          selectAutomaticPort,
+        }).pipe(
+          Effect.map((config) => config.port),
+          Effect.provide(
+            Layer.merge(
+              NetService.layer,
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            ),
+          ),
+        );
+
+      expect(yield* resolvePort({ port: Option.none() })).toBe(50_123);
+      expect(selected).toEqual([3773]);
+      expect(yield* resolvePort({ port: Option.some(8788) })).toBe(8788);
+      expect(
+        yield* resolvePort({ mode: Option.some("desktop" as const), port: Option.none() }),
+      ).toBe(3773);
+      expect(selected).toEqual([3773]);
+    }),
+  );
 
   it.effect(
     "resolves each signal's endpoint through T3CODE_OTLP_*_URL, an OTEL endpoint, the bootstrap envelope, and persisted Settings, in that order",
@@ -758,6 +851,11 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         });
         expect(resolved.otlpLogsUrl).toBe("http://settings:4318/v1/logs");
         expect(resolved.otlpLogsExport.headers).toEqual({ "x-key": "secret" });
+        expect(resolved).toMatchObject({
+          otlpTracesVariable: "T3CODE_OTLP_TRACES_URL",
+          otlpMetricsVariable: "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+        });
+        expect(resolved.otlpLogsVariable).toBeUndefined();
       }),
   );
 
@@ -811,58 +909,61 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         expect(resolved.otlpLogsUrl).toBeUndefined();
       }),
   );
+
+  it.effect("listens on private networks per T3CODE_LAN, else under the service launcher", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-service-host");
+      const resolveHost = (input: {
+        readonly connected: boolean;
+        readonly env?: Record<string, string>;
+      }) =>
+        resolveServerConfig(minimalWebFlags(baseDir), Option.none()).pipe(
+          Effect.map(({ host, privateNetworkOnly }) => ({ host, privateNetworkOnly })),
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: input.env ?? {} })),
+              NetService.layer,
+            ),
+          ),
+          Effect.provideService(HostProcess.Environment, {
+            [SERVICE_LAUNCHER_CONTEXT_ENV]: JSON.stringify({
+              protocol: SERVICE_LAUNCHER_PROTOCOL,
+              childVersion: packageJson.version,
+            }),
+          }),
+          Effect.provideService(ServiceLauncherHostProcess, {
+            connected: input.connected,
+            send: () => false,
+            on: () => undefined,
+            off: () => undefined,
+          }),
+        );
+
+      // A service installed before T3CODE_LAN existed.
+      expect(yield* resolveHost({ connected: true })).toEqual({
+        host: "0.0.0.0",
+        privateNetworkOnly: true,
+      });
+      // `service.env` reaches the server as its environment.
+      expect(yield* resolveHost({ connected: true, env: { T3CODE_HOST: "127.0.0.1" } })).toEqual({
+        host: "127.0.0.1",
+        privateNetworkOnly: undefined,
+      });
+      expect(yield* resolveHost({ connected: true, env: { T3CODE_LAN: "false" } })).toEqual({
+        host: undefined,
+        privateNetworkOnly: undefined,
+      });
+      expect(yield* resolveHost({ connected: false, env: { T3CODE_LAN: "true" } })).toEqual({
+        host: "0.0.0.0",
+        privateNetworkOnly: true,
+      });
+      // Without the launcher's IPC channel the context was inherited, e.g. by
+      // `t3 serve` started from an agent inside the service.
+      expect(yield* resolveHost({ connected: false })).toEqual({
+        host: undefined,
+        privateNetworkOnly: undefined,
+      });
+    }),
+  );
 });
-
-it.effect("accepts trusted browser origins as comma or newline separated https origins", () =>
-  Effect.gen(function* () {
-    assert.deepEqual(yield* resolveTrustedBrowserOrigins(undefined), []);
-    assert.deepEqual(
-      yield* resolveTrustedBrowserOrigins(
-        " https://t3-mac.example.com/,\nhttps://t3-vps.example.com ",
-      ),
-      ["https://t3-mac.example.com", "https://t3-vps.example.com"],
-    );
-  }),
-);
-
-it.effect("rejects a trusted browser origin that is not a bare https origin", () =>
-  Effect.gen(function* () {
-    for (const raw of [
-      "http://t3.example.com",
-      "https://t3.example.com/path",
-      "t3.example.com",
-      "https://t3.example.com, *",
-    ]) {
-      const error = yield* Effect.flip(resolveTrustedBrowserOrigins(raw));
-      assert.include(String(error.cause), "T3CODE_TRUSTED_BROWSER_ORIGINS");
-    }
-  }),
-);
-
-it.effect("turns Cloudflare Access login on only when all three values are set", () =>
-  Effect.gen(function* () {
-    const none = { teamDomain: undefined, aud: undefined, subjects: undefined };
-    assert.strictEqual(yield* resolveCloudflareAccess(none), undefined);
-    assert.deepEqual(
-      yield* resolveCloudflareAccess({
-        teamDomain: "team.cloudflareaccess.com",
-        aud: "aud-tag",
-        subjects: "dev@example.com,\n abc.access ",
-      }),
-      {
-        teamDomain: "team.cloudflareaccess.com",
-        aud: "aud-tag",
-        subjects: ["dev@example.com", "abc.access"],
-      },
-    );
-    for (const partial of [
-      { ...none, teamDomain: "team.cloudflareaccess.com" },
-      { ...none, teamDomain: "team.cloudflareaccess.com", aud: "aud-tag" },
-      { ...none, aud: "aud-tag", subjects: "dev@example.com" },
-      { teamDomain: "https://team.cloudflareaccess.com", aud: "aud-tag", subjects: "a@b.c" },
-    ]) {
-      const error = yield* Effect.flip(resolveCloudflareAccess(partial));
-      assert.include(String(error.cause), "T3CODE_CLOUDFLARE_ACCESS_TEAM_DOMAIN");
-    }
-  }),
-);

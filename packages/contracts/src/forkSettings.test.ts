@@ -30,25 +30,11 @@ describe("ClientSettings sidebar owner filter", () => {
   });
 });
 
-describe("ClientSettings snooze quick options", () => {
-  it("keeps the built-in options by default and round-trips a saved list", () => {
-    expect(decodeClientSettings({}).snoozeQuickOptions).toBeNull();
-    const options = [
-      { _tag: "in", amount: 45, unit: "minutes" },
-      { _tag: "at", day: "friday", time: { hour: 16, minute: 30 }, label: "Weekend" },
-    ];
-    const saved = encodeClientSettings(decodeClientSettings({ snoozeQuickOptions: options }));
-    expect(decodeClientSettings(saved).snoozeQuickOptions).toEqual(options);
-    expect(decodeClientSettingsPatch({ snoozeQuickOptions: null }).snoozeQuickOptions).toBeNull();
-  });
-
-  it.each([
-    { _tag: "in", amount: 0, unit: "hours" },
-    { _tag: "in", amount: 1, unit: "weeks" },
-    { _tag: "at", day: "today", time: { hour: 24, minute: 0 } },
-    { _tag: "at", day: "someday", time: { hour: 9, minute: 0 } },
-  ])("rejects the option %o", (option) => {
-    expect(() => decodeClientSettingsPatch({ snoozeQuickOptions: [option] })).toThrow();
+describe("ClientSettings removed fork settings", () => {
+  it("decodes saved settings that still hold a removed key, and drops the key", () => {
+    const settings = decodeClientSettings({ richContextMenu: false });
+    expect(settings).not.toHaveProperty("richContextMenu");
+    expect(encodeClientSettings(settings)).not.toHaveProperty("richContextMenu");
   });
 });
 

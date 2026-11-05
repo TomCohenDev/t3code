@@ -32,9 +32,54 @@ import * as Clock from "effect/Clock";
 import * as SetupTracker from "../project/WorktreeSetupTracker.ts";
 
 const DAY_MS = 86_400_000;
+const DELETED_SUFFIX = " (deleted)";
+
+/**
+ * Decides whether a working directory is the worktree root, inside it, or its container, the parent
+ * that holds sibling worktrees. A deleted or unreadable directory has no real path. Its nearest
+ * readable ancestor is resolved and the missing names are kept as text. A deleted folder inside the
+ * worktree still counts; a deleted folder elsewhere on the machine does not.
+ */
+const makeMayUseWorktree = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const uses = (root: string, candidate: string) => {
+    const relative = path.relative(root, candidate);
+    return (
+      candidate === path.dirname(root) ||
+      relative === "" ||
+      (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+    );
+  };
+  // Runs once per process on the machine, so a span per call would be too frequent.
+  return Effect.fnUntraced(function* (workingDirectory: string, root: string) {
+    const real = yield* fs.realPath(workingDirectory).pipe(Effect.option);
+    if (Option.isSome(real)) return uses(root, real.value);
+    // A relative path cannot be placed, so it keeps the worktree.
+    if (!path.isAbsolute(workingDirectory)) return true;
+    // Linux /proc names a deleted working directory "<old path> (deleted)".
+    const names = workingDirectory.endsWith(DELETED_SUFFIX)
+      ? [workingDirectory, workingDirectory.slice(0, -DELETED_SUFFIX.length)]
+      : [workingDirectory];
+    for (const name of names) {
+      const missing: string[] = [];
+      let ancestor = path.resolve(name);
+      let resolved = yield* fs.realPath(ancestor).pipe(Effect.option);
+      while (Option.isNone(resolved)) {
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) return true;
+        missing.unshift(path.basename(ancestor));
+        ancestor = parent;
+        resolved = yield* fs.realPath(ancestor).pipe(Effect.option);
+      }
+      if (uses(root, path.join(resolved.value, ...missing)) || uses(root, path.resolve(name)))
+        return true;
+    }
+    return false;
+  });
+});
 export const sameSettings = (left: ServerSettings, right: ServerSettings) =>
-  left.worktreeArtifactEviction === right.worktreeArtifactEviction &&
-  left.worktreeArtifactEvictionDays === right.worktreeArtifactEvictionDays;
+  left.worktreeArtifactsAfterDays === right.worktreeArtifactsAfterDays;
 const protectedName = (name: string) => {
   const lower = name.toLowerCase();
   return (
@@ -95,6 +140,7 @@ const make = Effect.gen(function* () {
   const markerFor = yield* makeSetupMarker;
   const config = yield* Config.ServerConfig;
   const candidatesFor = yield* makeArtifactCandidates;
+  const mayUseWorktree = yield* makeMayUseWorktree;
   const inside = (root: string, target: string) => {
     const relative = path.relative(root, target);
     return (
@@ -140,14 +186,11 @@ const make = Effect.gen(function* () {
           const cwds = yield* processes.read;
           if (cwds === null) return "Process working directories could not be inspected";
           for (const cwd of cwds) {
-            const resolved = yield* fs.realPath(cwd).pipe(Effect.option);
-            if (Option.isNone(resolved)) return "A process working directory could not be read";
-            const real = resolved.value;
             // Protects process cwds and T3-known active work; a clean scan is not proof of no external activity.
             // The immediate parent is the container holding this checkout and its siblings.
             // Stop ancestor protection there: a process above it can still use absolute paths.
             // Revisit this bound if a real tool does that; never guess roles from command names.
-            if (inside(root, real) || real === path.dirname(root))
+            if (yield* mayUseWorktree(cwd, root))
               return "A process has its working directory in this worktree or its container";
           }
           return null;
@@ -376,12 +419,10 @@ const make = Effect.gen(function* () {
         );
       }).pipe(
         Effect.timeout("30 seconds"),
-        Effect.catch(() =>
-          Effect.succeed({
-            ...kept("Artifact inspection or removal failed; checkout kept"),
-            failed: true,
-          }),
-        ),
+        Effect.orElseSucceed(() => ({
+          ...kept("Artifact inspection or removal failed; checkout kept"),
+          failed: true,
+        })),
       );
     });
   return ForkWorktreeArtifacts.of({ evict });
@@ -395,7 +436,11 @@ export const layerDefault = layer.pipe(
 export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* (guards: {
   readonly hasTerminal: (cwd: string) => boolean;
   readonly terminals?: () => ReadonlyArray<TerminalSummary>;
-  readonly idle: (thread: OrchestrationV2ThreadShell, now: number) => boolean;
+  readonly idle: (
+    thread: OrchestrationV2ThreadShell,
+    now: number,
+    settings: ServerSettings,
+  ) => boolean;
   readonly activityAt: (thread: OrchestrationV2ThreadShell) => number;
 }) {
   const artifacts = yield* ForkWorktreeArtifacts;
@@ -408,6 +453,7 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
   const sessions = yield* ProviderSessions.ProviderSessionManagerV2;
   const git = yield* Git.GitVcsDriver;
   const setups = yield* SetupTracker.WorktreeSetupTracker;
+  const mayUseWorktree = yield* makeMayUseWorktree;
   const canonical = (cwd: string) =>
     fs.realPath(cwd).pipe(
       Effect.catchIf(
@@ -417,7 +463,7 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
     );
   return (settings: ServerSettings, now: number, entries: StorageCleanupReportEntry[]) =>
     Effect.gen(function* () {
-      if (!settings.worktreeArtifactEviction) return;
+      if (settings.worktreeArtifactsAfterDays === null) return;
       const report = (entry: StorageCleanupReportEntry) => {
         const index = entries.findIndex(
           (existing) => existing.kind === "worktree" && existing.path === entry.path,
@@ -533,7 +579,8 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
         const blocked = Effect.gen(function* () {
           const checkNow = Math.max(now, yield* Clock.currentTimeMillis);
           const currentSettings = yield* settingsService.getSettings;
-          if (!currentSettings.worktreeArtifactEviction) return "setting was switched off";
+          const days = currentSettings.worktreeArtifactsAfterDays;
+          if (days === null) return "setting was switched off";
           const current = yield* projections.getThreadShell(thread.id);
           if (
             current === null ||
@@ -541,7 +588,7 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
             current.branch !== thread.branch
           )
             return "thread workspace changed";
-          if (!guards.idle(current, checkNow))
+          if (!guards.idle(current, checkNow, currentSettings))
             return "thread is running or has queued or pending work";
           if ((yield* setups.get(current.id))?.phase === "running")
             return "T3-known setup is running for this worktree";
@@ -553,24 +600,11 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
               (yield* canonical(terminal.worktreePath)) === canonicalCwd
             )
               return "T3 terminal metadata names this worktree";
-            const resolved = yield* fs.realPath(terminal.cwd).pipe(Effect.option);
-            if (Option.isNone(resolved)) return "terminal working directory could not be read";
-            const relative = path.relative(canonicalCwd, resolved.value);
-            if (
-              resolved.value === path.dirname(canonicalCwd) ||
-              relative === "" ||
-              (!path.isAbsolute(relative) &&
-                relative !== ".." &&
-                !relative.startsWith(`..${path.sep}`))
-            )
+            if (yield* mayUseWorktree(terminal.cwd, canonicalCwd))
               return "open terminal in worktree or container";
           }
-          if (
-            current.settledAt === null &&
-            guards.activityAt(current) >
-              checkNow - currentSettings.worktreeArtifactEvictionDays * DAY_MS
-          )
-            return `inactive for less than ${currentSettings.worktreeArtifactEvictionDays} days`;
+          if (current.settledAt === null && guards.activityAt(current) > checkNow - days * DAY_MS)
+            return `inactive for less than ${days} days`;
           if (
             current.settledAt !== null &&
             checkNow -
@@ -608,16 +642,7 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
               (yield* canonical(session.worktreePath)) === canonicalCwd
             )
               return "T3 provider metadata names this worktree";
-            const resolved = yield* fs.realPath(session.cwd).pipe(Effect.option);
-            if (Option.isNone(resolved)) return "provider working directory could not be read";
-            const relative = path.relative(canonicalCwd, resolved.value);
-            if (
-              resolved.value === path.dirname(canonicalCwd) ||
-              relative === "" ||
-              (!path.isAbsolute(relative) &&
-                relative !== ".." &&
-                !relative.startsWith(`..${path.sep}`))
-            )
+            if (yield* mayUseWorktree(session.cwd, canonicalCwd))
               return "provider session is still open";
           }
           return null;
@@ -636,13 +661,7 @@ export const makeSweep = Effect.fn("ForkWorktreeArtifacts.makeSweep")(function* 
               bytes: null,
               artifactBreakdown: result.artifactBreakdown,
             });
-          }).pipe(
-            Effect.catch(() =>
-              Effect.sync(() => {
-                keep("inspection failed");
-              }),
-            ),
-          ),
+          }),
         );
       }
     }).pipe(
