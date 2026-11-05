@@ -100,3 +100,41 @@ describe("settingInheritanceLayers", () => {
     ]);
   });
 });
+
+describe("circle inheritance (fork)", () => {
+  const target = {
+    environmentId,
+    label: "Laptop",
+    projectId: null,
+    ...resolveProjectSettings(DEFAULT_SERVER_SETTINGS, projectId),
+  };
+  const circle = { id: "partner", name: "Partner", color: null };
+
+  it("puts the circle between Project and Environment and checks it when it wins", () => {
+    const settings = { ...DEFAULT_SERVER_SETTINGS, mobileSidebarTabs: true };
+    // The server sent the session its circle's value; `below` is the saved environment value.
+    const layers = settingInheritanceLayers(target, settings, "mobileSidebarTabs", {
+      circle,
+      value: true,
+      below: false,
+    });
+    expect(layers.map((layer) => [layer.label, layer.value, layer.effective])).toEqual([
+      ["Circle: Partner", "On", true],
+      ["Laptop", "Inherits", false],
+      ["Default", "Off", false],
+    ]);
+  });
+
+  it("shows Inherits for a circle without the value", () => {
+    const settings = { ...DEFAULT_SERVER_SETTINGS, mobileSidebarTabs: true };
+    const layers = settingInheritanceLayers(target, settings, "mobileSidebarTabs", {
+      circle,
+      value: undefined,
+    });
+    expect(layers.map((layer) => [layer.key, layer.value, layer.effective])).toEqual([
+      ["circle", "Inherits", false],
+      ["environment", "On", true],
+      ["built-in", "Off", false],
+    ]);
+  });
+});

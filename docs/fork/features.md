@@ -229,6 +229,22 @@ The `t3.settings` state on kitshn holds a shared part and a part for each machin
 - Agents set one value of their own machine with `machines_set_setting`. Only the owner changes the shared part: in T3 Settings, or with `t3 tool call` from a shell.
 - Paths, secrets and project-keyed maps stay on each machine.
 
+#### Settings by circle
+
+`t3.settings` also holds a part for each kitshn circle that holds a card of this machine (kitshn K-726). People in a circle get their own values for person settings, such as their sidebar tabs, on the servers that they share with the owner.
+
+- **Chain:** each session reads Project, then Circle, then Environment (this machine's part), then Shared, then Default. Circle is the first circle of the person's kitshn `check` answer that has a part. kitshn lists circles from the smallest radius on the map, so a nested circle wins.
+- **Keys:** a circle part applies only person settings (`CIRCLE_SETTINGS` in `packages/contracts/src/machineMap.ts`): all client settings except load balancing, and the server settings `sidebarTabs`, `mobileSidebarTabs`, `defaultTheme`, `threadCardLayouts`, `snoozePresets`, `favorites`, `mobileComposerCamera` and `mobileMessagePins`. Machine-local and shared-only settings never come from a circle.
+- **Owner:** on Settings > General, Appearance, Chat, Diffs and Browser, the scope sentence has a person picker: "All people" or a circle. With a circle picked, the rows show and change that circle's values. A setting that is not a person setting is not saved then. "Reset <circle>" removes the circle's values.
+- **Other people:** a person who is not the owner sees no picker. A change of a person setting goes into the part of their first circle. Another client setting stays on their device, and another server setting changes that server as before.
+- **Inheritance card:** a person setting shows a "Circle: <name>" row between Project and Environment. It shows "Inherits" when the circle has no value, and the check mark when its value wins.
+- **Mobile:** the phone shows the values of the person who paired it, through the same client settings.
+- **Limits:**
+  - An open connection keeps the circles that it had when it connected. A reload reads them again. Revisit if circle changes must apply at once.
+  - The picker shows no circle colors, because kitshn's `state` answer has none. Circle names refresh every 15 minutes.
+  - Without kitshn protocol 2.3.0 on the daemon, no circle part applies, and a person writes as before.
+  - Only the person picker of T3 Settings sets a circle. Edits of the sidebar tabs themselves always go to the part of the person who edits them.
+
 ### Settings > Machines
 
 Settings > Machines shows how to join this machine to kitshn, and the kitshn settings of the selected environment. It also shows the kitshn connection: connected, connecting with the last error, or off with the reason, and the reached machines, link proxy and kitshn's last sync. `machines_read` gives agents the same state.
@@ -450,6 +466,7 @@ Tabs under the sidebar search hold threads. A thread lives in one tab, so the ta
   - The hosted app at app.t3.codes has no primary server to keep the tabs, so it shows no tabs. Revisit if hosted clients get a place for shared settings.
   - When two devices change tabs at the same moment, the last change wins. Revisit if tabs get lost in practice.
   - A machine without the map role `edit`, or off the map, keeps a change on its own server only.
+  - A person in a kitshn circle gets their own tabs: their edits go into the part of their first circle. See [Settings by circle](#settings-by-circle).
   - Tabs were called groups before. A server moves `sidebarGroups` and `mobileSidebarGroups` in `settings.json` to the new keys once at start, and renames the old `sidebar.group.*`, `sidebar.previousGroup` and `sidebar.nextGroup` keybindings. A client moves `sidebarGroupsEnabled` and `sidebarGroupSingleThreadOpens` when it loads. A machine on an older version keeps the old keys, so it does not sync tabs with a machine on a newer version until both update. The open tab resets to "Threads" once.
   - Applies only after upstream thread groups merge ([pingdotgg/t3code#15988](https://github.com/pingdotgg/t3code/pull/15988) "feat: related threads stay together as a group"): a nested thread always shows in the tab of its top thread, so a nested group never splits across tabs. This holds for views too. A drag or "Assign to tab" on a nested thread assigns its top thread. Fork Sync resolves that merge with this rule.
 
