@@ -1861,6 +1861,8 @@ export const layerWsRpc = (
           ),
         );
 
+      // Fork: the session's kitshn circle layer over the saved settings.
+      const forkSettings = yield* ForkWs.sessionSettingsView;
       const loadServerConfig = Effect.fn("ws.loadServerConfig")(function* (options: {
         readonly usageLimitsCommand: boolean;
         readonly workspaceSnapshotsOnDemand: boolean;
@@ -1874,9 +1876,12 @@ export const layerWsRpc = (
         const providers = options.workspaceSnapshotsOnDemand
           ? withoutWorkspaceSnapshots(commandProviders)
           : commandProviders;
-        const settings = ServerSettings.redactServerSettingsForClient(
-          yield* serverSettings.getSettings,
-          settingsClient,
+        // Fork: the session's circle layer.
+        const settings = yield* forkSettings.serverSettings(
+          ServerSettings.redactServerSettingsForClient(
+            yield* serverSettings.getSettings,
+            settingsClient,
+          ),
         );
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
@@ -2650,11 +2655,18 @@ export const layerWsRpc = (
                   Effect.provide(deviceHostContext),
                 )
               : undefined;
-            const nextPatch = { ...patch, ...(deviceHosts ? { deviceHosts } : {}) };
+            // Fork: a non-owner's person settings go into their circle part.
+            const nextPatch = yield* forkSettings.writePatch({
+              ...patch,
+              ...(deviceHosts ? { deviceHosts } : {}),
+            });
             const settings = yield* providerInstanceMutation === undefined
               ? serverSettings.updateSettings(nextPatch)
               : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
-            return ServerSettings.redactServerSettingsForClient(settings, settingsClient);
+            // Fork: the session's circle layer.
+            return yield* forkSettings.serverSettings(
+              ServerSettings.redactServerSettingsForClient(settings, settingsClient),
+            );
           }),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) => sourceControlDiscovery.discover,
         [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
@@ -3319,6 +3331,8 @@ export const layerWsRpc = (
                 Stream.map((settings) =>
                   ServerSettings.redactServerSettingsForClient(settings, settingsClient),
                 ),
+                // Fork: the session's circle layer, again when it changes.
+                (changes) => forkSettings.settingsChanges(config.settings, changes),
                 Stream.map((settings) => ({
                   version: 1 as const,
                   type: "settingsUpdated" as const,
@@ -3526,6 +3540,8 @@ export const layer = Layer.unwrap(
               readSettingsClient(url.value),
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
+              // Fork: the socket's kitshn circles for the settings chain.
+              Layer.provide(ForkWs.kitshnSettingsSessionLayer(request)),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),

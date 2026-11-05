@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
+import { circleListFromState } from "../../../fork/kitshn/kitshnCircles.ts";
 import * as KitshnCli from "../../../fork/kitshn/KitshnCli.ts";
 import * as KitshnConnection from "../../../fork/kitshn/KitshnConnection.ts";
 import * as KitshnGrants from "../../../fork/kitshn/KitshnGrants.ts";
@@ -45,15 +46,25 @@ const setSetting = Effect.fn("MachineMapMcp.setSetting")(function* (
 ) {
   const scope = yield* refuseMachineCaller;
   // A thread is an agent; `t3 tool call` without a thread credential is the owner in a shell.
+  const by = scope.thread === undefined ? "owner" : "agent";
+  // An agent gets the refusal of `setOne` for a circle part, with or without a circle id.
+  if (input.part === "circle" && input.circle === undefined && by === "owner") {
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: "part circle needs circle: a circle id from circleSettings of machines_read.",
+    });
+  }
+  const target: KitshnSettingsSync.SettingsPart =
+    input.part === "circle" ? { part: "circle", circle: input.circle ?? "" } : { part: input.part };
   yield* (yield* KitshnSettingsSync.KitshnSettingsSync)
     .setOne(
       {
-        part: input.part,
+        ...target,
         scope: input.scope,
         key: input.key,
         value: input.clear === true ? undefined : input.value,
       },
-      scope.thread === undefined ? "owner" : "agent",
+      by,
     )
     .pipe(Effect.mapError(toFailure));
   return { _tag: "setting", part: input.part, scope: input.scope, key: input.key };
@@ -80,6 +91,14 @@ export const layer = McpToolAccess.toLayer(MachineMapToolkit, {
           paused: Option.isSome(state) && state.value.paused,
           problems: Option.isSome(state) ? state.value.problems : [],
         },
+        // K-726: the circles that hold a card here, named by the state ask, with their parts.
+        circleSettings: (answer._tag === "Success" && "result" in answer.success
+          ? (circleListFromState(answer.success.result) ?? [])
+          : []
+        ).map((circle) => ({
+          ...circle,
+          settings: Option.isSome(state) ? (state.value.circleParts[circle.id] ?? null) : null,
+        })),
         state:
           answer._tag === "Success" && "result" in answer.success ? answer.success.result : null,
         stateError: answer._tag === "Failure" ? answer.failure.message : null,

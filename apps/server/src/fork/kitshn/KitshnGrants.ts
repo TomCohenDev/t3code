@@ -78,6 +78,11 @@ export interface AccessVisitor {
   readonly levels: Readonly<Record<string, string>>;
   /** K-722: the subject is a machine whose effect "runs" covers this machine at automatic. */
   readonly exec: boolean;
+  /**
+   * K-726: the circles that hold both the subject and a card of this provider on this machine,
+   * smallest first. Empty when the daemon sends none (before protocol 2.3.0).
+   */
+  readonly circles: ReadonlyArray<string>;
   readonly until: number;
 }
 
@@ -186,6 +191,8 @@ type CheckResult = Extract<
   { readonly type: "check" }
 >["results"][number];
 
+const isCircleIds = Schema.is(Schema.Array(Schema.String));
+
 const toCached = (
   result: CheckResult,
   headers: Readonly<Record<string, string>>,
@@ -205,6 +212,7 @@ const toCached = (
       subject: result.subject,
       levels: result.levels,
       exec: result.rights.includes("exec"),
+      circles: "circles" in result && isCircleIds(result.circles) ? result.circles : [],
       until: result.until,
     },
   };

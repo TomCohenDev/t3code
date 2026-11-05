@@ -8,7 +8,6 @@ import {
   type Answer,
   type CardSettingValues,
   type DesiredParts,
-  KITSHN_PROTOCOL,
   legacyProtocol,
   line as requestLine,
   matchProtocol,
@@ -52,6 +51,12 @@ import * as MachineHost from "../machineMap/MachineHost.ts";
 import { redactSecretsInText } from "../redactUrlSecrets.ts";
 import * as ThreadIdentity from "../ThreadIdentity.ts";
 import { attestedLabels } from "./kitshnAttest.ts";
+import {
+  checkCirclesFromLine,
+  type CircleParts,
+  circlePartsFromLine,
+  NO_CIRCLE_PARTS,
+} from "./kitshnCircles.ts";
 import * as KitshnCli from "./KitshnCli.ts";
 import * as KitshnConnection from "./KitshnConnection.ts";
 import { APP_RESOURCE_ID, KINDS, threadResourceId } from "./kitshnGrantRules.ts";
@@ -272,15 +277,38 @@ class RegisterRefused extends Schema.TaggedError<RegisterRefused>()("RegisterRef
   reason: Schema.String,
 }) {}
 
+/**
+ * K-725, K-726: the kitshn protocol that T3 speaks. T3 reads the circle fields of 2.3.0 from the
+ * daemon's lines (`kitshnCircles.ts`) while the pinned `@kitshn/local` declares an older minor.
+ * Revisit when the pin declares 2.3.0 or newer: then use its `KITSHN_PROTOCOL`.
+ */
+export const T3_KITSHN_PROTOCOL: string = "2.3.0";
+
 /** K-725: how T3 treats the kitshn protocol of the other side. */
 const matchKitshn = (name: string, version: string) =>
   matchProtocol(
-    { name: "T3", version: KITSHN_PROTOCOL, update: "install the newest T3 release" },
+    { name: "T3", version: T3_KITSHN_PROTOCOL, update: "install the newest T3 release" },
     { name, version, update: ROLLOUT_FIX },
   );
 
 /** K-709: the desired state kind of the T3 settings, in the `ForkSettingsState` shape. */
 export const SETTINGS_KIND = "t3.settings";
+
+/** A `check` answer whose visitor results carry `circles` (see `kitshnCircles.ts`). */
+const withCheckCircles = (
+  answer: Extract<Answer, { readonly type: "check" }>,
+  text: string,
+): Answer => {
+  const circles = checkCirclesFromLine(text);
+  if (circles.size === 0) return answer;
+  return {
+    ...answer,
+    results: answer.results.map((result) => {
+      const ids = circles.get(result.key);
+      return ids === undefined || !("subject" in result) ? result : { ...result, circles: ids };
+    }),
+  };
+};
 /** K-717: the update channel of the app card. */
 const UPDATE_CHANNEL_SETTING = "updateChannel";
 /** The switch that keeps this server off kitshn. */
@@ -344,6 +372,8 @@ export type KitshnConnectionStatus =
 /** What kitshn keeps for this provider and says about it. */
 export interface KitshnProviderState {
   readonly settings: DesiredParts | null;
+  /** K-726: the circle parts of `t3.settings`, by circle id. */
+  readonly circleParts: CircleParts;
   readonly cardSettings: CardSettingValues;
   /** K-1609: the cards of other machines that this machine reaches. */
   readonly reach: ReadonlyArray<ReachedCard>;
@@ -405,6 +435,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
   const off = kitshnOff({ devUrl: config.devUrl, env: yield* HostProcess.Environment });
   const providerState = yield* SubscriptionRef.make<KitshnProviderState>({
     settings: null,
+    circleParts: NO_CIRCLE_PARTS,
     cardSettings: {},
     reach: [],
     syncedAt: null,
@@ -578,7 +609,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
         id: registerId,
         type: "register",
         protocol: PROVIDER_PROTOCOL,
-        protocolVersion: KITSHN_PROTOCOL,
+        protocolVersion: T3_KITSHN_PROTOCOL,
         provider: PROVIDER_NAME,
         instance: yield* environment.getEnvironmentId,
         kinds: REGISTERED_KINDS,
@@ -664,6 +695,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
 
       const onRegistered = Effect.fn("KitshnProvider.onRegistered")(function* (
         answer: KitshnConnection.RegisterAnswer,
+        text: string,
       ) {
         // K-725: the answer of the running daemon decides; a daemon before K-724 names no version.
         const daemonProtocol = answer.protocolVersion ?? legacyProtocol(answer.protocol);
@@ -675,6 +707,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
         }
         yield* SubscriptionRef.set(providerState, {
           settings: answer.saved.desired[SETTINGS_KIND] ?? null,
+          circleParts: circlePartsFromLine(text, SETTINGS_KIND),
           cardSettings: answer.saved.settings,
           reach: answer.saved.reach,
           syncedAt: answer.syncedAt,
@@ -726,9 +759,14 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
               : undefined;
           }
           const asked = waiting.get(answer.id);
-          if (asked !== undefined) return yield* Deferred.succeed(asked, answer);
+          if (asked !== undefined) {
+            return yield* Deferred.succeed(
+              asked,
+              answer.type === "check" ? withCheckCircles(answer, text) : answer,
+            );
+          }
           if (answer.id === registerId) {
-            if (answer.type === "register") return yield* onRegistered(answer);
+            if (answer.type === "register") return yield* onRegistered(answer, text);
             if (answer.type === "error") {
               return yield* new RegisterRefused({
                 reason: `kitshn refused the registration: ${answer.error}`,
@@ -766,6 +804,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
             return yield* SubscriptionRef.update(providerState, (current) => ({
               ...current,
               settings: answer.state,
+              circleParts: circlePartsFromLine(text, SETTINGS_KIND),
             }));
           case "settings":
             return yield* SubscriptionRef.update(providerState, (current) => ({
