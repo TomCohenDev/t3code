@@ -168,6 +168,9 @@ const CIRCLE_SERVER_SETTINGS = [
   "favorites",
   "mobileComposerCamera",
   "mobileMessagePins",
+  // Upstream thread tags: which tagged threads a person hides is that person's view.
+  "hiddenThreadTags",
+  "hideTaggedThreads",
 ] as const satisfies ReadonlyArray<keyof ServerSettings>;
 
 const CIRCLE_CLIENT_SETTINGS = [
@@ -177,6 +180,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "backgroundWorkDetails",
   "boringSidebarEnabled",
   "boringSidebarMultilineRows",
+  "brandingHidden",
   "browserAutoShowFloatingPreview",
   "browserCustomSearchUrl",
   "browserDefaultAppearance",
