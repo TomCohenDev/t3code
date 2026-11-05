@@ -47,6 +47,7 @@ import {
   MessageSquareIcon,
 } from "lucide-react";
 
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import {
   applyProviderInstanceSettings,
@@ -503,8 +504,8 @@ function SubagentTimelineLink(props: {
   const className =
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <PreviewCard>
+      <PreviewCardTrigger
         delay={200}
         render={
           open === null ? (
@@ -539,7 +540,7 @@ function SubagentTimelineLink(props: {
           progress={agent?.progress ?? props.progress}
         />
       </ThreadHoverCardPopup>
-    </Tooltip>
+    </PreviewCard>
   );
 }
 

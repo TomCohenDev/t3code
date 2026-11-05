@@ -21,6 +21,7 @@ import {
   setFocusLevelsEnabled,
   watchFocusLevelChanges,
 } from "./focusLevels";
+import { registerCommandRunner } from "../../shortcuts/dispatcher";
 
 /** Runs a command for the focused element. False lets the key event through untouched. */
 export type FocusLevelCommandHandler = (event: KeyboardEvent) => boolean;
@@ -182,9 +183,13 @@ export function useFocusLevelShortcuts() {
       }, 0);
     };
     const stopWatching = watchFocusLevelChanges(() => getClientSettings().focusLevelHighlight);
+    const unregisterRunner = registerCommandRunner(
+      (command) => isForkCommand(command) && run(command, new KeyboardEvent("keydown")),
+    );
     window.addEventListener("keydown", onCapture, true);
     document.addEventListener("keydown", onDocumentEscape);
     return () => {
+      unregisterRunner();
       stopWatching();
       window.removeEventListener("keydown", onCapture, true);
       document.removeEventListener("keydown", onDocumentEscape);

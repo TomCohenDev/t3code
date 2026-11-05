@@ -128,6 +128,7 @@ import {
 import { InlineButton } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
@@ -258,6 +259,7 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  onOpenPullRequest,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -275,6 +277,7 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  onOpenPullRequest: (event: ReactMouseEvent<HTMLAnchorElement>, url: string) => void;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
@@ -288,7 +291,10 @@ function SidebarThreadTooltip({
         footer={
           supportsMultiplePullRequests && thread.pullRequests.length > 0 ? (
             <div className="border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
-              <ThreadPullRequestsMiniList pullRequests={thread.pullRequests} />
+              <ThreadPullRequestsMiniList
+                pullRequests={thread.pullRequests}
+                onOpenPullRequest={onOpenPullRequest}
+              />
             </div>
           ) : null
         }
@@ -807,24 +813,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
-  const detailsTooltip = (
-    <SidebarThreadTooltip
-      thread={thread}
-      project={props.project}
-      projectDisplayName={props.projectDisplayName}
-      environmentLabel={props.environmentLabel}
-      environmentMachine={props.environmentMachine}
-      providerEntry={providerEntry}
-      providerEntryByInstanceId={props.providerEntryByInstanceId}
-      showInstanceBadge={showInstanceBadge}
-      modelInstanceId={modelInstanceId}
-      modelLabel={modelLabel}
-      branchMismatch={branchMismatch}
-      terminalStatus={terminalStatus}
-      terminalProcessCount={terminalProcessCount}
-    />
-  );
-
   const handleClick = (event: ReactMouseEvent) => {
     onThreadClick(event, threadRef);
   };
@@ -947,6 +935,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onThreadActivate(threadRef);
     }
   };
+
+  const detailsCard = (
+    <SidebarThreadTooltip
+      thread={thread}
+      project={props.project}
+      projectDisplayName={props.projectDisplayName}
+      environmentLabel={props.environmentLabel}
+      environmentMachine={props.environmentMachine}
+      providerEntry={providerEntry}
+      providerEntryByInstanceId={props.providerEntryByInstanceId}
+      showInstanceBadge={showInstanceBadge}
+      modelInstanceId={modelInstanceId}
+      modelLabel={modelLabel}
+      branchMismatch={branchMismatch}
+      terminalStatus={terminalStatus}
+      terminalProcessCount={terminalProcessCount}
+      onOpenPullRequest={handlePrClick}
+    />
+  );
 
   const rowSurfaceClassName = cn(
     THREAD_CARD_SURFACE_CLASS,
@@ -1344,8 +1351,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           sortable?.isDragging && "relative z-20",
         )}
       >
-        <Tooltip disabled={sortable?.isDragging}>
-          <TooltipTrigger
+        <PreviewCard>
+          <PreviewCardTrigger
             render={
               <div
                 ref={rowRef}
@@ -1526,9 +1533,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </div>
               )
             ) : null}
-          </TooltipTrigger>
-          {detailsTooltip}
-        </Tooltip>
+          </PreviewCardTrigger>
+          {sortable?.isDragging ? null : detailsCard}
+        </PreviewCard>
       </li>
     );
   }
@@ -1550,8 +1557,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           : { containIntrinsicSize: `auto ${slotLayoutHeightPx(cardLayout) + 16}px` }
       }
     >
-      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           render={
             <div
               ref={rowRef}
@@ -1639,9 +1646,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               }}
             />
           )}
-        </TooltipTrigger>
-        {detailsTooltip}
-      </Tooltip>
+        </PreviewCardTrigger>
+        {snoozeMenuOpen || sortable?.isDragging ? null : detailsCard}
+      </PreviewCard>
     </li>
   );
 });
@@ -1688,6 +1695,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
     isActive: props.isRouteActive,
   });
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+  const openPrLink = useOpenPrLink();
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(
     props.isHighlighted || props.isRouteActive,
   );
@@ -1742,8 +1750,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
       className="list-none"
       {...fileDropHandlers}
     >
-      <Tooltip>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           render={
             <button
               ref={rowRef}
@@ -1816,7 +1824,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
               />
             ) : null}
           </span>
-        </TooltipTrigger>
+        </PreviewCardTrigger>
         <SidebarThreadTooltip
           thread={thread}
           project={props.project}
@@ -1831,8 +1839,9 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
           branchMismatch={branchMismatch}
           terminalStatus={terminalStatus}
           terminalProcessCount={runningTerminalIds.length}
+          onOpenPullRequest={(event, url) => openPrLink(event, url, threadRef)}
         />
-      </Tooltip>
+      </PreviewCard>
     </li>
   );
 });

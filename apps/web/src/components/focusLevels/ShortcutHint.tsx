@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ClientSettings, KeybindingCommand, KeybindingShortcut } from "@t3tools/contracts";
-import { Fragment, type ComponentProps, type ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { useClientSettings } from "../../hooks/useSettings";
 import {
@@ -12,6 +12,8 @@ import {
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { KEYBINDING_COMMAND_ATTRIBUTE } from "../../keybindingsMenu";
 import { FOCUS_LEVELS_OFF } from "./focusLevels";
+import { runKeybindingCommand } from "../../shortcuts/dispatcher";
+import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -153,6 +155,34 @@ export function ShortcutTrigger({
 }
 
 /**
+ * Fork: a command named in a tooltip, as a button that runs it. Right-click opens its
+ * "Keybindings…" menu, as on any element that runs a command.
+ */
+function CommandRow({
+  command,
+  labels,
+  children,
+}: {
+  command: KeybindingCommand;
+  labels: ReadonlyArray<string>;
+  children: ReactNode;
+}) {
+  const keybindingProps = useKeybindingProps(command);
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="-mx-1 justify-between"
+      {...keybindingProps}
+      onClick={() => runKeybindingCommand(command)}
+    >
+      <span className="text-muted-foreground">{children}</span>
+      <ShortcutChips labels={labels} />
+    </Button>
+  );
+}
+
+/**
  * Fork: a tooltip trigger for a control without a tooltip. The tooltip shows `label` and the key
  * of `command`, and only when the command has a key. A control that runs several commands names
  * each one that has a key, on its own line. Use it as the trigger or as its `render`.
@@ -182,14 +212,13 @@ export function ShortcutTooltip({
         <TooltipPopup side={side}>
           {label}
           {named ? (
-            <span className="mt-1 grid grid-cols-[auto_auto] items-center gap-x-0.5 gap-y-1">
+            <span className="mt-1 flex flex-col items-stretch gap-0.5">
               {named.map((entry, index) => {
                 const labels = labelLists[index] ?? [];
                 return labels.length > 0 ? (
-                  <Fragment key={entry.command}>
-                    <span className="text-muted-foreground">{entry.name}</span>
-                    <ShortcutChips labels={labels} />
-                  </Fragment>
+                  <CommandRow key={entry.command} command={entry.command} labels={labels}>
+                    {entry.name}
+                  </CommandRow>
                 ) : null;
               })}
             </span>

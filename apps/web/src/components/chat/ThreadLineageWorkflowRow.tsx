@@ -14,6 +14,7 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Spinner } from "../ui/spinner";
 import {
@@ -69,8 +70,8 @@ function WorkflowMemberRow({
   const canOpen = threadId !== null;
   return (
     <li>
-      <Tooltip>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           delay={200}
           render={
             <ThreadDetailsControl
@@ -94,7 +95,7 @@ function WorkflowMemberRow({
               <AgentElapsed agent={member} />
             </span>
           ) : null}
-        </TooltipTrigger>
+        </PreviewCardTrigger>
         <ThreadHoverCardPopup side="left">
           <SubagentTooltipContent
             title={member.title}
@@ -110,7 +111,7 @@ function WorkflowMemberRow({
             progress={member.progress}
           />
         </ThreadHoverCardPopup>
-      </Tooltip>
+      </PreviewCard>
     </li>
   );
 }

@@ -1,10 +1,14 @@
 import type { ComponentProps, ReactNode } from "react";
-import { TooltipPopup } from "./ui/tooltip";
+import { PreviewCardPopup } from "./ui/preview-card";
 import { cn } from "~/lib/utils";
 
-export function ThreadHoverCardPopup({ className, ...props }: ComponentProps<typeof TooltipPopup>) {
+// A hover card, not a tooltip: the pointer can move into it and use its rows.
+export function ThreadHoverCardPopup({
+  className,
+  ...props
+}: ComponentProps<typeof PreviewCardPopup>) {
   return (
-    <TooltipPopup
+    <PreviewCardPopup
       {...props}
       variant="glass"
       className={cn("max-w-80 text-left whitespace-normal", className)}
@@ -22,7 +26,7 @@ export function ThreadHoverCard({
   footer?: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2">
+    <div className="flex min-w-0 max-w-80 flex-col gap-2 px-3 py-3">
       <div className="min-w-0 truncate text-xs leading-tight font-medium text-foreground">
         {title}
       </div>

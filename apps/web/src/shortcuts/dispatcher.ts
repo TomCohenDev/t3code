@@ -120,6 +120,43 @@ export function registerCommands(
   return pushScope(scopes, { commands, options });
 }
 
+/**
+ * Fork: runs `command` from a click, such as a row in a tooltip that names the command's key, as
+ * if its key had been pressed. True when a handler took it. The dispatcher scopes come last;
+ * listeners that own their keydown handling (chat shortcuts, focus levels) register a runner.
+ */
+export type CommandRunner = (command: KeybindingCommand) => boolean;
+const commandRunners: CommandRunner[] = [];
+
+export function registerCommandRunner(runner: CommandRunner): () => void {
+  commandRunners.push(runner);
+  return () => {
+    const index = commandRunners.lastIndexOf(runner);
+    if (index !== -1) commandRunners.splice(index, 1);
+  };
+}
+
+function runScopeCommand(scope: CommandScope, command: KeybindingCommand): boolean {
+  const handler = scope.commands[command];
+  if (handler === undefined) return false;
+  const event = new KeyboardEvent("keydown", { cancelable: true });
+  if (scope.options.when && !scope.options.when(event)) return false;
+  return handler(event) !== false;
+}
+
+export function runKeybindingCommand(command: KeybindingCommand): boolean {
+  for (let index = commandRunners.length - 1; index >= 0; index -= 1) {
+    if (commandRunners[index]?.(command)) return true;
+  }
+  for (const scopes of [captureScopes, globalScopes]) {
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const scope = scopes[index];
+      if (scope && runScopeCommand(scope, command)) return true;
+    }
+  }
+  return false;
+}
+
 type MenuActionHandler = () => void;
 const menuActionHandlers = new Map<string, MenuActionHandler[]>();
 let menuActionInstalled = false;
