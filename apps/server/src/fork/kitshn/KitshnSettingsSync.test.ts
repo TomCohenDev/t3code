@@ -1,6 +1,17 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import * as ServerConfig from "../../config.ts";
+import * as EnvironmentTheme from "../../environmentTheme.ts";
+import * as ServerSettingsModule from "../../serverSettings.ts";
 
 import {
   checkCirclesFromLine,
@@ -11,8 +22,8 @@ import {
 } from "./kitshnCircles.ts";
 import * as KitshnConnection from "./KitshnConnection.ts";
 import { registerAnswer } from "./KitshnConnection.testkit.ts";
-import type { AccessVisitor } from "./KitshnGrants.ts";
-import type * as KitshnProvider from "./KitshnProvider.ts";
+import { type AccessVisitor, KitshnGrants as KitshnGrantsService } from "./KitshnGrants.ts";
+import * as KitshnProvider from "./KitshnProvider.ts";
 import {
   circleWriteRefusal,
   effectiveSettings,
@@ -20,9 +31,14 @@ import {
   OWNER_SESSION,
   sessionCircleOf,
   sessionWriteCircle,
+  type SettingsSession,
   settingsSessionOf,
   sharedPartAfterShare,
+  KitshnSettingsSync,
+  layer as KitshnSettingsSyncLayer,
 } from "./KitshnSettingsSync.ts";
+
+const KitshnProviderService = KitshnProvider.KitshnProvider;
 
 it("applies the shared part, then this machine's part over it", () => {
   expect(
@@ -261,4 +277,147 @@ it.effect("stores a circle part for the owner and refuses agents and machine key
     expect(machineKey.message).toContain("not a person setting");
     expect(sent).toHaveLength(1);
   }),
+);
+
+const PARTNER_PART = {
+  server: { sidebarTabs: { partner: { name: "Partner tab" } } },
+  client: { followUpBehavior: "steer" },
+};
+const STATE_ANSWER = {
+  circles: [{ id: "partner", name: "Partner", r: 100 }],
+  cards: [{ kind: "t3.app", circles: [{ id: "partner" }] }],
+};
+
+interface Harness {
+  readonly sync: KitshnSettingsSync["Service"];
+  /** The requests to the daemon, in order. */
+  readonly sent: Array<KitshnConnection.LocalRequestInput>;
+  readonly saved: Ref.Ref<ServerSettings>;
+  readonly connection: SubscriptionRef.SubscriptionRef<KitshnProvider.KitshnConnectionStatus>;
+  /** The answer of the next `state` asks; a failure while it is null. */
+  readonly stateAnswer: Ref.Ref<unknown>;
+}
+
+/** The real settings service on a fake daemon that stores each part it gets. */
+const withSync = <A, E>(
+  parts: Record<string, unknown>,
+  body: (harness: Harness) => Effect.Effect<A, E>,
+) =>
+  Effect.gen(function* () {
+    const sent: Array<KitshnConnection.LocalRequestInput> = [];
+    const saved = yield* Ref.make<ServerSettings>({
+      ...DEFAULT_SERVER_SETTINGS,
+      sidebarTabs: { own: { name: "Own tab" } } as never,
+    });
+    const stateAnswer = yield* Ref.make<unknown>(STATE_ANSWER);
+    const providerState = yield* SubscriptionRef.make<KitshnProvider.KitshnProviderState>({
+      settings: { shared: null, machine: null },
+      circleParts: parts as never,
+      cardSettings: {},
+      reach: [],
+      syncedAt: null,
+      paused: false,
+      problems: [],
+    });
+    const connection = yield* SubscriptionRef.make<KitshnProvider.KitshnConnectionStatus>({
+      status: "registered",
+      detail: null,
+      restartedAt: null,
+    });
+    const kitshn = yield* KitshnConnection.make;
+    yield* kitshn.attach({
+      answer: registerAnswer(),
+      request: (input) =>
+        Effect.gen(function* () {
+          sent.push(input);
+          if (input.type === "ask") {
+            const result = yield* Ref.get(stateAnswer);
+            return result === null
+              ? { id: "1", type: "error" as const, error: "kitshn is away" }
+              : { id: "1", type: "ask" as const, outcome: "done" as const, result };
+          }
+          if (input.type === "desired-set") {
+            const circle = (input as { readonly circle?: string }).circle;
+            if (circle !== undefined) {
+              yield* SubscriptionRef.update(providerState, (state) => {
+                const { [circle]: _old, ...rest } = state.circleParts;
+                return {
+                  ...state,
+                  circleParts:
+                    input.value === null ? rest : { ...rest, [circle]: input.value as never },
+                };
+              });
+            }
+            yield* kitshn.publish({
+              type: "desired",
+              kind: input.kind,
+              state: { shared: null, machine: null },
+              rev: input.rev ?? null,
+            });
+          }
+          return { id: "1", type: input.type } as never;
+        }),
+      notify: () => Effect.void,
+    });
+    const layer = KitshnSettingsSyncLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(KitshnConnection.KitshnConnection, kitshn),
+          Layer.mock(KitshnProviderService)({
+            state: SubscriptionRef.changes(providerState),
+            connection: SubscriptionRef.changes(connection),
+            linkSocket: Effect.succeed(null),
+          }),
+          Layer.mock(KitshnGrantsService)({
+            active: Effect.succeed(true),
+            machine: Effect.succeed({ id: "self", name: "Mac" }),
+            trustsPeerOrigin: () => false,
+            peerOrigins: () => [],
+          }),
+          Layer.mock(ServerSettingsModule.ServerSettingsService)({ getSettings: Ref.get(saved) }),
+          Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
+          ServerConfig.layerTest(process.cwd(), { prefix: "kitshn-settings-" }),
+        ),
+      ),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    );
+    return yield* Effect.gen(function* () {
+      const sync = yield* KitshnSettingsSync;
+      return yield* body({ sync, sent, saved, connection, stateAnswer });
+    }).pipe(Effect.provide(layer));
+  });
+
+const firstState = (sync: Harness["sync"], session: SettingsSession) =>
+  sync.clientState(session).pipe(Stream.runHead, Effect.map(Option.getOrThrow));
+
+it.effect("sends the circle values and the picker to the owner session only", () =>
+  withSync({ partner: PARTNER_PART }, ({ sync }) =>
+    Effect.gen(function* () {
+      const owner = yield* firstState(sync, OWNER_SESSION);
+      expect(owner.owner).toBe(true);
+      expect(owner.circles.map((circle) => [circle.id, circle.settings])).toEqual([
+        ["partner", PARTNER_PART],
+      ]);
+      expect(owner.circle).toBeNull();
+      expect(owner.settings.client).toEqual({});
+
+      // A person who is not the owner reads their circle, and gets no other circle's values.
+      const ayelet = yield* firstState(sync, { circles: ["partner"], owner: false });
+      expect(ayelet.owner).toBe(false);
+      expect(ayelet.circles).toEqual([]);
+      expect(ayelet.circle?.id).toBe("partner");
+      expect(ayelet.writesTo?.id).toBe("partner");
+      expect(ayelet.settings.client).toEqual({ followUpBehavior: "steer" });
+      expect(ayelet.circle?.replaced).toEqual({ sidebarTabs: { own: { name: "Own tab" } } });
+
+      // A machine, or a person on a daemon without `circles`, gets neither.
+      const machine = yield* firstState(sync, { circles: [], owner: false });
+      expect([machine.owner, machine.circles, machine.circle, machine.writesTo]).toEqual([
+        false,
+        [],
+        null,
+        null,
+      ]);
+    }),
+  ),
 );

@@ -15,6 +15,7 @@ const state = (overrides: Partial<MachineMapClientState>): MachineMapClientState
   settings: { server: {}, client: {} },
   circle: null,
   writesTo: null,
+  owner: true,
   circles: [{ ...partner, settings: { server: { mobileSidebarTabs: true }, client: {} } }],
   connection: {
     status: "registered",
@@ -32,7 +33,9 @@ const state = (overrides: Partial<MachineMapClientState>): MachineMapClientState
 describe("circle settings", () => {
   it("offers the picker to the owner only", () => {
     expect(personPickerCircles(state({})).map((circle) => circle.id)).toEqual(["partner"]);
-    expect(personPickerCircles(state({ writesTo: partner }))).toEqual([]);
+    // A person who is not the owner gets no picker, also with no circle to write to.
+    expect(personPickerCircles(state({ owner: false }))).toEqual([]);
+    expect(personPickerCircles(state({ owner: false, writesTo: partner }))).toEqual([]);
     expect(personPickerCircles(state({ joined: false }))).toEqual([]);
     expect(personPickerCircles(null)).toEqual([]);
   });

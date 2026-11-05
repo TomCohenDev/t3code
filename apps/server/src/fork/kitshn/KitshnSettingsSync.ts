@@ -633,17 +633,17 @@ const make = Effect.gen(function* () {
               },
               circle,
               writesTo,
-              // The parts of other circles are for the owner's picker only.
-              circles:
-                writesTo !== null
-                  ? []
-                  : [
-                      ...list,
-                      // A part whose circle the last state ask did not name still shows, by its id.
-                      ...Object.keys(state.circleParts)
-                        .filter((id) => !list.some((entry) => entry.id === id))
-                        .map((id) => circleOf(circles, id)),
-                    ].map((entry) => ({ ...entry, settings: state.circleParts[entry.id] ?? null })),
+              owner: session.owner,
+              // The parts of the circles are for the owner's picker only.
+              circles: !session.owner
+                ? []
+                : [
+                    ...list,
+                    // A part whose circle the last state ask did not name still shows, by its id.
+                    ...Object.keys(state.circleParts)
+                      .filter((id) => !list.some((entry) => entry.id === id))
+                      .map((id) => circleOf(circles, id)),
+                  ].map((entry) => ({ ...entry, settings: state.circleParts[entry.id] ?? null })),
               connection: {
                 status: connection.status,
                 detail: connection.detail,

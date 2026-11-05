@@ -21,7 +21,7 @@ const decodeServerPatch = Schema.decodeUnknownOption(ServerSettingsPatch);
 export function personPickerCircles(
   state: MachineMapClientState | null,
 ): ReadonlyArray<MachineMapClientState["circles"][number]> {
-  return state === null || !state.joined || state.writesTo !== null ? [] : state.circles;
+  return state === null || !state.joined || !state.owner ? [] : state.circles;
 }
 
 /**

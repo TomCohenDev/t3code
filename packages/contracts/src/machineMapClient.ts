@@ -51,7 +51,12 @@ export const MachineMapClientState = Schema.Struct({
    * instead of the shared part. Null for the owner.
    */
   writesTo: Schema.NullOr(SettingsCircle).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-  /** For the owner: the circles that hold a card of this machine, smallest first. */
+  /**
+   * The session is the owner's: a local client, or a person or device at the kitshn level
+   * `control`. Only the owner gets `circles` and the person picker. Older servers send none.
+   */
+  owner: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** For the owner only: the circles that hold a card of this machine, smallest first. */
   circles: Schema.Array(MachineMapCircleSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
