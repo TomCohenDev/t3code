@@ -125,7 +125,9 @@ import {
   terminalThreadRowStatus,
   terminalThreadStatusLabel,
 } from "@t3tools/client-runtime/state/fork-terminal-threads";
-import { InlineButton } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
+import { toastManager } from "../ui/toast";
+import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
 import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
@@ -245,6 +247,44 @@ function SidebarProviderStack(props: {
   );
 }
 
+/** Fork: the hover card rows that set a sidebar filter to the thread's value. */
+export type SidebarFilterShortcutField = "project" | "machine" | "model";
+
+/** Fork: a hover card row, as a button when it has an action and as text without one. */
+function HoverCardRow(props: {
+  readonly label: string;
+  readonly onClick: (() => void) | undefined;
+  readonly children: ReactNode;
+}) {
+  if (props.onClick === undefined) {
+    return <div className="flex min-w-0 items-center gap-2">{props.children}</div>;
+  }
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="-mx-2 justify-start"
+      aria-label={props.label}
+      title={props.label}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </Button>
+  );
+}
+
+function copyBranchName(branch: string) {
+  writeTextToClipboard(branch, "branch name").then(
+    () => toastManager.add({ type: "success", title: "Branch copied", description: branch }),
+    (error: unknown) =>
+      toastManager.add({
+        type: "error",
+        title: "Failed to copy branch",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      }),
+  );
+}
+
 function SidebarThreadTooltip({
   thread,
   project,
@@ -260,6 +300,8 @@ function SidebarThreadTooltip({
   terminalStatus,
   terminalProcessCount,
   onOpenPullRequest,
+  onShowOnly,
+  canShowOnlyProject,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -278,6 +320,9 @@ function SidebarThreadTooltip({
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
   onOpenPullRequest: (event: ReactMouseEvent<HTMLAnchorElement>, url: string) => void;
+  /** Fork: sets a sidebar filter to this thread's value. Absent leaves the rows as text. */
+  onShowOnly?: ((field: SidebarFilterShortcutField) => void) | undefined;
+  canShowOnlyProject?: boolean | undefined;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
@@ -300,25 +345,31 @@ function SidebarThreadTooltip({
         }
       >
         {projectDisplayName ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this project"
+            onClick={onShowOnly && canShowOnlyProject ? () => onShowOnly("project") : undefined}
+          >
             {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
             <div className="min-w-0 truncate text-foreground/75">{projectDisplayName}</div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {environmentLabel ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this machine"
+            onClick={onShowOnly ? () => onShowOnly("machine") : undefined}
+          >
             <EnvironmentMachineIcon
               kind={environmentMachine}
               className="size-3 shrink-0 stroke-muted-foreground"
             />
             <div className="min-w-0 truncate text-foreground/75">{environmentLabel}</div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {thread.branch ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow label="Copy branch name" onClick={() => copyBranchName(thread.branch!)}>
             <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
             <MiddleTruncate value={thread.branch} className="flex" />
-          </div>
+          </HoverCardRow>
         ) : null}
         {branchMismatch ? (
           <div className="flex min-w-0 items-start gap-2 text-warning">
@@ -329,7 +380,10 @@ function SidebarThreadTooltip({
           </div>
         ) : null}
         {driverKind ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this model"
+            onClick={onShowOnly ? () => onShowOnly("model") : undefined}
+          >
             <ProviderInstanceIcon
               driverKind={driverKind}
               displayName={
@@ -348,7 +402,7 @@ function SidebarThreadTooltip({
                 ? `${modelLabel} · ${providerEntry.displayName}`
                 : modelLabel}
             </div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {previousProviderNames.length > 0 ? (
           <div className="flex min-w-0 items-center gap-2">
@@ -595,6 +649,11 @@ type SidebarThreadRowProps = {
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
+  /** Fork: the hover card rows set a sidebar filter to this thread's value. */
+  onShowOnly?:
+    | ((thread: SidebarThreadSummary, field: SidebarFilterShortcutField) => void)
+    | undefined;
+  canShowOnlyProject?: ((thread: SidebarThreadSummary) => boolean) | undefined;
 };
 
 // Mounted only while renaming, so each rename starts uncommitted.
@@ -952,6 +1011,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
       onOpenPullRequest={handlePrClick}
+      onShowOnly={props.onShowOnly ? (field) => props.onShowOnly?.(thread, field) : undefined}
+      canShowOnlyProject={props.canShowOnlyProject?.(thread)}
     />
   );
 
@@ -1685,6 +1746,10 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   onHighlight: () => void;
   onSelect: () => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
+  onShowOnly?:
+    | ((thread: SidebarThreadSummary, field: SidebarFilterShortcutField) => void)
+    | undefined;
+  canShowOnlyProject?: ((thread: SidebarThreadSummary) => boolean) | undefined;
 }) {
   const thread =
     useThreadShell(scopeThreadRef(props.thread.environmentId, props.thread.id)) ?? props.thread;
@@ -1840,6 +1905,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
           terminalStatus={terminalStatus}
           terminalProcessCount={runningTerminalIds.length}
           onOpenPullRequest={(event, url) => openPrLink(event, url, threadRef)}
+          onShowOnly={props.onShowOnly ? (field) => props.onShowOnly?.(thread, field) : undefined}
+          canShowOnlyProject={props.canShowOnlyProject?.(thread)}
         />
       </PreviewCard>
     </li>

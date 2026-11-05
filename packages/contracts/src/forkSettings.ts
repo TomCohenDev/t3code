@@ -3,6 +3,7 @@
  * upstream file keeps one line per schema and a Fork Sync merge does not conflict with them.
  */
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
   IsoDateTime,
@@ -14,7 +15,7 @@ import {
 } from "./baseSchemas.ts";
 import { ProjectScript } from "./project.ts";
 import { PullRequestAuthorAssociation } from "./pullRequest.ts";
-import { SidebarTabs } from "./sidebarTabs.ts";
+import { moveLegacySidebarTabKeys, SidebarTabs } from "./sidebarTabs.ts";
 import { StoredThreadCardLayout, ThreadCardLayouts } from "./slotLayout.ts";
 
 /** Fork: the most pinned messages that one environment keeps. */
@@ -41,8 +42,26 @@ export const PinnedMessages = Schema.Record(Schema.String, MessagePin).check(
 );
 export type PinnedMessages = typeof PinnedMessages.Type;
 
-/** Fork: the value of the `sidebarOwnerFilter` client setting. */
-export const SidebarOwnerFilter = Schema.Struct({
+/**
+ * Fork: the fields of the `sidebarFilters` client setting. The project filter is per device UI
+ * state (`sidebarProjectScopeKeys`), because the draft project and the route reveal read it.
+ */
+export const SidebarFilterField = Schema.Literals(["owner", "machine", "model", "branch"]);
+export type SidebarFilterField = typeof SidebarFilterField.Type;
+
+/**
+ * Fork: one sidebar filter. "is" shows only the threads with one of `values`, and "is_not" hides
+ * them. Empty `values` filters nothing. The empty string stands for "none", such as a project
+ * without a repository owner. A `model` value is `<providerInstanceId>:<model>`.
+ */
+export const SidebarFilter = Schema.Struct({
+  field: SidebarFilterField,
+  operator: Schema.Literals(["is", "is_not"]),
+  values: Schema.Array(Schema.String),
+});
+export type SidebarFilter = typeof SidebarFilter.Type;
+
+const LegacySidebarOwnerFilter = Schema.Struct({
   operator: Schema.Literals(["is", "is_not"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("is" as const)),
   ),
@@ -50,7 +69,38 @@ export const SidebarOwnerFilter = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
 });
-export type SidebarOwnerFilter = typeof SidebarOwnerFilter.Type;
+const decodeLegacySidebarOwnerFilter = Schema.decodeUnknownOption(LegacySidebarOwnerFilter);
+
+/**
+ * Fork: the stored settings with the old `sidebarOwnerFilter` moved into `sidebarFilters`, once.
+ * A value under the new key wins, and the old key goes either way. Null when the old key is not
+ * present, so a caller writes only after a move.
+ */
+export function moveLegacySidebarOwnerFilter(
+  values: Readonly<Record<string, unknown>>,
+): Record<string, unknown> | null {
+  if (!Object.hasOwn(values, "sidebarOwnerFilter")) return null;
+  const { sidebarOwnerFilter: legacy, ...rest } = values;
+  if (Object.hasOwn(rest, "sidebarFilters")) return rest;
+  const decoded = decodeLegacySidebarOwnerFilter(legacy);
+  if (Option.isNone(decoded) || decoded.value.owners.length === 0) return rest;
+  const { operator, owners } = decoded.value;
+  return {
+    ...rest,
+    sidebarFilters: [{ field: "owner", operator, values: owners.map((owner) => owner ?? "") }],
+  };
+}
+
+/**
+ * Fork: the stored client settings with every renamed fork key moved, or null when none moved.
+ * The web app and the desktop app run it before they decode the settings.
+ */
+export function moveLegacyForkClientSettingKeys(
+  values: Readonly<Record<string, unknown>>,
+): Record<string, unknown> | null {
+  const tabsMoved = moveLegacySidebarTabKeys("client", values);
+  return moveLegacySidebarOwnerFilter(tabsMoved ?? values) ?? tabsMoved;
+}
 export const MIN_TOOLTIP_SHORTCUT_LIMIT = 1;
 export const MAX_TOOLTIP_SHORTCUT_LIMIT = 9;
 /** How many keys of one control its tooltip shows before "+N". */
@@ -195,11 +245,10 @@ export const ForkClientSettingsFields = {
    */
   pullRequestFilters: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
-   * Fork: the sidebar filter by repository owner. "is" shows only the projects of these owners,
-   * and "is_not" hides them. Null stands for projects without an owner. No owners shows every
-   * project. Applies only while `pullRequestFilters` is on.
+   * Fork: the sidebar filters, at most one per field. The owner filter applies only while
+   * `pullRequestFilters` is on.
    */
-  sidebarOwnerFilter: SidebarOwnerFilter.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  sidebarFilters: Schema.Array(SidebarFilter).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   /**
    * Fork: sidebar tabs above the sidebar list, on this device. A thread lives in the tab that the
    * user assigned it to, else in the first tab whose rules match it, else in the default tab. The
@@ -293,7 +342,7 @@ export const ForkClientSettingsPatchFields = {
   installedAppEnabled: Schema.optionalKey(Schema.Boolean),
   webPushEnabled: Schema.optionalKey(Schema.Boolean),
   pullRequestFilters: Schema.optionalKey(Schema.Boolean),
-  sidebarOwnerFilter: Schema.optionalKey(SidebarOwnerFilter),
+  sidebarFilters: Schema.optionalKey(Schema.Array(SidebarFilter)),
   sidebarTabsEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarTabSingleThreadOpens: Schema.optionalKey(Schema.Boolean),
   keyboardFocusLevels: Schema.optionalKey(Schema.Boolean),

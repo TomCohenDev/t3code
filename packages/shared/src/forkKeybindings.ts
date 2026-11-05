@@ -36,6 +36,8 @@ export const FORK_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+[", command: "sidebar.previousTab", when: "!terminalFocus" },
   { key: "mod+alt+]", command: "sidebar.nextTab", when: "!terminalFocus" },
   { key: "mod+f", command: "sidebar.search", when: "sidebarFocus" },
+  // Wins over the upstream `projectSearch.toggle` key while the sidebar has focus.
+  { key: "mod+shift+f", command: "sidebar.filter", when: "sidebarFocus" },
   ...SIDEBAR_TAB_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `${index + 1}`,
     command,

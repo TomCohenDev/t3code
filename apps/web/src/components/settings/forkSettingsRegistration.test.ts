@@ -46,7 +46,7 @@ const FORK_PAGE_ROWS: Record<
   installedAppEnabled: "installed-app",
   webPushEnabled: "web-push",
   pullRequestFilters: "pull-request-filters",
-  sidebarOwnerFilter: { notListed: "The sidebar owner filter menu sets it." },
+  sidebarFilters: { notListed: "The sidebar Filter menu sets it." },
   sidebarTabsEnabled: "sidebar-tabs",
   sidebarTabSingleThreadOpens: "sidebar-tab-single-thread",
   keyboardFocusLevels: "keyboard-focus-levels",
