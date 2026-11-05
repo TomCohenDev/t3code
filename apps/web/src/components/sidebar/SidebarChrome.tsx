@@ -41,6 +41,7 @@ import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
 
 const selectBackForwardButtons = (settings: ClientSettings) => settings.backForwardButtons;
+const selectBrandingHidden = (settings: ClientSettings) => settings.brandingHidden;
 
 /** Fork: the `backForwardButtons` setting shows its own buttons, so these hide to avoid a second pair. */
 function useHeaderHistoryButtons(isElectron: boolean): boolean {
@@ -56,12 +57,13 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const historyButtons = useHeaderHistoryButtons(isElectron);
+  const brandingHidden = useClientSettings(selectBrandingHidden);
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
     environmentIdentificationMode,
   );
   const pillLabel =
-    environmentIdentificationMode === "pill"
+    environmentIdentificationMode === "pill" && !brandingHidden
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
 
@@ -82,9 +84,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       </div>
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
         <div className="flex shrink-0 items-center gap-1">
-          <SidebarBrand onBackdrop={backdropVariant !== null} />
+          {brandingHidden ? null : <SidebarBrand onBackdrop={backdropVariant !== null} />}
           {historyButtons ? (
-            <div className="hidden items-center md:flex">
+            <div
+              className={cn(
+                "hidden items-center md:flex",
+                brandingHidden && "ml-[var(--workspace-titlebar-content-left)]",
+              )}
+            >
               <HistoryNavigationButton direction="back" onBackdrop={backdropVariant !== null} />
               <HistoryNavigationButton direction="forward" onBackdrop={backdropVariant !== null} />
             </div>
@@ -92,7 +99,12 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         </div>
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
-            <Badge data-environment-identification="pill" size="sm" variant="secondary">
+            <Badge
+              data-environment-identification="pill"
+              data-fork-brand="pill"
+              size="sm"
+              variant="secondary"
+            >
               {pillLabel}
             </Badge>
           </div>
@@ -110,6 +122,7 @@ export function SidebarBrandWidthProbe({
   onWidthChange: (width: number) => void;
 }) {
   const historyButtons = useHeaderHistoryButtons(isElectron);
+  const brandingHidden = useClientSettings(selectBrandingHidden);
   const observeWidth = (probe: HTMLDivElement) => {
     return observeResize(probe, ([entry]) => {
       if (entry) onWidthChange(entry.borderBoxSize[0]?.inlineSize ?? probe.offsetWidth);
@@ -123,7 +136,7 @@ export function SidebarBrandWidthProbe({
       ref={observeWidth}
     >
       <div className="ml-[var(--workspace-titlebar-content-left)] flex gap-1">
-        <SidebarBrandMark onBackdrop={false} />
+        {brandingHidden ? null : <SidebarBrandMark onBackdrop={false} />}
         {historyButtons ? (
           <div className="w-[calc(2*var(--workspace-titlebar-control-size))]" />
         ) : null}
@@ -175,6 +188,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <Link
       aria-label="T3 Code home"
+      data-fork-brand="wordmark"
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",

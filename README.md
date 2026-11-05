@@ -89,6 +89,7 @@ This is a personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3cod
 - **[Themes](docs/fork/features.md#themes):** the theme that you select carries its shape, fonts, canvas pattern, user CSS and icons, and the phone can follow it. The fork app uses the Tick3d lightning icon.
 - **[Fork settings on mobile](docs/fork/features.md#fork-settings-on-mobile):** a Fork page in the mobile Settings.
 - **[Back and forward](docs/fork/features.md#back-and-forward):** back and forward buttons in the title bar, and a desktop back history that stays after a restart.
+- **[Hide T3 branding](docs/fork/features.md#hide-t3-branding):** a setting hides the sidebar wordmark and the build pill.
 - **[App context menu](docs/fork/features.md#app-context-menu):** right-click menus use the app's own menu with keyboard navigation, also in the desktop app.
 
 **Command line and MCP**

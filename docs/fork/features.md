@@ -715,6 +715,8 @@ The theme that you select in Settings > Appearance is the one control. A publish
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
+- The sidebar wordmark link carries `data-fork-brand="wordmark"` and the environment pill carries `data-fork-brand="pill"`. Theme CSS can target these, and not the upstream labels, which change.
+
 #### Icons
 
 A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
@@ -789,6 +791,14 @@ Back and forward buttons sit right of the sidebar toggle, like in VS Code. A but
   - The desktop app keeps at most 50 entries, and no forward entries: the start of the app is a new navigation.
   - In a browser without the Navigation API, such as an older Safari or Firefox, both buttons stay enabled, and a missing thread goes to a new thread instead of a skip.
   - Mouse buttons 4 and 5 and trackpad swipes do not go back or forward in the desktop app.
+
+### Hide T3 branding
+
+Hides the T3 Code wordmark in the top left of the sidebar and the build pill, such as "Dev" or "Nightly". New thread in the sidebar header, the command palette and its key still open the home view.
+
+- **Setting:** client setting `brandingHidden` (off by default). Settings > Appearance > Interface > "Hide T3 branding". kitshn syncs it.
+- **Works on:** web, desktop. The mobile app has no wordmark in its sidebar.
+- **Limits:** the standalone pages and the welcome wizard keep their wordmark.
 
 ### App context menu
 
