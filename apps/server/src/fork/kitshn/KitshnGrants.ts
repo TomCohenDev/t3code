@@ -79,8 +79,8 @@ export interface AccessVisitor {
   /** K-722: the subject is a machine whose effect "runs" covers this machine at automatic. */
   readonly exec: boolean;
   /**
-   * The circles that hold both the subject and this machine's app card, smallest first. Empty when
-   * the daemon sends none (before the kitshn circle settings release).
+   * K-726: the circles that hold both the subject and a card of this provider on this machine,
+   * smallest first. Empty when the daemon sends none (before protocol 2.3.0).
    */
   readonly circles: ReadonlyArray<string>;
   readonly until: number;

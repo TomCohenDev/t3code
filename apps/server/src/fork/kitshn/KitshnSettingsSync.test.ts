@@ -149,15 +149,17 @@ it("lists the circles that hold a T3 card here, the smallest radius first", () =
         { id: "partner", name: "Partner", r: 120, color: "#FF5277" },
         { id: "b-kids", name: "Kids", r: 120 },
         { id: "a-kids", name: "Kids too", r: 120 },
+        // A code-unit compare puts an upper-case id first; `localeCompare` would not.
+        { id: "Z-kids", name: "Kids three", r: 120 },
         { id: "games", name: "Games", r: 50 },
       ],
       cards: [
         { kind: "t3.app", circles: [{ id: "owner" }, { id: "partner" }, { id: "b-kids" }] },
-        { kind: "t3.thread", circles: [{ id: "a-kids" }] },
+        { kind: "t3.thread", circles: [{ id: "a-kids" }, { id: "Z-kids" }] },
         { kind: "compose", circles: [{ id: "games" }] },
       ],
     })?.map((circle) => circle.id),
-  ).toEqual(["a-kids", "b-kids", "partner", "owner"]);
+  ).toEqual(["Z-kids", "a-kids", "b-kids", "partner", "owner"]);
   expect(circleListFromState({ circles: "broken" })).toBeNull();
 });
 

@@ -114,7 +114,8 @@ export const circleListFromState = (answer: unknown): ReadonlyArray<SettingsCirc
     .toSorted(
       (left, right) =>
         (left.r ?? Number.POSITIVE_INFINITY) - (right.r ?? Number.POSITIVE_INFINITY) ||
-        left.id.localeCompare(right.id),
+        // Ties by a code-unit compare of the id, as kitshn's `check` orders them.
+        (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
     )
     .map((circle) => ({ id: circle.id, name: circle.name, color: circle.color ?? null }));
 };
