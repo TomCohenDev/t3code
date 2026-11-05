@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../../config.ts";
 import * as EnvironmentTheme from "../../environmentTheme.ts";
@@ -28,6 +29,7 @@ import * as KitshnProvider from "./KitshnProvider.ts";
 import {
   circleWriteRefusal,
   effectiveSettings,
+  makeCircleList,
   makeSetOne,
   OWNER_SESSION,
   sessionCircleOf,
@@ -437,6 +439,53 @@ it.effect("sends the saved value again when the session's circle drops a key", (
       );
       const update = Option.getOrThrow(yield* Fiber.join(next));
       expect(update.mobileSidebarTabs).toBe(false);
+    }),
+  ),
+);
+
+it.effect("keeps no failed state ask, and keeps a good answer for a while", () =>
+  Effect.gen(function* () {
+    const asks = yield* Ref.make(0);
+    const fails = yield* Ref.make(true);
+    const cache = yield* makeCircleList(
+      Ref.update(asks, (count) => count + 1).pipe(
+        Effect.andThen(Ref.get(fails)),
+        Effect.flatMap((fail) => (fail ? Effect.fail("away") : Effect.succeed(STATE_ANSWER))),
+      ),
+    );
+    yield* cache.refresh;
+    expect(yield* SubscriptionRef.get(cache.list)).toEqual([]);
+    yield* Ref.set(fails, false);
+    yield* cache.refresh;
+    expect((yield* SubscriptionRef.get(cache.list)).map((circle) => circle.name)).toEqual([
+      "Partner",
+    ]);
+    yield* cache.refresh;
+    expect(yield* Ref.get(asks)).toBe(2);
+    yield* TestClock.adjust("16 minutes");
+    yield* cache.refresh;
+    expect(yield* Ref.get(asks)).toBe(3);
+  }),
+);
+
+it.effect("asks for the circles again when the connection registers", () =>
+  withSync({}, ({ sync, connection, stateAnswer }) =>
+    Effect.gen(function* () {
+      yield* Ref.set(stateAnswer, {
+        ...STATE_ANSWER,
+        circles: [{ id: "partner", name: "Partner 2" }],
+      });
+      yield* SubscriptionRef.set(connection, { status: "connecting", detail: null });
+      yield* SubscriptionRef.set(connection, {
+        status: "registered",
+        detail: null,
+        restartedAt: null,
+      });
+      const named = yield* sync.clientState(OWNER_SESSION).pipe(
+        Stream.filter((state) => state.circles.some((circle) => circle.name === "Partner 2")),
+        Stream.runHead,
+      );
+      expect(Option.isSome(named)).toBe(true);
     }),
   ),
 );

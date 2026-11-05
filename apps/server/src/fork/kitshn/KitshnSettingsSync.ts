@@ -23,6 +23,7 @@ import {
   withoutMachineLocalSettings,
 } from "@t3tools/contracts";
 import { stableStringify } from "@t3tools/shared/relaySigning";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
@@ -33,6 +34,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
@@ -155,6 +157,40 @@ export const sessionWriteCircle = (
   const first = session.circles[0];
   return !session.owner && first !== undefined ? circleOf(circles, first) : null;
 };
+
+/**
+ * K-726: the circles of the person picker, from the kitshn `state` ask. A success holds for
+ * `CIRCLE_LIST_LIFETIME`; a failure holds nothing, so the next `refresh` asks again.
+ */
+export const makeCircleList = Effect.fnUntraced(function* <E>(ask: Effect.Effect<unknown, E>) {
+  const list = yield* SubscriptionRef.make<ReadonlyArray<SettingsCircle>>([]);
+  const asks = yield* Semaphore.make(1);
+  let fetchedAt: number | null = null;
+  const fetch = ask.pipe(
+    Effect.flatMap((answer) => {
+      const next = circleListFromState(answer);
+      return next === null
+        ? Effect.void
+        : SubscriptionRef.set(list, next).pipe(
+            Effect.andThen(Clock.currentTimeMillis),
+            Effect.map((now) => {
+              fetchedAt = now;
+            }),
+          );
+    }),
+    Effect.ignore,
+  );
+  const refresh = asks.withPermits(1)(
+    Clock.currentTimeMillis.pipe(
+      Effect.flatMap((now) =>
+        fetchedAt !== null && now - fetchedAt < Duration.toMillis(CIRCLE_LIST_LIFETIME)
+          ? Effect.void
+          : fetch,
+      ),
+    ),
+  );
+  return { list, refresh, refreshNow: asks.withPermits(1)(fetch) };
+});
 
 /** K-709: the shared part, then this machine's part over it. A part that does not decode is empty. */
 export const effectiveSettings = (parts: DesiredParts | null): ScopedSettingValues => {
@@ -487,16 +523,20 @@ const make = Effect.gen(function* () {
   // The machine and the link proxy change without an event of their own, so a tick reads them
   // again; the dedupe below sends only a real change.
   const currentState = provider.state.pipe(Stream.runHead);
-  const circleList = yield* SubscriptionRef.make<ReadonlyArray<SettingsCircle>>([]);
-  const refreshCircleList = yield* Effect.cachedWithTTL(
-    kitshn.request({ type: "ask", action: "state", target: "" }).pipe(
-      Effect.flatMap((answer) => {
-        const list = "result" in answer ? circleListFromState(answer.result) : null;
-        return list === null ? Effect.void : SubscriptionRef.set(circleList, list);
-      }),
-      Effect.ignore,
-    ),
-    CIRCLE_LIST_LIFETIME,
+  const circleListCache = yield* makeCircleList(
+    kitshn
+      .request({ type: "ask", action: "state", target: "" })
+      .pipe(Effect.map((answer) => ("result" in answer ? answer.result : null))),
+  );
+  const circleList = circleListCache.list;
+  const refreshCircleList = circleListCache.refresh;
+  // A new connection can follow renamed or new circles, so it asks again at once.
+  yield* provider.connection.pipe(
+    Stream.map((connection) => connection.status === "registered"),
+    Stream.changes,
+    Stream.filter((registered) => registered),
+    Stream.runForEach(() => circleListCache.refreshNow),
+    Effect.forkScoped,
   );
   const circlesNow: Effect.Effect<CircleSettings> = Effect.all([
     currentState,
