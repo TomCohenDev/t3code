@@ -41,6 +41,8 @@ export const FORK_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+2", command: "focus.timeline", when: "!terminalFocus" },
   { key: "mod+alt+3", command: "focus.composer", when: "!terminalFocus" },
   { key: "mod+alt+4", command: "focus.rightPanel", when: "!terminalFocus" },
+  // Wins over the upstream `projectSearch.toggle` key while the sidebar has focus.
+  { key: "mod+shift+f", command: "sidebar.filter", when: "sidebarFocus" },
   ...SIDEBAR_TAB_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `${index + 1}`,
     command,

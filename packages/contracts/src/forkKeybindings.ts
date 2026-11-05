@@ -30,6 +30,7 @@ export const FORK_KEYBINDING_COMMANDS = [
   "sidebar.previousTab",
   "sidebar.nextTab",
   "sidebar.search",
+  "sidebar.filter",
   ...SIDEBAR_TAB_JUMP_KEYBINDING_COMMANDS,
   "timeline.previous",
   "timeline.next",

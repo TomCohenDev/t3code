@@ -19,9 +19,8 @@ import type { KeybindingCommand } from "@t3tools/contracts";
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
+  /** Fork: the Filter menu, which also sets the project scope. */
   projectScope: ReactNode;
-  /** Fork: the repository owner filter menu, rendered before the project scope. */
-  ownerFilter?: ReactNode;
   /** Fork: the new terminal thread button, rendered before the new thread button. */
   terminalThreadButton?: ReactNode;
   onNewProject: () => void;
@@ -43,7 +42,6 @@ export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
   projectScope,
-  ownerFilter,
   terminalThreadButton,
   onNewProject,
   onNewThread,
@@ -128,7 +126,6 @@ export function SidebarThreadHeader({
       <div className="flex shrink-0 items-center">
         {hasProjects ? (
           <>
-            {ownerFilter}
             {projectScope}
             <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
               <AppIcon slot="sidebar.add-project" />
@@ -166,6 +163,7 @@ export function SidebarHeaderIconButton({
   label,
   tooltip = label,
   command = null,
+  shortcutContext,
   className,
   children,
   ...rest
@@ -174,6 +172,8 @@ export function SidebarHeaderIconButton({
   tooltip?: ReactNode;
   /** The keybinding command that the button runs; its key shows in `tooltip`. */
   command?: KeybindingCommand | null;
+  /** Fork: the context that the key of `command` needs, such as `sidebarFocus`. */
+  shortcutContext?: ComponentProps<typeof ShortcutTrigger>["context"];
   className?: string | undefined;
   children?: ReactNode;
 } & Omit<
@@ -184,6 +184,7 @@ export function SidebarHeaderIconButton({
     <Tooltip>
       <ShortcutTrigger
         command={command}
+        {...(shortcutContext === undefined ? {} : { context: shortcutContext })}
         render={
           <SidebarMenuButton
             size="icon"

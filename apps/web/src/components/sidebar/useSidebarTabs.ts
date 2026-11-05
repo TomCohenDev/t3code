@@ -38,7 +38,7 @@ import {
   resolveThreadLastVisitedAt,
 } from "../Sidebar.logic";
 import { toastManager } from "../ui/toast";
-import { filterSidebarThreadsByOwner } from "./ownerFilter.logic";
+import { filterSidebarThreads, type SidebarFilter } from "../filters/sidebarFilters.logic";
 import { useSidebarTabStore } from "./sidebarTabStore";
 import {
   buildSidebarTabProjectFacts,
@@ -154,7 +154,11 @@ export function useSidebarTabs(input: {
   readonly threads: ReadonlyArray<SidebarThreadSummary>;
   /** Tasks linked environments run for a listed thread; they show under it. */
   readonly delegatedUnderParent: ReadonlySet<string>;
-  readonly ownerVisibleProjectKeys: ReadonlySet<string> | null;
+  /** The sidebar filters on top of the project scope. */
+  readonly listFilter: {
+    readonly projectKeys: ReadonlySet<string> | null;
+    readonly filters: readonly SidebarFilter[];
+  };
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly routeThreadKey: string | null;
@@ -188,7 +192,7 @@ export function useSidebarTabs(input: {
     input.delegatedUnderParent,
   );
   const threads = filterSidebarV2VisibleThreads(
-    filterSidebarThreadsByOwner(input.threads, input.ownerVisibleProjectKeys),
+    filterSidebarThreads(input.threads, input.listFilter.projectKeys, input.listFilter.filters),
     input.scopedProjectKeys,
     input.delegatedUnderParent,
   );
