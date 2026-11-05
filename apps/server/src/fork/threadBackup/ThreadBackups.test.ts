@@ -15,7 +15,6 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -141,9 +140,10 @@ const makeLayer = (input: {
             }),
         }),
         Layer.mock(ProjectStore.ProjectStoreV2)({
-          getShell: () => Effect.succeed(Option.none()),
+          getShell: () => Effect.succeedNone,
         }),
         Layer.mock(MachinePeers.MachinePeers)({
+          machineOf: () => undefined,
           postJson: (request) => Deferred.succeed(input.posted, request).pipe(Effect.asVoid),
         }),
         ServerConfig.layerTest(process.cwd(), { prefix: "thread-backups-" }),
