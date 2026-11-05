@@ -101,20 +101,29 @@ export const sessionSettingsView = Effect.gen(function* () {
     return {
       serverSettings: (settings: ServerSettingsValue) => Effect.succeed(settings),
       settingsChanges: <E, R>(
-        _initial: ServerSettingsValue,
+        _snapshot: ServerSettingsValue,
         changes: Stream.Stream<ServerSettingsValue, E, R>,
       ) => changes,
       writePatch: (patch: ServerSettingsPatch) =>
         Effect.succeed(patch) as Effect.Effect<ServerSettingsPatch, ServerSettingsError>,
     };
   }
+  // The saved settings that the socket's snapshot was made from; `settingsChanges` starts there.
+  let lastSaved: ServerSettingsValue | null = null;
   return {
-    serverSettings: (settings: ServerSettingsValue) =>
-      sync.value.sessionServerSettings(session, settings),
+    serverSettings: (settings: ServerSettingsValue) => {
+      lastSaved = settings;
+      return sync.value.sessionServerSettings(session, settings);
+    },
     settingsChanges: <E, R>(
-      initial: ServerSettingsValue,
+      snapshot: ServerSettingsValue,
       changes: Stream.Stream<ServerSettingsValue, E, R>,
-    ) => sync.value.sessionSettingsChanges(session, initial, changes),
+    ) =>
+      sync.value.sessionSettingsChanges(
+        session,
+        { saved: lastSaved ?? snapshot, snapshot },
+        changes,
+      ),
     writePatch: (patch: ServerSettingsPatch) =>
       sync.value.writeSessionServerPatch(session, patch).pipe(
         Effect.mapError(

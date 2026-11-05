@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -280,7 +281,7 @@ it.effect("stores a circle part for the owner and refuses agents and machine key
 );
 
 const PARTNER_PART = {
-  server: { sidebarTabs: { partner: { name: "Partner tab" } } },
+  server: { mobileSidebarTabs: true },
   client: { followUpBehavior: "steer" },
 };
 const STATE_ANSWER = {
@@ -305,10 +306,7 @@ const withSync = <A, E>(
 ) =>
   Effect.gen(function* () {
     const sent: Array<KitshnConnection.LocalRequestInput> = [];
-    const saved = yield* Ref.make<ServerSettings>({
-      ...DEFAULT_SERVER_SETTINGS,
-      sidebarTabs: { own: { name: "Own tab" } } as never,
-    });
+    const saved = yield* Ref.make<ServerSettings>(DEFAULT_SERVER_SETTINGS);
     const stateAnswer = yield* Ref.make<unknown>(STATE_ANSWER);
     const providerState = yield* SubscriptionRef.make<KitshnProvider.KitshnProviderState>({
       settings: { shared: null, machine: null },
@@ -408,7 +406,7 @@ it.effect("sends the circle values and the picker to the owner session only", ()
       expect(ayelet.circle?.id).toBe("partner");
       expect(ayelet.writesTo?.id).toBe("partner");
       expect(ayelet.settings.client).toEqual({ followUpBehavior: "steer" });
-      expect(ayelet.circle?.replaced).toEqual({ sidebarTabs: { own: { name: "Own tab" } } });
+      expect(ayelet.circle?.replaced).toEqual({ mobileSidebarTabs: false });
 
       // A machine, or a person on a daemon without `circles`, gets neither.
       const machine = yield* firstState(sync, { circles: [], owner: false });
@@ -418,6 +416,27 @@ it.effect("sends the circle values and the picker to the owner session only", ()
         null,
         null,
       ]);
+    }),
+  ),
+);
+
+it.effect("sends the saved value again when the session's circle drops a key", () =>
+  withSync({ partner: PARTNER_PART }, ({ sync, saved }) =>
+    Effect.gen(function* () {
+      const ayelet: SettingsSession = { circles: ["partner"], owner: false };
+      const savedNow = yield* Ref.get(saved);
+      const snapshot = yield* sync.sessionServerSettings(ayelet, savedNow);
+      expect(snapshot.mobileSidebarTabs).toBe(true);
+      const next = yield* sync
+        .sessionSettingsChanges(ayelet, { saved: savedNow, snapshot }, Stream.never)
+        .pipe(Stream.runHead, Effect.forkChild);
+      // The owner resets the circle: its value leaves, so the saved value shows again.
+      yield* sync.setCircle(
+        { circleId: "partner", server: {}, client: {}, reset: true },
+        OWNER_SESSION,
+      );
+      const update = Option.getOrThrow(yield* Fiber.join(next));
+      expect(update.mobileSidebarTabs).toBe(false);
     }),
   ),
 );

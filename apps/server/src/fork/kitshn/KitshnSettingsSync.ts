@@ -342,10 +342,14 @@ export class KitshnSettingsSync extends Context.Service<
       session: SettingsSession,
       settings: ServerSettingsValue,
     ) => Effect.Effect<ServerSettingsValue>;
-    /** `changes` as this session reads them, and again when its circle layer changes. */
+    /**
+     * The saved settings (`saved`, then `changes`, without a circle layer) as this session reads
+     * them, again when its circle layer changes. `snapshot` is what the client has; an equal value
+     * is not sent.
+     */
     readonly sessionSettingsChanges: <E, R>(
       session: SettingsSession,
-      initial: ServerSettingsValue,
+      start: { readonly saved: ServerSettingsValue; readonly snapshot: ServerSettingsValue },
       changes: Stream.Stream<ServerSettingsValue, E, R>,
     ) => Stream.Stream<ServerSettingsValue, E, R>;
     /**
@@ -521,7 +525,7 @@ const make = Effect.gen(function* () {
 
   const sessionSettingsChanges: KitshnSettingsSync["Service"]["sessionSettingsChanges"] = (
     session,
-    initial,
+    start,
     changes,
   ) => {
     if (session.circles.length === 0) return changes;
@@ -533,15 +537,23 @@ const make = Effect.gen(function* () {
       ),
       Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
     );
-    // The first pair is the snapshot that the client has; only a difference from it is sent.
-    return Stream.zipLatestWith(
-      Stream.concat(Stream.make(initial), changes),
+    // The circle goes over the saved values at each emit, so a key that leaves it drops back.
+    const merged = Stream.zipLatestWith(
+      Stream.concat(Stream.make(start.saved), changes),
       layers,
-      (settings, layer) => withCircleLayer(settings, decodedServerLayer(layer)),
-    ).pipe(
-      Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
-      Stream.drop(1),
+      (saved, layer) => withCircleLayer(saved, decodedServerLayer(layer)),
     );
+    return Stream.suspend(() => {
+      let sent = stableStringify(start.snapshot);
+      return merged.pipe(
+        Stream.filter((next) => {
+          const key = stableStringify(next);
+          if (key === sent) return false;
+          sent = key;
+          return true;
+        }),
+      );
+    });
   };
 
   const storeCirclePart = Effect.fn("KitshnSettingsSync.storeCirclePart")(function* (
