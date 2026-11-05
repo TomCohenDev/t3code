@@ -37,7 +37,7 @@ import { useQuietThreadShell } from "../../state/entities";
 import { environmentProjects } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
-import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import { addIncomingShare } from "../sharing/IncomingShareProvider";
 
 const CONTINUE_EVENT = "fork-continue-elsewhere";
 const MENU_ITEMS: MenuAction[] = [
@@ -68,7 +68,6 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
     reportFailure: false,
   });
   const { connectedEnvironments } = useRemoteConnectionStatus();
-  const { addShare } = useIncomingShare();
 
   return useCallback(
     async (thread: EnvironmentThreadShell) => {
@@ -123,7 +122,7 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
         `${title.replace(/[^\p{L}\p{N}._ -]/gu, "_").slice(0, 64)}.jsonl`,
         contents,
       );
-      await addShare({
+      await addIncomingShare({
         schemaVersion: 1,
         id: `continue-${uuidv4()}`,
         createdAt: new Date().toISOString(),
@@ -145,7 +144,7 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
         warnings: [],
       });
     },
-    [addShare, connectedEnvironments, loadContinuation],
+    [connectedEnvironments, loadContinuation],
   );
 }
 

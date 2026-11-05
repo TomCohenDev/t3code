@@ -289,7 +289,7 @@ async function consumeShare(shareId: string) {
 }
 
 /** Fork: files an app-made draft, which then opens like a share (forkContinueElsewhere.tsx). */
-async function addShare(draft: IncomingShareDraft) {
+export async function addIncomingShare(draft: IncomingShareDraft) {
   publish(await incomingShareInbox.add(draft));
 }
 
@@ -375,6 +375,5 @@ export function useIncomingShare() {
     isLoading,
     getShare: (shareId: string) => drafts.find((draft) => draft.id === shareId) ?? null,
     releaseShareReservation,
-    addShare,
   };
 }

@@ -416,8 +416,9 @@ export function getStandardThemeColors(appearance: ThemeAppearance): ThemeColors
 }
 
 // index.css paints the light bubble a step darker than the shared palette mobile uses.
+// Fork: with a purple tint (`--message-surface` in index.css).
 const STANDARD_WEB_PAINTED_COLORS: Record<ThemeAppearance, Partial<ThemeColors>> = {
-  light: { messageSurface: "#ebebed" },
+  light: { messageSurface: "#e8e4f3" },
   dark: { canvas: "#000000", messageSurface: "#1e1e1e" },
 };
 

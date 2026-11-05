@@ -3547,7 +3547,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       voice={voiceInput}
                       disabled={
                         !canOperateThread ||
-                        isConnecting ||
                         isComposerApprovalState ||
                         projectSelectionRequired ||
                         isChoiceOnlyPendingQuestion ||

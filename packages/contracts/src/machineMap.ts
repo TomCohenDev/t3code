@@ -111,6 +111,8 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     "sourceControlHosts",
     "usageLimitSources",
     "voiceTranscriptionOpenAiApiKey",
+    // Names another machine: a shared value would make that machine back up to itself.
+    "threadBackupMachine",
     // Paths on the file system of this machine.
     "worktreesDirectory",
     "previousWorktreesDirectories",
@@ -211,6 +213,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "environmentIdentificationMode",
   "favorites",
   "focusLevelHighlight",
+  "inkwireWhiteFrame",
   "followUpBehavior",
   "fontFamilyCode",
   "fontFamilyComposer",

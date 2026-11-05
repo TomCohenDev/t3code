@@ -120,6 +120,10 @@ vi.mock("../components/ui/Button", () => ({
   Button: (props: { label: string; onPress(): void; disabled?: boolean }) =>
     createElement("button", { onClick: props.onPress, disabled: props.disabled }, props.label),
 }));
+// Fork: the continue button pulls native modules that this test does not mock.
+vi.mock("../features/threads/forkContinueElsewhere", () => ({
+  ContinueElsewhereButton: () => null,
+}));
 vi.mock("expo", () => ({
   useEvent: (_player: unknown, _event: unknown, initial: unknown) => initial,
   useReleasingSharedObjectWithLifecycle: (
