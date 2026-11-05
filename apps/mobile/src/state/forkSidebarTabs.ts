@@ -29,7 +29,6 @@ import { uuidv4 } from "../lib/uuid";
 import { appAtomRegistry } from "./atom-registry";
 import { environmentServerConfigsAtom, serverEnvironment } from "./server";
 import { readEnvironmentScope } from "./session";
-import { environmentThreadShells } from "./threads";
 
 let previousTabs: SidebarTabs | null = null;
 
@@ -87,10 +86,7 @@ export function editSidebarTabs(change: (current: SidebarTabs) => SidebarTabs): 
     return;
   }
   const current = pendingTabs ?? saved;
-  const liveThreads = appAtomRegistry
-    .get(environmentThreadShells.threadShellsAtom)
-    .filter((thread) => thread.archivedAt === null);
-  const next = pruneSidebarTabAssignments(change(current), liveThreads);
+  const next = pruneSidebarTabAssignments(change(current));
   if (Equal.equals(next, current)) return;
   pendingTabs = next;
   void Promise.all(
@@ -140,8 +136,7 @@ export function openSidebarTabEditor(
   tabId: string,
 ): void {
   appAtomRegistry.set(editedSidebarTabIdAtom, tabId);
-  navigation.navigate("SettingsSheet", {
-    screen: "SettingsContent",
-    params: { screen: "SettingsSidebarTab" },
-  });
+  // A root route: from the home list it opens as a detail of the current tab, as upstream pages
+  // pushed without the Settings list do.
+  navigation.navigate("SettingsSidebarTab");
 }

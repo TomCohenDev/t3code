@@ -1,106 +1,27 @@
 /**
- * The fork parts of `SettingsPanels.tsx`. It imports this module once and renders one component
- * per place, so the upstream file keeps one line per hook.
+ * The fork parts of `SettingsPanels.tsx` and `AppearanceSettingsPanel.tsx`. They import this
+ * module once, so each upstream file keeps one line per hook. The rows of each place come from
+ * `forkSettingsCatalog.ts`.
  */
-import { isElectron } from "../../env";
-import { AppToggleShortcutsSettingsRow } from "./AppToggleShortcutsSettingsRow";
-import {
-  FocusLevelHighlightSettingsRow,
-  TooltipShortcutLimitSettingsRow,
-  TooltipShortcutsSettingsRow,
-  KeyboardFocusLevelsSettingsRow,
-} from "./FocusLevelsSettingsRows";
-import { ForkChangelogSettingsRow } from "./ForkChangelogSettingsRow";
-import {
-  BackgroundWorkDetailsSettingsRow,
-  CheckNewerBeforeUpdateInstallSettingsRow,
-  ForkAutoUpdateSettingsRow,
-  TerminalAppShortcutsFirstSettingsRow,
-  TerminalCloseConfirmationSettingsRow,
-} from "./ForkSettingsRows";
-import { InstalledAppSettingsRow } from "./InstalledAppSettingsRow";
-import { MobileAppSettingsSection } from "./MobileAppSettings";
-import { PullRequestFilterChipsSettingsRow } from "./PullRequestFilterChipsSettingsRow";
-import { RepositoryOwnerFiltersSettingsRow } from "./RepositoryOwnerFiltersSettingsRow";
-import { SidebarTabsSettingsRow } from "./SidebarTabsSettingsRow";
-import { SnoozeQuickOptionsSettingsRow } from "./SnoozeQuickOptionsSettingsRow";
-import { InkwireWhiteFrameSettingsRow } from "./InkwireSettingsRows";
-import { ThreadCardLayoutSettingsSection } from "./ThreadCardLayoutSettings";
-import { ThreadLinkChipsSettingsSection } from "./ThreadLinkChipsSettings";
-import { WebPushSettingsRow } from "./WebPushSettingsRow";
+import { ForkSettingsSlot } from "./ForkSettingsSlot";
 
-export { GlobalScriptsSettings } from "./GlobalScriptsSettings";
-export { RecoverInterruptedTurnsSettings } from "./RecoverInterruptedTurnsSettings";
-/** General: after the send shortcut. */
-export { VoiceInputSettingsRow } from "./VoiceInputSettings";
-export { AgentSessionImportSettingsRows } from "./ForkSettingsRows";
+export { ForkSettingsSlot } from "./ForkSettingsSlot";
 export { FORK_SETTINGS_RESTORE_PATCH, forkChangedSettingLabels } from "./forkSettingsRestore";
 export {
-  openIdleInstallPromptIfAgentsRun,
+  openIdleInstallPromptIfWorkRuns,
   useIdleInstallArmed,
 } from "../desktop/DesktopUpdateIdleInstall";
 export { prepareNewestUpdateInstall } from "../desktop/DesktopUpdateNewerCheck";
 
-/** Appearance: after the upstream sections, before Motion. */
+export { SHOWS_DESKTOP_UPDATE_TRACK } from "./forkSettingsSearch";
+
+/** Appearance: the fork sections, after the upstream sections and before Motion. */
 export function AppearanceSections() {
   return (
     <>
-      <InkwireWhiteFrameSettingsRow />
-      <ThreadCardLayoutSettingsSection />
-      <ThreadLinkChipsSettingsSection />
-      <MobileAppSettingsSection />
-    </>
-  );
-}
-
-/** General > Behavior: after the notification settings. */
-export function NotificationRows() {
-  return (
-    <>
-      <InstalledAppSettingsRow />
-      <WebPushSettingsRow />
-    </>
-  );
-}
-
-/** General > Confirmations: before the quit shortcut. */
-export function BehaviorRows() {
-  return (
-    <>
-      <TerminalCloseConfirmationSettingsRow />
-
-      <TerminalAppShortcutsFirstSettingsRow />
-
-      <KeyboardFocusLevelsSettingsRow />
-
-      <FocusLevelHighlightSettingsRow />
-
-      <TooltipShortcutsSettingsRow />
-
-      <TooltipShortcutLimitSettingsRow />
-
-      {isElectron ? <AppToggleShortcutsSettingsRow /> : null}
-
-      <RepositoryOwnerFiltersSettingsRow />
-
-      <PullRequestFilterChipsSettingsRow />
-
-      <SidebarTabsSettingsRow />
-
-      <SnoozeQuickOptionsSettingsRow />
-
-      <BackgroundWorkDetailsSettingsRow />
-    </>
-  );
-}
-
-/** General > About: after the update rows. */
-export function AboutRows() {
-  return (
-    <>
-      <ForkChangelogSettingsRow />
-      <ForkAutoUpdateSettingsRow />
-      <CheckNewerBeforeUpdateInstallSettingsRow />
+      <ForkSettingsSlot place="appearance-thread-cards" />
+      <ForkSettingsSlot place="appearance-thread-links" />
+      <ForkSettingsSlot place="appearance-mobile-app" />
     </>
   );
 }

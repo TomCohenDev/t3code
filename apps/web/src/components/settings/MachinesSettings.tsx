@@ -1,290 +1,98 @@
-import { useAtomValue } from "@effect/atom-react";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import {
-  type ClientAccessMode,
-  type MachineLevel,
-  type MachineMapConnectionStatus,
-  MachineMapRequestError,
-} from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-import { useState } from "react";
-
-import { requestConfirmDialog } from "../../confirmDialog";
 import { isElectron } from "../../env";
-import { joinMachineMap, leaveMachineMap, useMachineMapState } from "../../state/machineMap";
-import { usePrimaryEnvironmentId } from "../../state/environments";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { DeviceInviteSettingsRow } from "../../machineMap/desktopDevice";
+import { useMachineMapState } from "../../state/machineMap";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { ForkSettingsSlot } from "./ForkSettingsSlot";
+import type { MachineMapClientState } from "@t3tools/contracts";
+
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
-/**
- * Fork: Settings > Machines (apps/machine-map/SPEC.md MM-203, MM-1004). The state of the machine
- * map on the selected environment: join with a code, leave, and the machines it can use.
- */
+/** The dropped items that the notice names; the rest is a count. */
+const PROBLEMS_SHOWN = 5;
 
-const STATUS_BADGES: Record<
-  MachineMapConnectionStatus,
-  { readonly label: string; readonly variant: "outline" | "warning" | "success" }
-> = {
-  off: { label: "Off", variant: "outline" },
-  "not-joined": { label: "Not joined", variant: "outline" },
-  connecting: { label: "Connecting", variant: "warning" },
-  online: { label: "Online", variant: "success" },
-};
-
-const LEVEL_BADGES: Record<
-  MachineLevel,
-  { readonly label: string; readonly variant: "outline" | "info" | "secondary" | "warning" }
-> = {
-  none: { label: "None", variant: "outline" },
-  read: { label: "Read", variant: "secondary" },
-  standard: { label: "Standard", variant: "info" },
-  admin: { label: "Admin", variant: "warning" },
-};
-
-const isMachineMapRequestError = Schema.is(MachineMapRequestError);
-
-function failureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
-  const error = squashAtomCommandFailure(result);
-  if (isMachineMapRequestError(error)) return error.detail;
-  return error instanceof Error ? error.message : "The request failed.";
-}
-
+/** Fork: Settings > Machines: kitshn and the machine settings of the selected environment. */
 export function MachinesSettingsPanel() {
   const { environment } = useSettingsScope();
-  const environmentId = environment?.environmentId ?? null;
-  const { state } = useMachineMapState(environmentId);
-  if (environmentId === null) return null;
-
+  const { state } = useMachineMapState(environment?.environmentId ?? null);
+  if (environment === null) return null;
+  const problems = state?.connection.problems ?? [];
   return (
     <SettingsPageContainer>
-      <SettingsSection title="Machine map">
-        <MachineMapSettingsRows />
-        {state?.joined ? <ClientAccessSettingsRow /> : null}
-      </SettingsSection>
-
-      {state?.joined ? (
-        <SettingsSection {...searchableSetting("machine-map-reachable")}>
-          {state.reachable.length === 0 ? (
-            <SettingsRow
-              title="No machines"
-              description="Give this machine an arrow to another machine in the portal."
-            />
-          ) : (
-            state.reachable.map((peer) => {
-              const level = LEVEL_BADGES[peer.level];
-              return (
-                <SettingsRow
-                  key={peer.machine.id}
-                  title={peer.machine.name}
-                  description={peer.agentTools ? `${peer.origin}, with agent tools` : peer.origin}
-                  control={
-                    <div className="flex items-center gap-2">
-                      <Badge variant={level.variant}>{level.label}</Badge>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        render={<a href={peer.origin} target="_blank" rel="noreferrer" />}
-                      >
-                        Open
-                      </Button>
-                    </div>
-                  }
-                />
-              );
-            })
-          )}
-        </SettingsSection>
+      {problems.length > 0 ? (
+        <Alert variant="warning">
+          <AlertTitle>kitshn dropped part of this machine's cards</AlertTitle>
+          <AlertDescription>
+            {problems.slice(0, PROBLEMS_SHOWN).map((problem) => (
+              <span className="block" key={problem.path}>
+                {problem.path}: {problem.reason}
+              </span>
+            ))}
+            {problems.length > PROBLEMS_SHOWN ? (
+              <span className="block">and {problems.length - PROBLEMS_SHOWN} more</span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
       ) : null}
+      <SettingsSection title="kitshn">
+        {state === null ? null : <ConnectionRow connection={state.connection} />}
+        {isElectron ? <DeviceInviteSettingsRow /> : null}
+        <ForkSettingsSlot place="machines-machine-map" />
+      </SettingsSection>
     </SettingsPageContainer>
   );
 }
 
-const CLIENT_ACCESS_LABELS: Record<ClientAccessMode, string> = {
-  off: "Off",
-  observe: "Observe",
-  enforce: "Enforce",
-};
+const STATUS_TITLE = {
+  off: "Not with kitshn",
+  connecting: "Connecting to kitshn",
+  registered: "Connected to kitshn",
+} as const;
 
-/**
- * MM-919: the way back in when `enforce` locks every browser out. The portal sets `clientAccess`
- * on the approval path; on a machine, only its own desktop app may change it, and the portal then
- * sends a push message.
- */
-function ClientAccessSettingsRow() {
-  const mode = useScopedSettings((settings) => settings.clientAccess);
-  const updateSettings = useUpdateScopedSettings();
-  const { environment } = useSettingsScope();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  // Only the desktop app of the selected machine itself may change it; a remote one refuses.
-  const local = isElectron && environment?.environmentId === primaryEnvironmentId;
-  return (
-    <SettingsRow
-      {...searchableSetting("machine-map-client-access")}
-      serverScoped
-      settingKeys={["clientAccess"]}
-      description="Which browsers get in through Cloudflare Access. Set it in the portal. Only the desktop app of this machine changes it here, as the way back in."
-      control={
-        <Select
-          value={mode}
-          disabled={!local}
-          onValueChange={(value) => {
-            if (value !== "off" && value !== "observe" && value !== "enforce") return;
-            updateSettings({ clientAccess: value });
-          }}
-        >
-          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Client access">
-            <SelectValue>{CLIENT_ACCESS_LABELS[mode]}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {Object.entries(CLIENT_ACCESS_LABELS).map(([value, label]) => (
-              <SelectItem key={value} hideIndicator value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      }
-    />
-  );
+/** A reconnect note shows for this long after T3 ended a stuck connection. */
+const RESTART_NOTE_MS = 60 * 60 * 1000;
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+const relativeTime = (epochMs: number) => formatRelativeTimeLabel(new Date(epochMs).toISOString());
+
+/** The line about the status: why it is off, or why it reconnected. */
+function statusNote(connection: MachineMapClientState["connection"], nowMs: number): string | null {
+  if (connection.detail === null) return null;
+  if (connection.status !== "registered") return sentence(connection.detail);
+  const { restartedAt } = connection;
+  if (restartedAt === null || nowMs - restartedAt > RESTART_NOTE_MS) return null;
+  return `Reconnected ${relativeTime(restartedAt)}: ${connection.detail}`;
 }
 
-/** The machine map connection of the selected environment: status, join, and leave. */
-export function MachineMapSettingsRows() {
-  const { environment } = useSettingsScope();
-  const environmentId = environment?.environmentId ?? null;
-  const { state, error } = useMachineMapState(environmentId);
-  const canJoin = useAtomValue(joinMachineMap.permissionAtom(environmentId));
-  const canLeave = useAtomValue(leaveMachineMap.permissionAtom(environmentId));
-  const join = useAtomCommand(joinMachineMap, { reportFailure: false });
-  const leave = useAtomCommand(leaveMachineMap, { reportFailure: false });
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
-
-  if (environmentId === null) return null;
-  if (state === null) {
-    return (
-      <SettingsRow
-        {...searchableSetting("machine-map")}
-        description={
-          error === null
-            ? "Loading the machine map..."
-            : `This environment does not show the machine map. ${error}`
-        }
-      />
-    );
-  }
-
-  const status = STATUS_BADGES[state.connection.status];
-  const selfName = state.desired?.self.name ?? null;
-  const trimmedCode = code.trim();
-
-  const submitJoin = async () => {
-    if (trimmedCode.length === 0 || busy) return;
-    setBusy(true);
-    setRequestError(null);
-    const result = await join({ environmentId, input: { code: trimmedCode } });
-    setBusy(false);
-    if (result._tag === "Failure") setRequestError(failureMessage(result));
-    else setCode("");
-  };
-
-  const submitLeave = async () => {
-    if (busy) return;
-    // Fail closed: no mounted confirm host means no leave.
-    const confirmed = await requestConfirmDialog(
-      "Leave the machine map?\nThis machine forgets its machine token, and other machines lose their access to it.",
-      { variant: "destructive" },
-    );
-    if (confirmed !== true) return;
-    setBusy(true);
-    setRequestError(null);
-    const result = await leave({ environmentId, input: {} });
-    setBusy(false);
-    if (result._tag === "Failure") setRequestError(failureMessage(result));
-  };
-
+/** K-1611: the provider connection of this server and what kitshn gave it. */
+function ConnectionRow({ connection }: { connection: MachineMapClientState["connection"] }) {
+  // A minute tick keeps the relative times current and ends the reconnect note on time.
+  const nowMs = Date.parse(`${useNowMinute()}Z`);
+  // While off, this server does not talk to kitshn, so the contact facts say nothing.
+  const facts =
+    connection.status === "off"
+      ? []
+      : [
+          `${connection.reachedMachines} reached machines`,
+          connection.linkProxy ? "link proxy ready" : "no link proxy",
+          connection.syncedAt === null
+            ? "no answer from kitshn yet"
+            : `last sync with kitshn ${relativeTime(connection.syncedAt)}`,
+        ];
+  const factsLine = facts.length > 0 ? sentence(facts.join(" · ")) : null;
+  const title = connection.paused
+    ? "kitshn's emergency pause is on"
+    : STATUS_TITLE[connection.status];
+  const description = [statusNote(connection, nowMs), factsLine].filter(Boolean).join(". ");
   return (
-    <>
-      <SettingsRow
-        {...searchableSetting("machine-map")}
-        description={
-          selfName === null
-            ? "One portal controls what each machine can do on the other machines."
-            : `This machine is ${selfName} on the map.`
-        }
-        status={
-          state.connection.lastError === null
-            ? `Since ${formatRelativeTimeLabel(state.connection.since)}`
-            : `Last error: ${state.connection.lastError}`
-        }
-        control={
-          <div className="flex items-center gap-2">
-            <Badge variant={status.variant}>{status.label}</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              render={<a href={state.portalUrl} target="_blank" rel="noreferrer" />}
-            >
-              Open portal
-            </Button>
-          </div>
-        }
-      />
-      {state.joined ? (
-        <SettingsRow
-          title="Leave the map"
-          description="Forget the machine token and turn the machine map off."
-          control={
-            <Button
-              size="sm"
-              variant="destructive-outline"
-              disabled={!canLeave || busy}
-              onClick={() => void submitLeave()}
-            >
-              Leave
-            </Button>
-          }
-        />
-      ) : (
-        <SettingsRow
-          title="Join the map"
-          description="In the portal, Add machine shows a one-time join code."
-          control={
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitJoin();
-              }}
-            >
-              <Input
-                size="sm"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                placeholder="Join code"
-                aria-label="Join code"
-                autoComplete="off"
-                disabled={!canJoin || busy}
-              />
-              <Button size="sm" type="submit" disabled={!canJoin || busy || trimmedCode === ""}>
-                Join
-              </Button>
-            </form>
-          }
-        />
-      )}
-      {requestError === null ? null : (
-        <SettingsRow title="Request failed" description={requestError} />
-      )}
-    </>
+    <SettingsRow
+      title={title}
+      description={description}
+      copyActions={[
+        { label: "Copy status", value: [title, description].filter(Boolean).join(". ") },
+      ]}
+    />
   );
 }

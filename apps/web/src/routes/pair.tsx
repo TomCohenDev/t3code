@@ -15,7 +15,11 @@ export const Route = createFileRoute("/pair")({
       };
     }
 
-    if (authGateState.status === "authenticated" || authGateState.status === "hosted-static") {
+    if (
+      authGateState.status === "authenticated" ||
+      authGateState.status === "hosted-static" ||
+      authGateState.status === "guest"
+    ) {
       throw redirect({ to: "/", replace: true });
     }
     return {
@@ -38,17 +42,11 @@ function PairRouteView() {
     return <HostedPairingRouteSurface />;
   }
 
-  // The root route shows the lock page or the waiting page instead of this route (MM-718, MM-920).
-  if (authGateState.status === "machine-paused" || authGateState.status === "client-pending") {
-    return null;
-  }
-
   return (
     <PairingRouteSurface
       auth={authGateState.auth}
       onAuthenticated={() => {
-        // Recreate the primary connection so its WebSocket and cached scopes
-        // use the newly issued cookie after re-pairing.
+        // Recreate the connection so WebSocket and cached scopes use the new pairing cookie.
         router.history.replace("/");
         router.history.flush();
         window.location.reload();

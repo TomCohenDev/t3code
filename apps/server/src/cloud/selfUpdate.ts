@@ -5,15 +5,12 @@ import {
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateProgressStage,
   type ServerSelfUpdateResult,
-  type ThreadId,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as Cause from "effect/Cause";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as HashSet from "effect/HashSet";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as FileSystem from "effect/FileSystem";
@@ -23,15 +20,23 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 
-import { CLI_RELEASE_BASE_URL_ENV } from "@t3tools/shared/cliRelease";
+import {
+  CLI_RELEASE_BASE_URL_ENV,
+  cliReleaseChannelOf,
+  crossesReleaseTrack,
+} from "@t3tools/shared/cliRelease";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DesktopAppUpdate from "../desktopUpdate/DesktopAppUpdate.ts";
 import { forkUpdateTarget } from "../fork/forkReleases.ts";
+import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import { managedUpdateMirror, managedUpdateRefusal } from "../policy/managedUpdates.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import {
   ensurePinnedRuntimeInstalled,
+  isUnpublishedRelease,
   pinnedRuntimeCommand,
   PinnedRuntimeInstallError,
   pinnedRuntimePaths,
@@ -42,7 +47,8 @@ import { decodeServicePreflightResult } from "./servicePreflight.ts";
 import * as ServiceLauncherClient from "./serviceLauncherClient.ts";
 import { isExactServiceVersion, SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
 
-const PREFLIGHT_TIMEOUT = Duration.seconds(30);
+// A staged runtime's cold start can take over a minute on a loaded, swapping host.
+const PREFLIGHT_TIMEOUT = Duration.minutes(3);
 
 export function resolveServerSelfUpdateCapability(input: {
   readonly desktopManaged: boolean;
@@ -68,112 +74,6 @@ export class ServerSelfUpdate extends Context.Service<
     ) => Effect.Effect<never, ServerSelfUpdateError>;
   }
 >()("t3/cloud/selfUpdate/ServerSelfUpdate") {}
-
-export const withRunningThreadContinuation = Effect.fn(
-  "cloud.server_self_update.withRunningThreadContinuation",
-)(function* (input: {
-  readonly mode: ServerConfig.RuntimeMode;
-  readonly selfUpdate: ServerSelfUpdate["Service"];
-  readonly prepare: Effect.Effect<ReadonlyArray<ThreadId>, ServerSelfUpdateError>;
-  readonly clear: (
-    threadIds: ReadonlyArray<ThreadId>,
-  ) => Effect.Effect<void, ServerSelfUpdateError>;
-}) {
-  const desktopContinuationTokens = yield* Ref.make(HashSet.empty<string>());
-  const clearOnError = <A>(
-    effect: Effect.Effect<A, ServerSelfUpdateError>,
-    threadIds: () => ReadonlyArray<ThreadId>,
-    handoffAccepted: () => boolean,
-  ): Effect.Effect<A, ServerSelfUpdateError> =>
-    effect.pipe(
-      Effect.catchCause((cause) =>
-        (handoffAccepted() && Cause.hasInterruptsOnly(cause)
-          ? Effect.void
-          : input.clear(threadIds())
-        ).pipe(Effect.andThen(Effect.failCause(cause))),
-      ),
-    );
-
-  const update: ServerSelfUpdate["Service"]["update"] = (
-    request,
-    reportProgress = () => Effect.void,
-  ) => {
-    let prepared = false;
-    let handoffAccepted = false;
-    let continuationThreadIds: ReadonlyArray<ThreadId> = [];
-    return clearOnError(
-      input.selfUpdate
-        .update(
-          request,
-          (stage) =>
-            (request.continueRunningThreads === true &&
-            input.mode !== "desktop" &&
-            stage === "installing" &&
-            !prepared
-              ? input.prepare.pipe(
-                  Effect.tap((threadIds) =>
-                    Effect.sync(() => {
-                      prepared = true;
-                      continuationThreadIds = threadIds;
-                    }),
-                  ),
-                  Effect.asVoid,
-                )
-              : Effect.void
-            ).pipe(Effect.andThen(reportProgress(stage))),
-          () =>
-            Effect.sync(() => {
-              handoffAccepted = true;
-            }),
-        )
-        .pipe(
-          Effect.tap((result) => {
-            if (
-              result.method === "desktop-app" &&
-              result.desktopUpdateToken !== undefined &&
-              request.continueRunningThreads === true
-            ) {
-              return Ref.update(desktopContinuationTokens, HashSet.add(result.desktopUpdateToken));
-            }
-            return Effect.void;
-          }),
-        ),
-      () => continuationThreadIds,
-      () => handoffAccepted,
-    );
-  };
-
-  return ServerSelfUpdate.of({
-    update,
-    commitDesktopUpdate: Effect.fn("selfUpdate.commitDesktopUpdate")(function* (requestId) {
-      const shouldContinue = yield* Ref.modify(desktopContinuationTokens, (tokens) => [
-        HashSet.has(tokens, requestId),
-        HashSet.remove(tokens, requestId),
-      ]);
-      let handoffAccepted = false;
-      let continuationThreadIds: ReadonlyArray<ThreadId> = [];
-      return yield* clearOnError(
-        Effect.gen(function* () {
-          continuationThreadIds = shouldContinue ? yield* input.prepare : [];
-          return yield* input.selfUpdate.commitDesktopUpdate(requestId, () =>
-            Effect.sync(() => {
-              handoffAccepted = true;
-            }),
-          );
-        }),
-        () => continuationThreadIds,
-        () => handoffAccepted,
-      ).pipe(
-        Effect.catchCause((cause) =>
-          (shouldContinue && !handoffAccepted
-            ? Ref.update(desktopContinuationTokens, HashSet.add(requestId))
-            : Effect.void
-          ).pipe(Effect.andThen(Effect.failCause(cause))),
-        ),
-      );
-    }),
-  });
-});
 
 /**
  * A server starting from the runtime its launcher settled on means runtimes left by earlier
@@ -203,9 +103,33 @@ export const pruneRuntimesOnStart = Effect.fn("cloud.server_self_update.prune_on
   },
 );
 
+// Fork: the fork hides the Update track switch, and its machines update only to fork releases.
+const FORK_RELEASES_ONLY = "This machine updates only to fork releases.";
+
+/** The client checks this when planning; the host checks again because its database may have
+ * moved on since (another client updated it). Stable and Nightly each build their own commits,
+ * so crossing tracks needs the target release to know every migration this database holds. */
+export function trackSwitchBlockReason(input: {
+  readonly serverVersion: string;
+  readonly targetVersion: string;
+  readonly targetDatabaseMigration: number | undefined;
+  /** Read only for a crossing; undefined when the database cannot be read. */
+  readonly databaseMigration: () => number | undefined;
+}): string | null {
+  if (!crossesReleaseTrack(input.serverVersion, input.targetVersion)) return null;
+  const databaseMigration = input.databaseMigration();
+  if (input.targetDatabaseMigration === undefined || databaseMigration === undefined) {
+    return `Cannot confirm this database works with t3@${input.targetVersion}. ${FORK_RELEASES_ONLY}`;
+  }
+  return input.targetDatabaseMigration < databaseMigration
+    ? `This database has changes t3@${input.targetVersion} does not support yet; it stays on this release.`
+    : null;
+}
+
 export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const desktopAppUpdate = yield* DesktopAppUpdate.DesktopAppUpdate;
+  const policy = yield* ManagedPolicy.ManagedPolicy;
   const launcher = yield* ServiceLauncherClient.ServiceLauncherClient;
   const runner = yield* ProcessRunner.ProcessRunner;
   const fs = yield* FileSystem.FileSystem;
@@ -213,9 +137,10 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const platform = yield* HostProcess.Platform;
   const arch = yield* HostProcess.Architecture;
   const httpClient = yield* HttpClient.HttpClient;
-  const releaseBaseUrl = Option.getOrUndefined(
-    yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option),
-  );
+  const mirror = managedUpdateMirror(policy.document);
+  const releaseBaseUrl =
+    mirror?.feedUrl ??
+    Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option));
   const inFlight = yield* Ref.make(false);
 
   yield* pruneRuntimesOnStart({ baseDir: serverConfig.baseDir, managed: launcher.managed }).pipe(
@@ -229,12 +154,39 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
       ? new ServerSelfUpdateError({ reason })
       : new ServerSelfUpdateError({ reason, cause });
 
+  const crossesTrackUnsafely = (input: {
+    readonly targetVersion: string;
+    readonly targetDatabaseMigration?: number | undefined;
+  }) =>
+    trackSwitchBlockReason({
+      serverVersion: packageJson.version,
+      targetVersion: input.targetVersion,
+      targetDatabaseMigration: input.targetDatabaseMigration,
+      databaseMigration: () => databaseMigrationHead(serverConfig.dbPath),
+    });
+
   const update: ServerSelfUpdate["Service"]["update"] = Effect.fn(
     "cloud.server_self_update.update",
   )(function* (input, reportProgress = () => Effect.void, onHandoffAccepted = () => Effect.void) {
+    const policyRefusal = managedUpdateRefusal(
+      policy.document,
+      capability === "boot-service" ? cliReleaseChannelOf(input.targetVersion.trim()) : undefined,
+    );
+    if (policyRefusal !== undefined) {
+      return yield* failWith(policyRefusal);
+    }
     if (capability === "desktop-managed") {
+      // Fork: the fork publishes no Stable desktop builds, so a remote Stable switch stops here.
+      if (input.channel === "latest") return yield* failWith(FORK_RELEASES_ONLY);
+      const unsafeCrossing = input.channel === undefined ? null : crossesTrackUnsafely(input);
+      if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
       if (desktopAppUpdate.available) {
-        return yield* desktopAppUpdate.run(reportProgress);
+        return yield* desktopAppUpdate.run(
+          reportProgress,
+          input.channel === undefined
+            ? undefined
+            : { channel: input.channel, targetVersion: input.targetVersion },
+        );
       }
       return yield* failWith(
         "This server is managed by the T3 Code desktop app on its machine; update the desktop app to update it.",
@@ -256,11 +208,18 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
 
     return yield* Effect.gen(function* () {
       // Fork: a version without a fork release installs the newest fork release.
-      const targetVersion = yield* forkUpdateTarget(
-        httpClient,
-        requestedVersion,
-        packageJson.version,
-      );
+      // A managed update mirror serves its own releases, so it skips the GitHub lookup.
+      const targetVersion =
+        mirror === undefined
+          ? yield* forkUpdateTarget(httpClient, requestedVersion, packageJson.version)
+          : requestedVersion;
+      // Fork: check the release that installs, and the database migration only of the requested one.
+      const unsafeCrossing = crossesTrackUnsafely({
+        targetVersion,
+        targetDatabaseMigration:
+          targetVersion === requestedVersion ? input.targetDatabaseMigration : undefined,
+      });
+      if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);
       yield* reportProgress("downloading");
       const paths = yield* ensurePinnedRuntimeInstalled({
         baseDir: serverConfig.baseDir,
@@ -272,6 +231,7 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         platform,
         arch,
         releaseBaseUrl,
+        requirePublishedRelease: mirror !== undefined,
         validate: (runtime) =>
           runner
             .run({
@@ -345,7 +305,12 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
         Effect.mapError((error) =>
           error._tag === "PinnedRuntimePreflightBlockedError"
             ? failWith(error.reason, error)
-            : failWith(`Could not prepare t3@${targetVersion}.`, error),
+            : mirror !== undefined && isUnpublishedRelease(error)
+              ? failWith(
+                  `${mirror.organization}'s update mirror has no t3@${targetVersion} for this machine.`,
+                  error,
+                )
+              : failWith(`Could not prepare t3@${targetVersion}.`, error),
         ),
       );
 
@@ -375,8 +340,11 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
 
   return ServerSelfUpdate.of({
     update,
-    commitDesktopUpdate: (requestId, onHandoffAccepted) =>
-      desktopAppUpdate.commit(requestId, onHandoffAccepted),
+    commitDesktopUpdate: Effect.fn("ServerSelfUpdate.commitDesktopUpdate")(
+      function (requestId, onHandoffAccepted) {
+        return desktopAppUpdate.commit(requestId, onHandoffAccepted);
+      },
+    ),
   });
 });
 
@@ -384,9 +352,7 @@ export const layer = Layer.effect(ServerSelfUpdate, make()).pipe(
   Layer.provide(ProcessRunner.layer),
 );
 
-// The RPC stream used to own this fiber, so a dropped client socket interrupted
-// the download. Offers after the queue shuts down are ignored; the update
-// still finishes, and the in-flight guard stays as it was.
+// The update outlives client sockets; progress offers to a closed queue are ignored.
 export const updateProgressStream = (
   selfUpdate: ServerSelfUpdate["Service"],
   input: ServerSelfUpdateInput,

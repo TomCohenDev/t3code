@@ -2,11 +2,12 @@ import type { ConfirmDialogOptions, ContextMenuItem, LocalApi } from "@t3tools/c
 
 import { requestConfirmDialog } from "./confirmDialog";
 import { dismissContextMenu, showContextMenuFallback } from "./contextMenuFallback";
+import { dismissForkContextMenu, requestForkContextMenu } from "./forkContextMenu";
 import { readBrowserClientSettings, writeBrowserClientSettings } from "./clientPersistenceStorage";
 
 let cachedApi: LocalApi | undefined;
 
-function createBrowserLocalApi(): LocalApi {
+export function createLocalApi(): LocalApi {
   return {
     dialogs: {
       pickFolder: async (options) => {
@@ -30,7 +31,7 @@ function createBrowserLocalApi(): LocalApi {
         window.open(url, "_blank", "noopener,noreferrer");
       },
       openSystemSettings: async (pane) => {
-        if (!window.desktopBridge?.openSystemSettings) {
+        if (!window.desktopBridge) {
           throw new Error("Unable to open System Settings.");
         }
         const opened = await window.desktopBridge.openSystemSettings(pane);
@@ -44,18 +45,13 @@ function createBrowserLocalApi(): LocalApi {
         items: readonly ContextMenuItem<T>[],
         position?: { x: number; y: number },
       ): Promise<T | null> => {
-        if (window.desktopBridge) {
-          return window.desktopBridge.showContextMenu(items, position) as Promise<T | null>;
-        }
-        return showContextMenuFallback(items, position);
+        // Fork: the app menu, or a plain web menu before its host mounts or on an error screen.
+        return requestForkContextMenu(items, position) ?? showContextMenuFallback(items, position);
       },
-      // A native desktop menu blocks keyboard input and closes on outside
-      // interaction, so nothing to do there; the DOM fallback needs an explicit
-      // dismiss when the state behind it goes away.
+      // Unlike native menus, web menus need dismissal when underlying state disappears.
       close: async () => {
-        if (!window.desktopBridge) {
-          dismissContextMenu();
-        }
+        dismissForkContextMenu();
+        dismissContextMenu();
       },
     },
     persistence: {
@@ -73,10 +69,6 @@ function createBrowserLocalApi(): LocalApi {
       },
     },
   };
-}
-
-export function createLocalApi(): LocalApi {
-  return createBrowserLocalApi();
 }
 
 export function readLocalApi(): LocalApi | undefined {

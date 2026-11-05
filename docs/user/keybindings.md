@@ -3,9 +3,20 @@
 Customize shortcuts in **Settings → Keybindings** on web and desktop. That page
 also lists the command IDs and defaults available in your version.
 
+Search on that page matches action names, command IDs, conditions and shortcuts, such as
+`mod+k` or `⌘K`. To see all bindings of one action, choose **Show bindings for this action**
+in the menu of its row.
+
+A button, menu item or command palette row that a shortcut can also run shows its shortcut, in
+its tooltip or next to it. A menu item without a shortcut shows a faint dash. Right-click such a
+control, or press Shift+F10 or the context menu key on it, and choose **Keybindings…**. A menu
+stays open behind it. This also works on an item that is disabled now, and on rows of the
+keyboard cheat sheet. The page opens with that action filtered and a new binding for it ready to
+record.
+
 ## Composer controls
 
-In **Settings → General → Send shortcut**, choose whether Enter sends, requires
+In **Settings → Chat → Send shortcut**, choose whether Enter sends, requires
 `mod+Enter` for multiline prompts, or always requires `mod+Enter`. `Shift+Enter`
 inserts a new line. This applies to the web and desktop composer at desktop widths.
 
@@ -18,13 +29,14 @@ does the same. Change these shortcuts in **Settings → Keybindings** under
 or **Composer: Send and Start New Thread**. These bindings take priority over the
 send shortcut. Click the send button to use the configured follow-up behavior.
 
-When an active turn has queued messages, `mod+Shift+Enter` sends the first as a
-steer. Change it under **Queue: Send First Queued Message as Steer** in Keybindings.
+When a thread has queued messages, `mod+Shift+Enter` sends the first one as a steer
+while a turn is running, or as a new turn when the thread is stopped. Change it under
+**Queue: Send First Queued Message** in Keybindings.
 
 Use `mod+shift+m` to choose a model and `mod+shift+h` to choose a host.
 To step a new thread to the next machine instead of opening the menu, bind
 **Composer: Cycle Host** in Keybindings. It has no default shortcut.
-Use `mod+shift+e` for effort, `mod+shift+a` for access mode, `mod+shift+x` for the
+Use `mod+shift+e` for effort, `mod+shift+a` for permissions, `mod+shift+x` for the
 workspace, and `mod+shift+g` for the Git branch. The workspace menu includes the
 current checkout, a new worktree, and the previous worktree when available.
 Use `mod+shift+l` to reuse the previous worktree directly.
@@ -36,7 +48,8 @@ lowest, and decrease wraps from the lowest level to the highest.
 
 In the model picker, press Left in an empty search field or Shift+Tab to reach
 the provider list. Use Up/Down to move and Enter to choose. Right returns to
-model search. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the
+model search. Right at the end of the search moves to the highlighted model's effort
+levels, and Left comes back. Choosing a model keeps the picker open on its effort. `mod+shift+up` and `mod+shift+down` switch providers directly and clear the
 search. These provider shortcuts can also be changed in Settings.
 
 These shortcuts run inside the focused web or desktop client. `mod` uses Command
@@ -46,7 +59,7 @@ in Settings.
 
 ## Focus levels
 
-Turn on **Settings → General → Keyboard focus levels** to move focus between the composer,
+Turn on **Settings → Keybindings → Keyboard focus levels** to move focus between the composer,
 the timeline, the right panel and the sidebar with the keyboard. It is off by default.
 
 - Escape moves one level up: from the composer to the timeline, then to the sidebar.
@@ -55,9 +68,9 @@ the timeline, the right panel and the sidebar with the keyboard. It is off by de
 - In the desktop app, `mod+alt+left` and `mod+alt+right` move between the sidebar, the chat and
   the right panel.
 - Outside a text field, typing a letter in the chat goes to the composer. In the sidebar, digits
-  switch groups, and other letters do nothing.
+  switch tabs, and other letters do nothing.
 - A key that moves focus outlines the area it moves to. Turn this off in
-  **Settings → General → Focus highlight**.
+  **Settings → Keybindings → Focus highlight**.
 
 In the sidebar, Up and Down move between threads, and Enter opens one and focuses its timeline.
 Up from the first thread reaches the sidebar tabs. Left and Right, or `1` to `9`, switch tabs.
@@ -92,10 +105,12 @@ These keys work with the setting off too:
 
 ## Copy pull request references
 
-With a PR open in the right panel or on the Pull Requests page, use `mod+shift+c`
+With a PR open in the right panel or on the Pull requests page, use `mod+shift+c`
 to copy its URL and `mod+shift+k` to copy its number with a `#` prefix.
-Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
+Both shortcuts can be changed in Settings. Search for “Copy Link or Thread”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
+Without a PR, `mod+shift+c` copies the thread itself, which pastes into a
+composer as a thread chip.
 
 ## Find in a diff
 
@@ -155,9 +170,13 @@ Join modifiers and a key with `+`, such as `mod+shift+d` or `ctrl+l`.
 ## When conditions
 
 Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
-`previewOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`, `composerDraft`,
-`turnRunning`, `editableFocus`, `timelineFocus`, `sidebarFocus`, `rightPanelFocus`,
-`approvalPending`, `isWeb`, and `isDesktop`.
+`previewOpen`, `rightPanelOpen`, `modelPickerOpen`, `usagePageOpen`, `composerFocus`,
+`draftThreadRoute`, `turnRunning`, `editableFocus`, `timelineFocus`, `sidebarFocus`,
+`rightPanelFocus`, `approvalPending`, `compactBeforeSendShown`, `isWeb`, and `isDesktop`.
+`compactBeforeSendShown` is true while the composer shows the **Compact** or **Keep** toggle.
+`rightPanelOpen` applies only to `rightPanel.new` and is true while the right panel is
+open; the default `mod+t` uses it to open the panel's new-tab menu.
+`draftThreadRoute` is true on a draft thread, including a restored draft, until it is first sent.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
@@ -208,11 +227,15 @@ through the pages you have visited, like a browser's back and forward buttons.
 `chat.newLocal` skips that chooser. Both use your
 [new-thread defaults](./thread-sidebar.md#start-a-thread). `chat.newWithoutProject`
 (`mod+alt+n`) starts a thread [without a project](./thread-sidebar.md#start-without-a-project).
+`chat.newTerminal` (`mod+alt+t`) and `chat.newTerminalLocal` (`mod+alt+shift+n`) are the same
+two commands for a [terminal thread](../fork/terminal-threads.md): the first may ask for a
+project, the second starts in the focused project. They do nothing until a server turns on
+Terminal threads.
 
 ## Reserved shortcuts
 
 In the desktop app, `mod+w` closes the focused terminal or the active right-panel
-tab. When nothing remains to close, it closes the window. In a browser, `mod+w`
+tab. When nothing remains to close, it does nothing; it never closes the window. In a browser, `mod+w`
 closes the browser tab; rebind `rightPanel.close` and `terminal.close` to an available
 shortcut such as `alt+w`.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveAuthClientMetadata, isForwardedRequest, resolveSessionCookieName } from "./utils.ts";
+import { deriveAuthClientMetadata, resolveSessionCookieName } from "./utils.ts";
 
 describe("deriveAuthClientMetadata", () => {
   it("labels Electron user agents as Electron instead of Chrome", () => {
@@ -22,6 +22,35 @@ describe("deriveAuthClientMetadata", () => {
       ipAddress: "127.0.0.1",
       os: "macOS",
     });
+  });
+
+  it.each([
+    [
+      "Edge on Android",
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36 EdgA/129.0.0.0",
+      "Edge",
+    ],
+    [
+      "Edge on iOS",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 EdgiOS/129.0.2792.84 Mobile/15E148 Safari/605.1.15",
+      "Edge",
+    ],
+    [
+      "Firefox on iOS",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/131.0 Mobile/15E148 Safari/605.1.15",
+      "Firefox",
+    ],
+    [
+      "Opera on iOS",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 OPiOS/5.0.0 Mobile/15E148 Safari/605.1.15",
+      "Opera",
+    ],
+  ])("labels %s by its own browser token", (_name, userAgent, browser) => {
+    const metadata = deriveAuthClientMetadata({
+      request: { headers: { "user-agent": userAgent }, source: {} } as never,
+    });
+
+    expect(metadata.browser).toBe(browser);
   });
 
   it("applies client-presented display identity without replacing transport metadata", () => {
@@ -120,27 +149,5 @@ describe("session cookie isolation", () => {
     });
 
     expect(first).toBe(second);
-  });
-});
-
-describe("isForwardedRequest", () => {
-  const request = (headers: Record<string, string>) =>
-    ({ headers }) as unknown as Parameters<typeof isForwardedRequest>[0];
-
-  it("treats a direct loopback request as local", () => {
-    expect(isForwardedRequest(request({ host: "127.0.0.1:3773" }))).toBe(false);
-    expect(isForwardedRequest(request({ host: "localhost:3773" }))).toBe(false);
-    expect(isForwardedRequest(request({}))).toBe(false);
-  });
-
-  it("treats a cloudflared request from loopback as forwarded", () => {
-    expect(
-      isForwardedRequest(request({ host: "t3.example.com", "x-forwarded-for": "203.0.113.9" })),
-    ).toBe(true);
-    // A tunnel that rewrites Host to loopback still sends forwarding headers.
-    expect(
-      isForwardedRequest(request({ host: "127.0.0.1:3773", "cf-connecting-ip": "203.0.113.9" })),
-    ).toBe(true);
-    expect(isForwardedRequest(request({ host: "t3.example.com" }))).toBe(true);
   });
 });

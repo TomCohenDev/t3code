@@ -10,7 +10,8 @@ import { ForkCopyMessageLink } from "./ForkCopyMessageLink";
 
 const state = vi.hoisted(() => ({ enabled: true }));
 vi.mock(import("./ForkMessageLinkTarget"), () => ({
-  useForkMessageLinks: () => state.enabled,
+  useForkThreadAddressing: () => state.enabled,
+  forkMessageLinkNavigation: () => ({}),
 }));
 vi.mock(import("../../hooks/useSettings"), () => ({
   useClientSettings: (() => true) as never,
@@ -26,14 +27,14 @@ function setup() {
   state.enabled = true;
 }
 
-it("copies the message destination and hides the action when message links are off", async () => {
+it("copies a message autolink without a shell, and hides the action when thread addressing is off", async () => {
   setup();
   await using screen = await render(
     <ForkCopyMessageLink threadRef={threadRef} messageId="user:1" />,
   );
   using clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   await screen.getByRole("button", { name: "Copy message link" }).click();
-  expect(clipboard).toHaveBeenCalledWith("t3-thread://v1/thread:1#user:1");
+  expect(clipboard).toHaveBeenCalledWith("<t3-thread://v2/local/thread:1#user:1>");
   state.enabled = false;
   await screen.rerender(<ForkCopyMessageLink threadRef={threadRef} messageId="user:1" />);
   await expect
@@ -81,13 +82,13 @@ it("copies only the chosen cursor message, including after focus moves to the pa
     viewport.blur();
     runRegisteredFocusLevelCommand("timeline.copyMessageLink");
   });
-  expect(clipboard).toHaveBeenLastCalledWith("t3-thread://v1/thread:1#assistant:2");
+  expect(clipboard).toHaveBeenLastCalledWith("<t3-thread://v2/local/thread:1#assistant:2>");
   await act(() => {
     viewport.focus();
     runRegisteredFocusLevelCommand("timeline.previous");
     runRegisteredFocusLevelCommand("timeline.copyMessageLink");
   });
-  expect(clipboard).toHaveBeenLastCalledWith("t3-thread://v1/thread:1#user:1");
+  expect(clipboard).toHaveBeenLastCalledWith("<t3-thread://v2/local/thread:1#user:1>");
   await act(() => {
     runRegisteredFocusLevelCommand("timeline.previous");
   });

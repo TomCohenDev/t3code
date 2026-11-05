@@ -76,11 +76,13 @@ export function useComposerVoiceInput(input: {
     return { recorder, controller };
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the recorder and microphone held by the controller
   useEffect(() => () => controller.dispose(), [controller]);
   // The owner key is the trigger: a new owner invalidates the draft the recording was started for.
-  // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies, t3code/no-unreasoned-state-sync -- tells the controller outside React
   useEffect(() => controller.ownerChanged(), [controller, input.ownerKey]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- shows an imperative toast for a controller error
   useEffect(() => {
     if (state.phase !== "error" || !state.error) return;
     toastManager.add({ type: "error", title: "Voice input", description: state.error });
@@ -110,6 +112,7 @@ function useRecordingMeter(recorder: WebVoiceRecorder) {
     levels: Array<number>(WAVEFORM_BARS).fill(0),
     elapsedSeconds: 0,
   }));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- samples the recorder level on a timer
   useEffect(() => {
     const intervalId = setInterval(() => {
       setMeter((current) => ({
@@ -157,6 +160,7 @@ function RecordingControl({ voice }: { readonly voice: ComposerVoiceInput }) {
       <div className="flex h-5 items-center gap-px" aria-hidden="true">
         {meter.levels.map((level, index) => (
           <span
+            // oxlint-disable-next-line react/no-array-index-key -- fixed-length bars keyed by position
             key={index}
             className="w-0.5 rounded-full bg-foreground/70"
             style={{ height: `${Math.max(2, Math.round(level * 20))}px` }}

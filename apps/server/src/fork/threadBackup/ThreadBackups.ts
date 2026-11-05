@@ -1,9 +1,7 @@
 /**
- * Fork: thread backups (`packages/contracts/src/forkThreadBackup.ts`). A server with the setting
- * `threadBackupMachine` sends the transcript of each changed thread to that machine of the
- * machine map, through the same pairing as `machine_tool_call`. The machine that receives it
- * keeps the newest backups of each source in `<stateDir>/thread-backups/<environmentId>/`, and
- * its clients read them while the source is offline.
+ * Fork: thread backups (`packages/contracts/src/forkThreadBackup.ts`). With `threadBackupMachine`
+ * set, each changed thread's transcript goes over the kitshn link to that machine, which keeps the
+ * newest per source in `<stateDir>/thread-backups/<environmentId>/` for clients while it is offline.
  */
 import {
   AuthOrchestrationOperateScope,
@@ -217,8 +215,8 @@ const make = Effect.gen(function* () {
               reason: error.reason,
               detail: error.detail,
             }).pipe(
-              // A target that cannot exist on this map never takes a retry.
-              Effect.as(error.reason === "unknown-machine" || error.reason === "not-on-map"),
+              // A machine that no kitshn link reaches never takes a retry.
+              Effect.as(error.reason === "unknown-machine"),
             ),
         }),
         Effect.catchCause((cause) =>

@@ -12,6 +12,8 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as NodeBuffer from "node:buffer";
 
+import { NO_THREAD_CREDENTIAL } from "@t3tools/provider-core/server/forkThreadCredential";
+
 const MAX_LIVE_TERMINALS = 16;
 const MAX_UNRELEASED_TERMINALS = 64;
 const MAX_RETAINED_TERMINALS = 32;
@@ -60,8 +62,7 @@ function appendOutput(state: OutputBufferState, chunk: Uint8Array): void {
 function readOutput(state: OutputBufferState): string {
   let combined: Uint8Array = NodeBuffer.Buffer.concat(state.chunks, state.bytes);
   if (state.truncated) {
-    // Drop leading UTF-8 continuation bytes so truncation lands on a
-    // character boundary, as the spec requires.
+    // The spec requires truncation at a UTF-8 character boundary.
     let start = 0;
     while (start < combined.byteLength && (combined[start]! & 0b1100_0000) === 0b1000_0000) {
       start += 1;
@@ -137,13 +138,13 @@ function acpTerminalCommand(input: {
   readonly shellCommands?: boolean | undefined;
   readonly defaultCwd: string;
   readonly environment?: NodeJS.ProcessEnv | undefined;
-  readonly forceKillAfter?: Duration.Input | undefined;
+  readonly forceKillAfter: Duration.Input;
 }) {
   return ChildProcess.make(input.request.command, input.request.args ?? [], {
     cwd: input.request.cwd ?? input.defaultCwd,
     ...(input.environment === undefined ? {} : { env: input.environment }),
     shell: input.shellCommands === true && (input.request.args?.length ?? 0) === 0,
-    forceKillAfter: input.forceKillAfter ?? "5 seconds",
+    forceKillAfter: input.forceKillAfter,
   });
 }
 
@@ -151,6 +152,7 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
   options: AcpClientTerminalsOptions,
 ): Effect.fn.Return<AcpClientTerminals, never, ChildProcessSpawner.ChildProcessSpawner> {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const forceKillAfter = options.forceKillAfter ?? "5 seconds";
   const creationPermit = yield* Semaphore.make(1);
   const terminals = new Map<string, ManagedAcpTerminal>();
   let nextTerminalNumber = 1;
@@ -217,12 +219,14 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
             (request.env ?? []).map((variable) => [variable.name, variable.value] as const),
           );
           const sessionEnvironment = options.environmentForSession?.(request.sessionId);
-          const environment =
-            options.environment === undefined &&
-            sessionEnvironment === undefined &&
-            (request.env?.length ?? 0) === 0
-              ? undefined
-              : { ...options.environment, ...sessionEnvironment, ...requestEnvironment };
+          // Fork: a server started from an agent shell never lends that thread's credential.
+          // An explicit `env` replaces the child environment, so start from the server's.
+          const environment = {
+            ...(options.environment ?? process.env),
+            ...NO_THREAD_CREDENTIAL,
+            ...sessionEnvironment,
+            ...requestEnvironment,
+          };
           const terminalScope = yield* Scope.make();
           const child = yield* restore(
             spawner
@@ -232,7 +236,7 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
                   shellCommands: options.shellCommands,
                   defaultCwd: options.defaultCwd,
                   environment,
-                  forceKillAfter: options.forceKillAfter,
+                  forceKillAfter,
                 }),
               )
               .pipe(
@@ -266,7 +270,9 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
               ),
             },
             exit: yield* Deferred.make<EffectAcpSchema.WaitForTerminalExitResponse>(),
-            kill: child.kill().pipe(Effect.ignore),
+            // The spawner only applies the command's forceKillAfter on scope close;
+            // an explicit kill must pass it or a SIGTERM-ignoring command never exits.
+            kill: child.kill({ forceKillAfter }).pipe(Effect.ignore),
             dispose: Scope.close(terminalScope, Exit.void).pipe(Effect.ignore),
             exitStatus: undefined,
             released: false,

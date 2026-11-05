@@ -13,21 +13,17 @@ import {
 import { useClientSettings } from "../../hooks/useSettings";
 import { toastManager } from "../ui/toast";
 import { useForkCopyMessageLink } from "../chat/ForkCopyMessageLink";
+import { useForkToggleMessagePin } from "../chat/ForkMessagePins";
 import {
   type FocusLevelCommandHandler,
   registerFocusLevelCommands,
 } from "./useFocusLevelShortcuts";
 
 /**
- * Fork: a keyboard cursor over the timeline. Depth 0 is a message row. Each deeper depth splits
- * the unit above it: a message into blocks (paragraphs, list items, headings, code blocks, table
- * rows), a block into nested blocks, and a block without nested blocks into sentences, or a code
- * block into lines. The cursor paints with the CSS Custom Highlight API, so it never changes the
- * message DOM, and citing reuses the citation code of a mouse selection.
- *
- * Inside a message, each control is a stop too, after the unit that holds it: a sentence, then its
- * links, then the next sentence. Enter clicks a control. A disclosure, such as a `<details>`
- * summary or a tool call group, is a block: Right opens it, and Left closes it.
+ * Fork: a keyboard cursor over the timeline. Each depth splits the unit above it: message, blocks,
+ * nested blocks, then sentences or code lines. It paints with the CSS Custom Highlight API, so the
+ * message DOM never changes. A control is a stop after the unit that holds it, and Enter clicks
+ * it. A disclosure is a block: Right opens it, and Left closes it.
  */
 
 const HIGHLIGHT_NAME = "timeline-cursor";
@@ -212,16 +208,20 @@ function asHtmlElement(node: unknown): HTMLElement | null {
 export function TimelineCursor(props: {
   readonly viewport: HTMLElement | null;
   readonly listRef: RefObject<LegendListRef | null>;
-  readonly rows: ReadonlyArray<{ readonly id: string; readonly message?: { readonly id: string } }>;
+  readonly rows: ReadonlyArray<{
+    readonly id: string;
+    readonly message?: { readonly id: string; readonly text?: string };
+  }>;
   readonly threadRef: ScopedThreadRef | null;
   readonly onCite:
     | ((citation: AssistantCitation, sourceAnchor: AssistantCitationSourceAnchor | null) => boolean)
     | undefined;
 }) {
   const copyMessageLink = useForkCopyMessageLink(props.threadRef);
-  const latest = useRef({ ...props, copyMessageLink });
+  const toggleMessagePin = useForkToggleMessagePin(props.threadRef);
+  const latest = useRef({ ...props, copyMessageLink, toggleMessagePin });
   useLayoutEffect(() => {
-    latest.current = { ...props, copyMessageLink };
+    latest.current = { ...props, copyMessageLink, toggleMessagePin };
   });
 
   const enabled = useClientSettings(selectKeyboardFocusLevels);
@@ -305,11 +305,19 @@ export function TimelineCursor(props: {
         node.scrollTop += target.bottom - area.bottom + SCROLL_MARGIN_PX;
       }
     };
-    const show = (next: Cursor | null) => {
+    const show = (next: Cursor | null, scroll = true) => {
       cursor = next;
       const range = next ? selectedRange(next) : null;
       paint(range);
-      if (range) reveal(range);
+      if (range && scroll) reveal(range);
+    };
+    const onScreen = (at: Cursor) => {
+      const node = scroller();
+      const range = selectedRange(at);
+      if (!node || !range) return false;
+      const area = node.getBoundingClientRect();
+      const rect = range.getBoundingClientRect();
+      return rect.bottom > area.top && rect.top < area.bottom;
     };
     /** Scrolls a row that the virtualized list did not mount into the list, then shows it. */
     const showRow = (next: Cursor, framesLeft = MOUNT_WAIT_FRAMES) => {
@@ -495,7 +503,9 @@ export function TimelineCursor(props: {
         const selected = freshSelection();
         const fromMouse = selected && !selected.collapsed ? selected : null;
         const at = adoptSelection() ?? current();
-        if (at) show(at);
+        // The unit of a mouse selection can be a whole message: revealing it moves the cited text,
+        // and the note card that points at it, out of view.
+        if (at) show(at, !fromMouse && !onScreen(at));
         // On a control, Enter clicks it: a link opens, a section opens or closes, a button runs.
         const target = !fromMouse && at ? controlTarget(at) : null;
         if (target) {
@@ -647,6 +657,18 @@ export function TimelineCursor(props: {
           return false;
         const row = latest.current.rows.find((row) => row.id === at.rowId);
         return latest.current.copyMessageLink(row?.message?.id);
+      },
+      "timeline.pinMessage": (event) => {
+        // Like Copy message link: the palette must use the message the user chose.
+        const at = cursor;
+        if (!at || event.repeat) return false;
+        if (
+          latest.current.threadRef?.threadId !== threadId ||
+          latest.current.threadRef?.environmentId !== environmentId
+        )
+          return false;
+        const row = latest.current.rows.find((row) => row.id === at.rowId);
+        return latest.current.toggleMessagePin(row?.message);
       },
       "timeline.jumpToLatest": () => {
         if (!active()) return false;

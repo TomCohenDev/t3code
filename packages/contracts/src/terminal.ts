@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  TERMINAL_COMMAND_MAX_LENGTH,
+  TerminalAttention,
+  TerminalShellState,
+  TerminalThreadsOffError,
+} from "./forkTerminalThreads.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const DEFAULT_TERMINAL_ID = "term-1";
@@ -20,13 +26,15 @@ const TerminalEnvValueSchema = Schema.String.check(Schema.isMaxLength(8_192));
 const TerminalEnvSchema = Schema.Record(TerminalEnvKeySchema, TerminalEnvValueSchema).check(
   Schema.isMaxProperties(128),
 );
+/** Fork: a shell slug, one of the models of the `terminal` provider (`forkTerminalThreads.ts`). */
+const TerminalShellSchema = TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(64));
 
 export const TerminalThreadInput = Schema.Struct({
   threadId: TrimmedNonEmptyStringSchema,
 });
 export type TerminalThreadInput = typeof TerminalThreadInput.Type;
 
-/** Terminal ids are ALWAYS chosen by the client and sent explicitly — no server-side allocation. */
+// Terminal ids are client-chosen; the server never allocates them.
 const TerminalSessionInput = Schema.Struct({
   ...TerminalThreadInput.fields,
   terminalId: TerminalIdSchema,
@@ -41,6 +49,8 @@ export const TerminalOpenInput = Schema.Struct({
   rows: Schema.optional(TerminalRowsSchema),
   env: Schema.optional(TerminalEnvSchema),
   providerInstanceId: Schema.optional(ProviderInstanceId),
+  /** Fork: the shell to start instead of the default shell. A different shell restarts it. */
+  shell: Schema.optional(TerminalShellSchema),
 });
 export type TerminalOpenInput = typeof TerminalOpenInput.Type;
 
@@ -53,6 +63,8 @@ export const TerminalAttachInput = Schema.Struct({
   env: Schema.optional(TerminalEnvSchema),
   providerInstanceId: Schema.optional(ProviderInstanceId),
   restartIfNotRunning: Schema.optional(Schema.Boolean),
+  /** Fork: the shell to start when the attach opens the terminal. */
+  shell: Schema.optional(TerminalShellSchema),
   // Resubscriptions preserve stopped terminals; unknown IDs recover after a server restart.
   resume: Schema.optional(Schema.Boolean),
 });
@@ -77,17 +89,6 @@ export type TerminalResizeInput = Schema.Codec.Encoded<typeof TerminalResizeInpu
 export const TerminalClearInput = TerminalSessionInput;
 export type TerminalClearInput = Schema.Codec.Encoded<typeof TerminalClearInput>;
 
-export const TerminalRestartInput = Schema.Struct({
-  ...TerminalSessionInput.fields,
-  cwd: TrimmedNonEmptyStringSchema,
-  worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyStringSchema)),
-  cols: TerminalColsSchema,
-  rows: TerminalRowsSchema,
-  env: Schema.optional(TerminalEnvSchema),
-  providerInstanceId: Schema.optional(ProviderInstanceId),
-});
-export type TerminalRestartInput = typeof TerminalRestartInput.Type;
-
 export const TerminalCloseInput = Schema.Struct({
   ...TerminalThreadInput.fields,
   terminalId: Schema.optional(TerminalIdSchema),
@@ -111,6 +112,9 @@ export const TerminalSessionSnapshot = Schema.Struct({
   label: Schema.String.check(Schema.isMaxLength(128)),
   updatedAt: Schema.String,
   sequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  // The PTY grid every renderer of this terminal should draw; absent from older servers.
+  cols: Schema.optional(TerminalColsSchema),
+  rows: Schema.optional(TerminalRowsSchema),
 });
 export type TerminalSessionSnapshot = typeof TerminalSessionSnapshot.Type;
 
@@ -126,6 +130,13 @@ export const TerminalSummary = Schema.Struct({
   hasRunningSubprocess: Schema.Boolean,
   label: Schema.String.check(Schema.isMaxLength(128)),
   updatedAt: Schema.String,
+  /** Fork: set on the main terminal of a terminal thread. */
+  attention: Schema.optionalKey(TerminalAttention),
+  shell: Schema.optionalKey(TerminalShellState),
+  /** The program and subcommand of the last command (`terminalCommandTitle`). */
+  command: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(TERMINAL_COMMAND_MAX_LENGTH))),
+  /** Fork: when the last command ended, also a short one that raises no `attention`. */
+  commandEndedAt: Schema.optionalKey(Schema.String),
 });
 export type TerminalSummary = typeof TerminalSummary.Type;
 
@@ -204,6 +215,9 @@ const TerminalActivityEvent = Schema.Struct({
   type: Schema.Literal("activity"),
   hasRunningSubprocess: Schema.Boolean,
   label: Schema.String.check(Schema.isMaxLength(128)),
+  // Shared PTY grid changes ride on activity because older clients reject unknown event types.
+  cols: Schema.optional(TerminalColsSchema),
+  rows: Schema.optional(TerminalRowsSchema),
 });
 
 export const TerminalEvent = Schema.Union([
@@ -367,6 +381,19 @@ export class TerminalResizeError extends Schema.TaggedError<TerminalResizeError>
   }
 }
 
+/** Fork: `shell` names no shell that this server found, such as a custom shell that was removed. */
+export class TerminalShellNotFoundError extends Schema.TaggedError<TerminalShellNotFoundError>()(
+  "TerminalShellNotFoundError",
+  {
+    shell: Schema.String,
+    available: Schema.Array(Schema.String),
+  },
+) {
+  override get message() {
+    return `The shell "${this.shell}" is not defined on this server any more. Choose another shell. This server has: ${this.available.join(", ") || "none"}.`;
+  }
+}
+
 export const TerminalError = Schema.Union([
   TerminalCwdError,
   TerminalHistoryError,
@@ -376,5 +403,7 @@ export const TerminalError = Schema.Union([
   TerminalNotRunningError,
   TerminalWriteError,
   TerminalResizeError,
+  TerminalShellNotFoundError,
+  TerminalThreadsOffError,
 ]);
 export type TerminalError = typeof TerminalError.Type;

@@ -16,7 +16,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { cast } from "effect/Function";
+import { cast, pipe } from "effect/Function";
 import {
   HttpClient,
   HttpClientResponse,
@@ -31,7 +31,7 @@ import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, readMcpAppHtml, resolveAsset } from "./assets/AssetAccess.ts";
-import { githubMediaResponse } from "./assets/GitHubMediaFetch.ts";
+import { sourceControlMediaResponse } from "./assets/sourceControlMediaResponse.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
   ATTACHMENT_UPLOAD_ROUTE_PREFIX,
@@ -48,26 +48,24 @@ import {
   failEnvironmentInternal,
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
-import * as MachineMapState from "./fork/machineMap/MachineMapState.ts";
+import * as KitshnGrants from "./fork/kitshn/KitshnGrants.ts";
 import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
   DESKTOP_RENDERER_ORIGINS,
 } from "./httpCors.ts";
+import { requestUrl } from "./requestUrl.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const SVG_CONTENT_SECURITY_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-// The sandbox gives the document an opaque origin: scripts run, but same-origin
-// cookies, storage, and API calls are out of reach. No modals: agent HTML can
-// open without a click (inline renders, and mobile loads it as the top document),
-// and must not raise blocking dialogs.
+// Opaque origin blocks cookies, storage and API access while allowing scripts.
+// Agent HTML can open without a click, so disallow blocking modals.
 const HTML_CONTENT_SECURITY_POLICY =
   "sandbox allow-scripts allow-forms allow-popups allow-downloads";
 
-// Types a browser may render as a document if a proxy strips the disposition
-// header. Downloads of these fall back to octet-stream.
+// Proxies may strip disposition; force document-capable downloads to octet-stream.
 const DOWNLOAD_MIME_TYPE_PATTERN = /^[\w!#$&^.+-]+\/[\w!#$&^.+-]+$/;
 const isSafeDownloadMimeType = (mimeType: string): boolean =>
   DOWNLOAD_MIME_TYPE_PATTERN.test(mimeType) &&
@@ -185,8 +183,11 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     if (bytes === null) {
       return HttpServerResponse.text("MCP app is too large to preview.", { status: 413 });
     }
-    const body = new TextEncoder().encode(
-      injectMcpAppCookieBootstrap(injectMcpAppThemeBootstrap(new TextDecoder().decode(bytes))),
+    const body = pipe(
+      new TextDecoder().decode(bytes),
+      injectMcpAppThemeBootstrap,
+      injectMcpAppCookieBootstrap,
+      (html) => new TextEncoder().encode(html),
     );
     headers["Content-Length"] = String(body.byteLength);
     return method === "HEAD"
@@ -197,15 +198,13 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
   const isMedia = /^(?:audio|video)\//i.test(headers["Content-Type"] ?? "");
   if (isMedia) {
-    // Do not invite conditional range requests with validators that cannot establish
-    // byte-for-byte identity. Attachment media carries no `file`, and must not
-    // outlive the signed URL that granted it either.
+    // Without file identity, validators cannot guarantee byte equality; attachments must also expire with their URL.
     headers["Cache-Control"] = "private, no-store";
   }
   let status = 200;
   let offset = 0n;
   let bytesToRead: bigint | undefined;
-  if (isMedia) {
+  {
     headers["Accept-Ranges"] = "bytes";
     // If-Range requires a matching validator. A full response is safe when we cannot validate it.
     if (method === "GET" && rangeHeader && ifRangeHeader === undefined) {
@@ -261,11 +260,11 @@ export const layerBrowserApiCors = Layer.unwrap(
     const config = yield* ServerConfig.ServerConfig;
     const devOrigin = config.devUrl?.origin;
     const trustedOrigins = config.trustedBrowserOrigins ?? [];
-    // Fork: machine map (MM-1311). The pages of peer machines are trusted like the list above.
-    const machineMap = yield* Effect.serviceOption(MachineMapState.MachineMapState);
+    // Fork (MM-1311): the pages of linked machines are trusted like the list above (K-1609).
+    const kitshnGrants = yield* Effect.serviceOption(KitshnGrants.KitshnGrants);
     const isTrusted = (origin: string) =>
       trustedOrigins.includes(origin) ||
-      (Option.isSome(machineMap) && machineMap.value.trustsPeerOrigin(origin));
+      (Option.isSome(kitshnGrants) && kitshnGrants.value.trustsPeerOrigin(origin));
     const shared = {
       allowedMethods: browserApiCorsAllowedMethods,
       allowedHeaders: browserApiCorsAllowedHeaders,
@@ -280,13 +279,13 @@ export const layerBrowserApiCors = Layer.unwrap(
           ...DESKTOP_RENDERER_ORIGINS,
           ...config.devAllowedOrigins,
           ...trustedOrigins,
-          ...(Option.isSome(machineMap) ? machineMap.value.peerOrigins() : []),
+          ...(Option.isSome(kitshnGrants) ? kitshnGrants.value.peerOrigins() : []),
         ],
         credentials: true,
         ...shared,
       });
     }
-    if (trustedOrigins.length === 0 && Option.isNone(machineMap)) {
+    if (trustedOrigins.length === 0 && Option.isNone(kitshnGrants)) {
       return HttpRouter.cors(shared);
     }
     // Fork: T3CODE_TRUSTED_BROWSER_ORIGINS. A trusted origin gets its exact
@@ -369,8 +368,7 @@ class DecodeOtlpTraceRecordsError extends Data.TaggedError("DecodeOtlpTraceRecor
   readonly cause: unknown;
 }> {}
 
-// Renderers export up to once a second while they have spans buffered, so
-// tracing this proxy would add more server spans than it forwards.
+// Tracing once-per-second renderer exports would create more spans than it forwards.
 export const layerOtlpTracesProxyRoute = HttpRouter.add(
   "POST",
   OTLP_TRACES_PROXY_PATH,
@@ -427,14 +425,17 @@ export const layerOtlpTracesProxyRoute = HttpRouter.add(
 
 const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([OTLP_TRACES_PROXY_PATH]);
 
-// TracerDisabledWhen is one predicate for the whole server, and
-// HttpRouter.serve builds its routes privately, so it is provided to the served
-// layer, never merged into the routes.
+// HttpRouter.serve builds routes privately; provide the server-wide TracerDisabledWhen to the served layer.
 const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((request) => {
   const queryIndex = request.url.indexOf("?");
   const path = queryIndex === -1 ? request.url : request.url.slice(0, queryIndex);
-  // Webhook URLs carry their secret token in the path, so they never reach a trace.
-  return UNTRACED_REQUEST_PATHS.has(path) || path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`);
+  // Signed URLs carry bearer tokens in the path, so they never reach a trace.
+  return (
+    UNTRACED_REQUEST_PATHS.has(path) ||
+    path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`) ||
+    path.startsWith(`${ASSET_ROUTE_PREFIX}/`) ||
+    path.startsWith(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/`)
+  );
 });
 
 export const withUntracedRequests = Layer.provide(layerUntracedRequests);
@@ -444,7 +445,7 @@ export const layerAssetRoute = HttpRouter.add(
   `${ASSET_ROUTE_PREFIX}/*`,
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -468,10 +469,15 @@ export const layerAssetRoute = HttpRouter.add(
         headers: { "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff" },
       });
     }
-    if (asset.kind === "github-media") {
-      return yield* githubMediaResponse(asset, request.headers).pipe(
+    if (asset.kind === "source-control-media") {
+      return yield* sourceControlMediaResponse(asset, request.headers).pipe(
         Effect.tapError((cause) =>
-          Effect.logWarning("Failed to fetch GitHub media.", { url: asset.url, cause }),
+          // The URL can carry a token in its query string, and the error keeps the request it
+          // failed on; the host and the failure kind are enough to diagnose.
+          Effect.logWarning("Failed to fetch source control media.", {
+            host: URL.canParse(asset.url) ? new URL(asset.url).host : undefined,
+            reason: cause.reason._tag,
+          }),
         ),
         Effect.orElseSucceed(() =>
           HttpServerResponse.empty({
@@ -497,7 +503,7 @@ export const layerAttachmentUploadRoute = HttpRouter.add(
   `${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/*`,
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -598,7 +604,7 @@ const streamStaticFile = (file: FileSystem.File, size: bigint) =>
 const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
   function* (immutableBuildAssets: ReadonlySet<string>) {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
 
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
@@ -700,8 +706,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
     const etag = headers.ETag;
     const lastModified = headers["Last-Modified"];
 
-    // If-None-Match takes precedence over dates and uses weak comparison for
-    // GET/HEAD, including when compression changes the transferred bytes.
+    // If-None-Match precedes dates and uses weak GET/HEAD comparison even across compression.
     const ifNoneMatch = request.headers["if-none-match"];
     const ifModifiedSince = request.headers["if-modified-since"];
     const unchanged =

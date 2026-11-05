@@ -1,12 +1,22 @@
+import * as Dialog from "../../components/ui/Dialog";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import Constants from "expo-constants";
-import { View } from "react-native";
+import { settlePromise } from "@t3tools/client-runtime/state/runtime";
+import { useRef, useState } from "react";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
-import { AppUpdateCheckRow } from "../updates/AppUpdateCheckRow";
+import { useDeadlinePassed } from "../../lib/clock";
+import {
+  type AppUpdateCheckState,
+  isAppUpdateCheckAvailable,
+  registerHiddenUpdateTap,
+  runAppUpdateCheck,
+} from "../updates/app-updates";
 import { SettingsRow } from "./components/SettingsRow";
+import { AppUpdateCheckRow } from "../updates/AppUpdateCheckRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 
@@ -14,7 +24,7 @@ export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <SettingsScreen title="About T3 Code">
+    <SettingsScreen title="About">
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -29,12 +39,85 @@ export function SettingsAboutRouteScreen() {
 }
 
 function AppSettingsSection() {
+  const [checkState, setCheckState] = useState<{
+    readonly state: AppUpdateCheckState;
+    // "Up to date" is a confirmation that fades back to idle.
+    readonly settledUntil: number | null;
+  }>({ state: "idle", settledUntil: null });
+  const confirmationExpired = useDeadlinePassed(checkState.settledUntil);
+  const updateState =
+    checkState.state === "current" && confirmationExpired ? "idle" : checkState.state;
+  const updateInFlight = useRef(false);
+  const hiddenUpdateTapCount = useRef(0);
+
   const version = Constants.expoConfig?.version ?? "0.0.0";
-  // Fall back to "production" to match resolveAppVariant in app.config.ts, so a
-  // missing variant never mislabels a production build as development.
+  // Match app.config.ts's production fallback to avoid mislabeling builds as development.
   const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
   const variantLabel = variant === "production" ? "" : capitalize(variant);
   const versionLabel = variantLabel ? `${version} · ${variantLabel}` : version;
+  const updateCheckAvailable = isAppUpdateCheckAvailable();
+  const busy =
+    updateState === "checking" || updateState === "downloading" || updateState === "restarting";
+
+  async function checkForUpdate() {
+    // disabled updates next render; the ref blocks same-frame double taps.
+    if (updateInFlight.current) return;
+    updateInFlight.current = true;
+    // Failures arrive through onFailure; the settled result only matters for unlocking.
+    await settlePromise(() =>
+      runAppUpdateCheck({
+        applyMode: "immediate",
+        onFailure: (message) => Dialog.alert("Update failed", message),
+        onStateChange: (state) =>
+          setCheckState({
+            state,
+            settledUntil: state === "current" ? Date.now() + 3000 : null,
+          }),
+      }),
+    );
+    updateInFlight.current = false;
+  }
+
+  function handleVersionPress() {
+    if (!updateCheckAvailable || updateInFlight.current) return;
+    const tap = registerHiddenUpdateTap(hiddenUpdateTapCount.current);
+    hiddenUpdateTapCount.current = tap.nextCount;
+    if (tap.shouldCheck) {
+      void checkForUpdate();
+    }
+  }
+
+  const statusLabel =
+    updateState === "checking"
+      ? "Checking…"
+      : updateState === "downloading"
+        ? "Downloading…"
+        : updateState === "ready"
+          ? "Update ready"
+          : updateState === "restarting"
+            ? "Restarting…"
+            : updateState === "current"
+              ? "Up to date"
+              : null;
+
+  const versionRow = (
+    <View className="flex-row items-center gap-4 p-4">
+      <SymbolView
+        name="info.circle"
+        size={22}
+        tintColorClassName="accent-icon"
+        type="monochrome"
+        weight="regular"
+      />
+      <Text className="flex-1 text-lg text-foreground">Version</Text>
+      <View className="items-end">
+        <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
+        {statusLabel ? (
+          <Text className="text-xs text-foreground-muted/70">{statusLabel}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
 
   return (
     <SettingsSection title="App">
@@ -46,17 +129,18 @@ function AppSettingsSection() {
         target="SettingsOpenSourceLicenses"
       />
       <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
-      <View className="flex-row items-center gap-4 p-4">
-        <SymbolView
-          name="info.circle"
-          size={22}
-          tintColorClassName="accent-icon"
-          type="monochrome"
-          weight="regular"
-        />
-        <Text className="flex-1 text-lg text-foreground">Version</Text>
-        <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
-      </View>
+      {updateCheckAvailable ? (
+        <Pressable
+          accessibilityLabel={`Version ${versionLabel}`}
+          accessibilityRole="text"
+          disabled={busy}
+          onPress={handleVersionPress}
+        >
+          {versionRow}
+        </Pressable>
+      ) : (
+        versionRow
+      )}
       <AppUpdateCheckRow />
     </SettingsSection>
   );

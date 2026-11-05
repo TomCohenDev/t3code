@@ -5,7 +5,10 @@
  * the shared value of the map (MM-411), which every machine applies.
  */
 import type { SidebarTab, SidebarTabRuleField, SidebarTabs } from "@t3tools/contracts";
-import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  forkEffectiveSnoozed,
+  forkThreadWokeAt,
+} from "@t3tools/client-runtime/state/fork-terminal-threads";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -105,12 +108,12 @@ function buildSidebarTabItems(input: {
       thread.lastVisitedAt,
       localLastVisitedAt[index],
     );
-    const wokeAt = threadWokeAt(thread, { now });
+    const wokeAt = forkThreadWokeAt(thread, { now });
     const settled = thread.settledOverride === "settled";
     return {
       thread,
       settled,
-      asleep: settled || effectiveSnoozed(thread, { now }),
+      asleep: settled || forkEffectiveSnoozed(thread, { now }),
       isUnread: hasUnseenCompletion({ ...thread, lastVisitedAt }),
       isWoke:
         wokeAt !== null &&
@@ -149,6 +152,8 @@ function buildSidebarTabItems(input: {
 export function useSidebarTabs(input: {
   /** Every thread shell, before any filter. */
   readonly threads: ReadonlyArray<SidebarThreadSummary>;
+  /** Tasks linked environments run for a listed thread; they show under it. */
+  readonly delegatedUnderParent: ReadonlySet<string>;
   readonly ownerVisibleProjectKeys: ReadonlySet<string> | null;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly projects: ReadonlyArray<EnvironmentProject>;
@@ -177,10 +182,15 @@ export function useSidebarTabs(input: {
 
   const projects = buildSidebarTabProjectFacts(input.projects);
   // Non-archived sidebar threads: what the tabs hold and what an assignment can name.
-  const liveThreads = filterSidebarV2VisibleThreads(input.threads, null);
+  const liveThreads = filterSidebarV2VisibleThreads(
+    input.threads,
+    null,
+    input.delegatedUnderParent,
+  );
   const threads = filterSidebarV2VisibleThreads(
     filterSidebarThreadsByOwner(input.threads, input.ownerVisibleProjectKeys),
     input.scopedProjectKeys,
+    input.delegatedUnderParent,
   );
 
   // Known rules and view flags, once per change of the tabs, not once per thread.
@@ -280,7 +290,7 @@ export function useSidebarTabs(input: {
   const update = (change: (current: SidebarTabs) => SidebarTabs) => {
     if (primaryEnvironmentId === null || !ready) return;
     const current = latestSettingsRef.current;
-    const next = pruneSidebarTabAssignments(change(current), liveThreads);
+    const next = pruneSidebarTabAssignments(change(current));
     if (JSON.stringify(next) === JSON.stringify(current)) return;
     latestSettingsRef.current = next;
     void persist({

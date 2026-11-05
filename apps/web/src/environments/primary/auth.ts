@@ -17,7 +17,7 @@ import { HttpClientError } from "effect/http";
 import {
   getPairingTokenFromUrl,
   stripPairingTokenFromUrl as stripPairingTokenUrl,
-} from "../../pairingUrl";
+} from "@t3tools/shared/remote";
 
 import { browserKeyProof } from "../../connection/browserKeyProof";
 import { PrimaryEnvironmentHttpClient } from "./httpClient";
@@ -131,10 +131,6 @@ export interface ServerClientSessionRecord {
 
 type ServerAuthGateState =
   | { status: "authenticated" }
-  // Fork: MM-718. The machine map pause locks this client; pairing cannot help.
-  | { status: "machine-paused" }
-  // Fork: MM-920. The browser key of this browser waits for approval in the portal.
-  | { status: "client-pending"; pending: NonNullable<AuthSessionState["clientPending"]> }
   | {
       status: "requires-auth";
       auth: AuthSessionState["auth"];
@@ -170,9 +166,7 @@ export function takePairingTokenFromUrl(): string | null {
 }
 
 function getDesktopBootstrapCredential(): string | null {
-  // Both backends share the same bootstrap token (DesktopBackendConfiguration
-  // mints one tokenRef and feeds it to both resolvers), so picking the
-  // primary entry is fine even when the WSL backend is also registered.
+  // DesktopBackendConfiguration gives primary and WSL the same bootstrap token.
   const bootstraps = window.desktopBridge?.getLocalEnvironmentBootstraps() ?? [];
   const primary = bootstraps.find((entry) => entry.id === PRIMARY_LOCAL_ENVIRONMENT_ID);
   return typeof primary?.bootstrapToken === "string" && primary.bootstrapToken.length > 0
@@ -282,7 +276,7 @@ const TRANSIENT_BOOTSTRAP_STATUS_CODES = new Set([502, 503, 504]);
 const BOOTSTRAP_RETRY_TIMEOUT_MS = 15_000;
 const BOOTSTRAP_RETRY_STEP_MS = 500;
 
-export async function retryTransientBootstrap<T>(operation: () => Promise<T>): Promise<T> {
+async function retryTransientBootstrap<T>(operation: () => Promise<T>): Promise<T> {
   const startedAt = Date.now();
   while (true) {
     try {
@@ -321,18 +315,11 @@ function isTransientBootstrapError(error: unknown): boolean {
 
 async function bootstrapServerAuth(urlCredential: string | null): Promise<ServerAuthGateState> {
   const currentSession = await fetchSessionState();
-  if (currentSession.machinePaused === true) {
-    return { status: "machine-paused" };
-  }
   if (currentSession.authenticated && !urlCredential) {
     return { status: "authenticated" };
   }
 
   const bootstrapCredential = urlCredential ?? getDesktopBootstrapCredential();
-  // A pairing link still works while the key waits (MM-920).
-  if (!bootstrapCredential && currentSession.clientPending !== undefined) {
-    return { status: "client-pending", pending: currentSession.clientPending };
-  }
   if (!bootstrapCredential) {
     return {
       status: "requires-auth",
@@ -448,9 +435,7 @@ export async function revokeOtherServerClientSessions(): Promise<number> {
 }
 
 export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {
-  // An explicit pairing link replaces this browser's grant, even when the
-  // current cookie or a cached gate already authenticates it. Keep that intent
-  // after stripping the token, which causes the router to load this gate again.
+  // Preserve explicit grant replacement across the auth-gate reload triggered by token removal.
   if (window.location.pathname.replace(/\/+$/, "") !== "/pair") {
     explicitPairingRequested = false;
   } else if (peekPairingTokenFromUrl()) {
@@ -458,9 +443,7 @@ export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGat
   }
   if (explicitPairingRequested) {
     const currentSession = await fetchSessionState();
-    return currentSession.machinePaused === true
-      ? { status: "machine-paused" }
-      : { status: "requires-auth", auth: currentSession.auth };
+    return { status: "requires-auth", auth: currentSession.auth };
   }
 
   const urlCredential = takePairingTokenFromUrl();

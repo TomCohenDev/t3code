@@ -2,12 +2,11 @@
 # Install or update T3 Code from the TomCohenDev/t3code fork. See docs/fork/operations.md "Install the fork".
 #
 #   curl -fsSL https://raw.githubusercontent.com/TomCohenDev/t3code/main/scripts/fork-install/install.sh | bash
-#   curl -fsSL .../install.sh | bash -s -- --join <code>
 #
 # Linux with a display: the script installs the newest nightly AppImage from the fork releases.
 # Linux without a display: the script runs scripts/install.sh (the upstream installer, pointed at
 #   the fork releases) and the upstream background service `t3 service install`, on loopback.
-#   The server then updates itself (docs/fork/operations.md "Server updates").
+#   The server then updates itself (docs/fork/operations.md "Update and install").
 # macOS: the script installs the newest nightly app from the fork releases.
 set -euo pipefail
 
@@ -24,16 +23,13 @@ readonly APT_HINT="sudo apt-get update && sudo apt-get install -y curl tar ca-ce
 # The program and first arguments that run the server CLI. install_linux_server sets it.
 server=()
 port=3773
-join_code=""
 service=true
 force=false
 
 usage() {
   cat <<EOF
-Usage: install.sh [--join <code>] [--port <port>] [--no-service] [--force]
+Usage: install.sh [--port <port>] [--no-service] [--force]
 
-  --join <code>   Join the machine map with this one-time code. The server joins at once;
-                  the app joins when it starts.
   --port <port>   Server: the loopback port of the server. Default: $port
   --no-service    Server: do not install or restart the systemd user service.
   --force         App: replace an installed app. Without it, an installed app stays,
@@ -49,7 +45,6 @@ die() {
 
 while (($# > 0)); do
   case "$1" in
-    --join) join_code="${2:?--join needs a code}"; shift 2 ;;
     --port) port="${2:?--port needs a number}"; shift 2 ;;
     --no-service) service=false; shift ;;
     --force) force=true; shift ;;
@@ -103,21 +98,13 @@ install_mac() {
     rm -rf "/Applications/$name"
     ditto "$app" "/Applications/$name"
   fi
-  leave_join_code
+  next_join
   open "/Applications/$name"
 }
 
-# MM-211: the app server joins the machine map with this file at its next start, then deletes it.
-leave_join_code() {
-  if [[ -z "$join_code" ]]; then
-    log "next: in T3 Code, open Settings > Machines and paste the join code from the portal."
-    return
-  fi
-  local file="${T3CODE_HOME:-$HOME/.t3}/userdata/machine-map-join-code"
-  mkdir -p "$(dirname "$file")"
-  (umask 077 && printf '%s\n' "$join_code" >"$file")
-  log "T3 Code joins the machine map when it starts. If it was open already, quit it and open it again."
-  log "if it does not join within 10 minutes, open Settings > Machines and paste $join_code"
+# K-602: this machine joins other machines through kitshn, not through T3.
+next_join() {
+  log "next: join this machine to kitshn: kitshn join <code> --server <address>"
 }
 
 # Linux ------------------------------------------------------------------------------------------
@@ -160,13 +147,13 @@ EOF
   if ! ldconfig -p 2>/dev/null | grep -qF libfuse.so.2; then
     log "if the app does not start, install FUSE 2, for example: sudo apt install libfuse2t64"
   fi
-  leave_join_code
+  next_join
   nohup "$LINUX_APP" >/dev/null 2>&1 &
 }
 
 # Installs the newest fork release with scripts/install.sh, the upstream installer: the runtime in
 # <T3 home>/runtime/versions/<version> and the link ~/.local/bin/t3. The upstream background service
-# (`t3 service install`) runs it and updates it (docs/fork/operations.md "Server updates"). The machine needs
+# (`t3 service install`) runs it and updates it (docs/fork/operations.md "Update and install"). The machine needs
 # no Node.
 install_linux_server() {
   need curl "Install it with your package manager, for example: $APT_HINT"
@@ -186,7 +173,7 @@ install_linux_server() {
   if [[ "$service" == true ]] && install_upstream_service; then
     running=true
   fi
-  join_map "$running"
+  next_join
 }
 
 # The upstream unit file belongs to `t3 service install` and `t3 update`, which rewrite it. The fork
@@ -227,17 +214,6 @@ wait_for_server() {
   die "the server did not answer on port $port. Check it with: ${server[0]} service status"
 }
 
-# $1: true when the server runs.
-join_map() {
-  if [[ -z "$join_code" ]]; then
-    log "next: t3 machine-map join <code>   (the code comes from Add machine in the portal)"
-  elif [[ "$1" == true ]]; then
-    wait_for_server
-    "${server[0]}" machine-map join "$join_code"
-  else
-    log "next: start the server, then run: t3 machine-map join $join_code"
-  fi
-}
 
 case "$(uname -s)" in
   Linux)

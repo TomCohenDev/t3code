@@ -4,7 +4,7 @@ import {
   pinOrderKeyBetween,
   planPinnedReorder,
 } from "@t3tools/client-runtime/state/thread-sort";
-import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { forkEffectiveSnoozed } from "@t3tools/client-runtime/state/fork-terminal-threads";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 export type ThreadMoveDestination =
@@ -112,12 +112,7 @@ export interface ThreadMoveAvailability {
   readonly canMoveDown: boolean;
 }
 
-/**
- * Batch form of "call `createThreadMovePlanner` once per card": one pass over
- * the section answers up/down availability for every ordered row, so list
- * construction stays linear instead of one full planner probe (array copies,
- * hidden-key rescans) per row on the minute-tick rebuild path.
- */
+/** Compute per section; per-card planner probes make minute ticks quadratic. */
 export function computeThreadMoveAvailability(input: {
   readonly ordered: readonly OrderRow[];
   readonly allThreads?: readonly OrderRow[];
@@ -150,10 +145,7 @@ export function computeThreadMoveAvailability(input: {
   keysById.forEach((key, id) => {
     if (key != null && !indexById.has(id)) reservedKeys.add(key);
   });
-  // A swap permutes two rows without changing the multiset, so the assignment
-  // set differs from the unswapped baseline at at most those two positions, and
-  // mismatch/writability tallies computed once per section answer each row with
-  // a constant-size delta.
+  // Swaps affect at most two positions; precomputed totals allow constant-size availability checks.
   const midpoints = new Map<string, string | null>();
   const fastPathKey = (beforeKey: string | null, afterKey: string | null): string | null => {
     const memoKey = `${beforeKey ?? ""}\u0000${afterKey ?? ""}`;
@@ -289,7 +281,7 @@ export function threadDropLifecycle(
     pin: false,
     unpin: thread.pinnedAt != null,
     unsettle: thread.settledOverride === "settled",
-    unsnooze: effectiveSnoozed(thread, { now }),
+    unsnooze: forkEffectiveSnoozed(thread, { now }),
   };
 }
 

@@ -3,32 +3,43 @@
  * layer and calls the helpers below, so the upstream file keeps one line per hook.
  */
 import {
+  CommandId,
   FORK_WS_METHODS,
   ForkWsRpcGroup,
+  MachineMapRequestError,
   OrchestrationV2ThreadLaunchError,
   type OrchestrationV2ThreadLaunchInput,
   type ServerConfig,
+  ServerSettingsError,
+  type ServerSettings as ServerSettingsValue,
+  type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { HttpServerResponse } from "effect/http";
+import type * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import type * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import type * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ForkChangelog from "./ForkChangelog.ts";
-import { requireLocalDesktop } from "./machineMap/browserAccess.ts";
-import * as MachineMap from "./machineMap/MachineMap.ts";
-import { isLocalDesktopSubject, isMachineSubject } from "./machineMap/machineAccess.ts";
-import * as MachineMapState from "./machineMap/MachineMapState.ts";
+import { sessionAllowed } from "./kitshn/kitshnGrantRules.ts";
+import * as KitshnGrants from "./kitshn/KitshnGrants.ts";
+import * as ForkUpdates from "./ForkUpdates.ts";
+import { isMachineSubject } from "./machineMap/machineAccess.ts";
+import * as KitshnProvider from "./kitshn/KitshnProvider.ts";
+import * as KitshnSettingsSync from "./kitshn/KitshnSettingsSync.ts";
 import * as VoiceTranscription from "./voiceInput/VoiceTranscription.ts";
 import * as MachinePeers from "./machineMap/MachinePeers.ts";
 import * as PreviewServerGroups from "./PreviewServerGroups.ts";
 import * as ThreadBackups from "./threadBackup/ThreadBackups.ts";
+import * as TerminalThreadMove from "./TerminalThreadMove.ts";
+import * as ForkWorktreeRecreate from "./ForkWorktreeRecreate.ts";
 import * as WebPush from "./webPush/WebPush.ts";
 
 /** The fork RPC tags, which the upstream handler object in `ws.ts` omits. */
@@ -41,18 +52,13 @@ export const environmentLabelUpdates = <E>(
 ) =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const map = yield* Effect.serviceOption(MachineMapState.MachineMapState);
-      if (Option.isNone(map)) return Stream.empty;
+      const provider = yield* Effect.serviceOption(KitshnProvider.KitshnProvider);
+      if (Option.isNone(provider)) return Stream.empty;
       const settings = yield* ServerSettings.ServerSettingsService;
       const environment = yield* ServerEnvironment.ServerEnvironment;
+      // Each `register` answer can bring a new machine name; the label reads it again.
       const changes = Stream.merge(
-        map.value.changes.pipe(
-          Stream.map(
-            (local) =>
-              `${local.enabled}:${local.token !== null}:${local.saved.desired?.self.name ?? ""}`,
-          ),
-          Stream.changes,
-        ),
+        provider.value.state.pipe(Stream.map(() => "kitshn")),
         settings.streamChanges.pipe(
           Stream.map((value) => String(value.environmentLabelFromMachineMap)),
           Stream.changes,
@@ -69,12 +75,78 @@ export const environmentLabelUpdates = <E>(
     }),
   );
 
+/** The settings session of one socket, from its kitshn visitor (K-721 `check`). */
+export const kitshnSettingsSessionLayer = (request: HttpServerRequest.HttpServerRequest) =>
+  Layer.effect(
+    KitshnSettingsSync.KitshnSettingsSession,
+    Effect.serviceOption(KitshnGrants.KitshnGrants).pipe(
+      Effect.flatMap((grants) =>
+        Option.isNone(grants) ? Effect.succeed(null) : grants.value.visitor(request),
+      ),
+      Effect.map((result) =>
+        result?._tag === "visitor"
+          ? KitshnSettingsSync.settingsSessionOf(result.visitor)
+          : KitshnSettingsSync.OWNER_SESSION,
+      ),
+    ),
+  );
+
+/**
+ * The server settings as the socket's session reads and writes them: the chain Project, Circle,
+ * Environment, Shared, Default, where `ws.ts` sends the Circle layer. Read at layer build, so a
+ * handler keeps the session of its socket.
+ */
+export const sessionSettingsView = Effect.gen(function* () {
+  const session = yield* KitshnSettingsSync.KitshnSettingsSession;
+  const sync = yield* Effect.serviceOption(KitshnSettingsSync.KitshnSettingsSync);
+  if (Option.isNone(sync) || session.circles.length === 0) {
+    return {
+      serverSettings: (settings: ServerSettingsValue) => Effect.succeed(settings),
+      settingsChanges: <E, R>(
+        _snapshot: ServerSettingsValue,
+        changes: Stream.Stream<ServerSettingsValue, E, R>,
+      ) => changes,
+      writePatch: (patch: ServerSettingsPatch) =>
+        Effect.succeed(patch) as Effect.Effect<ServerSettingsPatch, ServerSettingsError>,
+    };
+  }
+  // The saved settings that the socket's snapshot was made from; `settingsChanges` starts there.
+  let lastSaved: ServerSettingsValue | null = null;
+  return {
+    serverSettings: (settings: ServerSettingsValue) => {
+      lastSaved = settings;
+      return sync.value.sessionServerSettings(session, settings);
+    },
+    settingsChanges: <E, R>(
+      snapshot: ServerSettingsValue,
+      changes: Stream.Stream<ServerSettingsValue, E, R>,
+    ) =>
+      sync.value.sessionSettingsChanges(
+        session,
+        { saved: lastSaved ?? snapshot, snapshot },
+        changes,
+      ),
+    writePatch: (patch: ServerSettingsPatch) =>
+      sync.value.writeSessionServerPatch(session, patch).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath: "kitshn t3.settings circle part",
+              operation: "write-file",
+              cause,
+            }),
+        ),
+      ),
+  };
+});
+
 // A handler layer of its own: one handler object for every RPC is too deep a type for tsc.
 export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
   ForkWsRpcGroup.toLayer(
     Effect.gen(function* () {
       const forkChangelog = yield* ForkChangelog.ForkChangelog;
-      const machineMap = yield* MachineMap.MachineMap;
+      const settingsSync = yield* KitshnSettingsSync.KitshnSettingsSync;
+      const settingsSession = yield* KitshnSettingsSync.KitshnSettingsSession;
       // The server provides it; a bare RPC layer, as in tests, reads only this environment.
       const machinePeers = yield* Effect.serviceOption(MachinePeers.MachinePeers);
       const environment = yield* ServerEnvironment.ServerEnvironment;
@@ -83,6 +155,10 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
       const voiceTranscription = yield* VoiceTranscription.VoiceTranscription;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const previewServerGroups = yield* PreviewServerGroups.PreviewServerGroups;
+      const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const terminalThreadMove = yield* TerminalThreadMove.TerminalThreadMove;
+      const forkUpdates = yield* ForkUpdates.ForkUpdates;
+      const worktreeRecreate = yield* ForkWorktreeRecreate.ForkWorktreeRecreate;
       /** MM-1907: this environment first, then the machines that its agents read. */
       const readableEnvironments = Effect.fn("ForkWs.readableEnvironments")(function* () {
         const self = yield* environment.getDescriptor;
@@ -96,8 +172,6 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
           ...peers.map(({ environmentId, name }) => ({ environmentId, name })),
         ];
       });
-      // Only the local desktop app gets the machine map token (MM-306, MM-1401).
-      const machineMapClient = { desktop: isLocalDesktopSubject(currentSession.subject) };
       return ForkWsRpcGroup.of({
         [FORK_WS_METHODS.forkChangelogListReleases]: (_input) => forkChangelog.listReleases,
         [FORK_WS_METHODS.forkChangelogReleaseChanges]: (input) =>
@@ -106,24 +180,17 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
         [FORK_WS_METHODS.forkChangelogSyncStatus]: (_input) => forkChangelog.syncStatus,
         [FORK_WS_METHODS.forkChangelogStartSync]: (_input) => forkChangelog.startSync,
         [FORK_WS_METHODS.machineMapSubscribe]: (_input) =>
-          machineMap.clientStates(machineMapClient),
-        [FORK_WS_METHODS.machineMapJoin]: (input) =>
-          requireLocalDesktop(machineMapClient).pipe(Effect.andThen(machineMap.join(input))),
-        [FORK_WS_METHODS.machineMapLeave]: (_input) =>
-          requireLocalDesktop(machineMapClient).pipe(Effect.andThen(machineMap.leave)),
-        [FORK_WS_METHODS.machineMapReportDesktop]: (input) =>
-          machineMap.reportDesktop(input, machineMapClient).pipe(Effect.as({})),
-        [FORK_WS_METHODS.machineMapShareSettings]: (input) => machineMap.shareSettings(input),
-        [FORK_WS_METHODS.machineMapRead]: (_input) =>
-          // MM-1701: another machine reaches this server through an arrow, not a map role.
-          // It must not read the map through the map role of this machine.
-          isMachineSubject(currentSession.subject)
-            ? Effect.succeed({
-                _tag: "unavailable" as const,
-                reason: "refused" as const,
-                detail: "Other machines read the map with their own map role.",
-              })
-            : machineMap.readPanel,
+          settingsSync.clientState(settingsSession),
+        [FORK_WS_METHODS.machineMapShareSettings]: (input) =>
+          settingsSync.share(input, settingsSession),
+        [FORK_WS_METHODS.machineMapSetCircleSettings]: (input) =>
+          settingsSync.setCircle(input, settingsSession).pipe(
+            Effect.as({}),
+            Effect.mapError(
+              (error) =>
+                new MachineMapRequestError({ reason: "settings-failed", detail: error.message }),
+            ),
+          ),
         [FORK_WS_METHODS.machineMapReadableEnvironments]: (_input) => readableEnvironments(),
         [FORK_WS_METHODS.webPushPublicKey]: (_input) =>
           webPush.publicKey.pipe(Effect.map((publicKey) => ({ publicKey }))),
@@ -134,18 +201,35 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
         // The scanner polls only while retained, as for `subscribeDiscoveredLocalServers`.
         [FORK_WS_METHODS.forkPreviewSubscribeLocalListeners]: (_input) =>
           Stream.unwrap(portDiscovery.retain.pipe(Effect.as(previewServerGroups.listeners))),
+        [FORK_WS_METHODS.vcsPrepareDraftWorktree]: (input) =>
+          threadLaunch.prepareDraftWorktree(input).pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationV2ThreadLaunchError({
+                  commandId: CommandId.make(`fork-draft-worktree:${input.threadId}`),
+                  projectId: input.projectId,
+                  message: ThreadLaunchService.failureDetail(cause),
+                  cause,
+                }),
+            ),
+          ),
+        [FORK_WS_METHODS.terminalMoveToThread]: (input) =>
+          terminalThreadMove.moveToThread(input).pipe(Effect.as({})),
+        [FORK_WS_METHODS.forkUpdatesTerminalHold]: (input) =>
+          forkUpdates.terminalHold(input.heldSince),
+        [FORK_WS_METHODS.threadRecreateWorktree]: (input) => worktreeRecreate.recreate(input),
       });
     }),
   );
 
-/** Machine map (MM-1311): peer machines join the explicit list of trusted browser origins. */
+/** MM-1311: linked machines join the explicit list of trusted browser origins (K-1609). */
 export const trustedBrowserOriginsConfig = (configured: ReadonlyArray<string> | undefined) =>
-  Effect.serviceOption(MachineMapState.MachineMapState).pipe(
-    Effect.map((machineMap) => {
+  Effect.serviceOption(KitshnGrants.KitshnGrants).pipe(
+    Effect.map((grants) => {
       const origins = [
         ...new Set([
           ...(configured ?? []),
-          ...(Option.isSome(machineMap) ? machineMap.value.peerOrigins() : []),
+          ...(Option.isSome(grants) ? grants.value.peerOrigins() : []),
         ]),
       ];
       return origins.length === 0 ? {} : { trustedBrowserOrigins: origins };
@@ -181,12 +265,27 @@ export const checkLaunchWorktreeBranch = (
         )
     : Effect.void;
 
-/** MM-718: the pause closes the socket at once; the upgrade then refuses it. */
-export const awaitMachineMapLock = (subject: string) =>
-  Effect.serviceOption(MachineMapState.MachineMapState).pipe(
-    Effect.flatMap((machineMapState) =>
-      Option.isNone(machineMapState)
+/**
+ * K-721: a socket that a kitshn visitor opened closes when its level no longer covers the session:
+ * after a re-check on `grants-changed`, or at its `until`. The upgrade then checks it again.
+ */
+export const awaitKitshnLoss = (
+  request: HttpServerRequest.HttpServerRequest,
+  session: Pick<EnvironmentAuth.AuthenticatedSession, "sessionId" | "subject" | "scopes">,
+) =>
+  Effect.serviceOption(KitshnGrants.KitshnGrants).pipe(
+    Effect.flatMap((grants) =>
+      Option.isNone(grants)
         ? Effect.never
-        : machineMapState.value.awaitLockFor(subject).pipe(Effect.as(HttpServerResponse.empty())),
+        : grants.value.visitor(request).pipe(
+            Effect.flatMap((result) =>
+              result._tag === "visitor"
+                ? grants.value.awaitLoss(result.visitor, (latest) =>
+                    sessionAllowed(session, latest.levels),
+                  )
+                : Effect.never,
+            ),
+            Effect.as(HttpServerResponse.empty()),
+          ),
     ),
   );

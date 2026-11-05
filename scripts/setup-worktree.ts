@@ -3,6 +3,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { forkVpCommand } from "./fork-setup-vp.ts";
+
 const ENV_FILES = [".env", NodePath.join("infra", "relay", ".env")];
 
 const worktree = NodePath.dirname(import.meta.dirname);
@@ -46,17 +48,17 @@ if (!projectRoot) {
   throw new Error("T3CODE_PROJECT_ROOT is not set. Run this through the t3.json setup action.");
 }
 
-// `shell` resolves `vp` through PATH, including Windows command shims.
-// Setup has no one answering install prompts. Pass pnpm's confirmation flag
-// through vp and leave stdin closed so other prompts fail instead of hanging.
-// Install exactly the locked dependencies so setup never rewrites the lockfile.
-// A stale lockfile must fail setup rather than silently resolving a new one.
-// Output is piped, not inherited, so a failure can keep its tail in the marker.
-const install = NodeChildProcess.spawn("vp i --frozen-lockfile -- --yes", {
-  cwd: worktree,
-  shell: true,
-  stdio: ["ignore", "pipe", "pipe"],
-});
+// Use the shell for Windows vp shims. Unattended installs need pnpm's confirmation
+// flag and closed stdin so other prompts fail. A stale lockfile must fail, not be rewritten.
+// Pipe output so the failure marker can keep its tail.
+const install = NodeChildProcess.spawn(
+  `${forkVpCommand(projectRoot)} i --frozen-lockfile -- --yes`,
+  {
+    cwd: worktree,
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 activeInstall = install;
 let installOutput = "";
 for (const [source, target] of [
@@ -102,9 +104,7 @@ if (
   );
 }
 
-// Env files live as real files in the main checkout; worktrees only get
-// symlinks to them. Only a symlink is ever replaced, so a real env file is
-// never deleted, including when this runs in the main checkout itself.
+// Worktrees link main-checkout env files; replace only symlinks so real files always survive.
 for (const file of ENV_FILES) {
   const source = NodePath.join(projectRoot, file);
   const sourceStat = NodeFS.lstatSync(source, { throwIfNoEntry: false });

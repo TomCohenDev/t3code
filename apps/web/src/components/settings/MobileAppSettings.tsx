@@ -6,7 +6,7 @@ import {
 
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { ScopedSwitch } from "./ScopedSwitch";
-import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
+import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
@@ -20,18 +20,6 @@ const NEW_THREAD_LABELS = {
   none: "No project",
 } satisfies Record<MobileNewThreadProjectValue, string>;
 
-/** Fork: server settings that only the mobile app reads. */
-export function MobileAppSettingsSection() {
-  return (
-    <SettingsSection id="mobile-app" title="Mobile app">
-      <MobilePublishedThemesSettingsRow />
-      <MobileNewThreadProjectSettingsRow />
-      <MobileComposerCameraSettingsRow />
-      <MobileSidebarTabsSettingsRow />
-    </SettingsSection>
-  );
-}
-
 export function MobilePublishedThemesSettingsRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -42,11 +30,11 @@ export function MobilePublishedThemesSettingsRow() {
       {...searchableSetting("mobile-published-themes")}
       serverScoped
       settingKeys={["mobilePublishedThemes"]}
-      description="The mobile app offers the themes that this server publishes, with their fonts, shape and canvas pattern, and takes the default theme."
+      description="The mobile app follows the themes of this server: it offers the published themes, with their fonts, shape and canvas pattern, and takes the default theme."
       resetAction={
         mixed || settings.mobilePublishedThemes !== fallback ? (
           <SettingResetButton
-            label="published themes on mobile"
+            label="themes on mobile"
             onClick={() => updateSettings({ mobilePublishedThemes: fallback })}
           />
         ) : null
@@ -56,7 +44,7 @@ export function MobilePublishedThemesSettingsRow() {
           settingKeys={["mobilePublishedThemes"]}
           checked={settings.mobilePublishedThemes}
           onCheckedChange={(checked) => updateSettings({ mobilePublishedThemes: Boolean(checked) })}
-          aria-label="Published themes on mobile"
+          aria-label="Themes on mobile"
         />
       }
     />
@@ -88,6 +76,37 @@ export function MobileComposerCameraSettingsRow() {
           checked={settings.mobileComposerCamera}
           onCheckedChange={(checked) => updateSettings({ mobileComposerCamera: Boolean(checked) })}
           aria-label="Camera on mobile"
+        />
+      }
+    />
+  );
+}
+
+export function MobileMessagePinsSettingsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const mixed = useScopedSettingsMixed(["mobileMessagePins"]);
+  const fallback = DEFAULT_SERVER_SETTINGS.mobileMessagePins;
+  return (
+    <SettingsRow
+      {...searchableSetting("mobile-message-pins")}
+      serverScoped
+      settingKeys={["mobileMessagePins"]}
+      description="A long press on a message in the mobile app offers Pin and Unpin. Pinned messages show in the sidebar and in thread details of the desktop and web app."
+      resetAction={
+        mixed || settings.mobileMessagePins !== fallback ? (
+          <SettingResetButton
+            label="message pins on mobile"
+            onClick={() => updateSettings({ mobileMessagePins: fallback })}
+          />
+        ) : null
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["mobileMessagePins"]}
+          checked={settings.mobileMessagePins}
+          onCheckedChange={(checked) => updateSettings({ mobileMessagePins: Boolean(checked) })}
+          aria-label="Message pins on mobile"
         />
       }
     />

@@ -1,4 +1,6 @@
+import { Schema } from "effect";
 import {
+  KeybindingCommand as KeybindingCommandSchema,
   STATIC_KEYBINDING_COMMANDS,
   type KeybindingCommand,
   type KeybindingShortcut,
@@ -8,17 +10,17 @@ import {
 } from "@t3tools/contracts";
 import {
   DEFAULT_RESOLVED_KEYBINDINGS,
+  parseKeybindingShortcut,
   parseKeybindingWhenExpression,
   US_SHIFTED_TO_UNSHIFTED_KEYS,
 } from "@t3tools/shared/keybindings";
 
-import { shortcutKeyFromEvent } from "../../keybindings";
+import { formatShortcutLabel, shortcutConflictKey, shortcutKeyFromEvent } from "../../keybindings";
+import { FOCUS_LEVELS_OFF } from "../focusLevels/focusLevels";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
-// Every usage.* command needs a rank. An unranked one falls back to the
-// alphabetical compare, which makes the comparator inconsistent and the order
-// depend on the input order.
+// Rank every usage command; mixing rank and alphabetical comparisons makes order input-dependent.
 const usageCommandOrder = new Map<KeybindingCommand, number>(
   [
     "usage.open" as const,
@@ -182,13 +184,18 @@ function conflictsWithWhen(leftWhen: string, rightWhen: string): boolean {
 export function keybindingConflictLabels(
   rows: ReadonlyArray<KeybindingRow>,
   input: { readonly rowId: string; readonly key: string; readonly when: string },
+  platform = navigator.platform,
 ): ReadonlyArray<string> {
   if (input.key.trim().length === 0) return [];
+  const shortcut = parseKeybindingShortcut(input.key);
+  if (!shortcut) return [];
+  // Compare resolved chords so mod+k and ctrl+k collide where mod is Ctrl.
+  const conflictKey = shortcutConflictKey(shortcut, platform);
   const conflicts: Array<string> = [];
   for (const candidate of rows) {
     if (
       candidate.id !== input.rowId &&
-      candidate.key === input.key &&
+      shortcutConflictKey(candidate.binding.shortcut, platform) === conflictKey &&
       conflictsWithWhen(candidate.when, input.when)
     ) {
       conflicts.push(commandLabel(candidate.command));
@@ -244,6 +251,7 @@ export function groupKeybindingRows(
 
 export function buildKeybindingRows(
   keybindings: ResolvedKeybindingsConfig,
+  platform = navigator.platform,
 ): ReadonlyArray<KeybindingRow> {
   const rowsById = new Map<string, KeybindingRow>();
   for (const binding of keybindings) {
@@ -266,11 +274,15 @@ export function buildKeybindingRows(
   const rows = [...rowsById.values()];
 
   const rowsWithConflicts = rows.map((row) => {
-    const conflicts = keybindingConflictLabels(rows, {
-      rowId: row.id,
-      key: row.key,
-      when: row.when,
-    });
+    const conflicts = keybindingConflictLabels(
+      rows,
+      {
+        rowId: row.id,
+        key: row.key,
+        when: row.when,
+      },
+      platform,
+    );
     return conflicts.length > 0
       ? Object.assign({}, row, { conflicts: [...new Set(conflicts)].toSorted() })
       : row;
@@ -285,19 +297,88 @@ export function buildKeybindingRows(
   return rowsWithConflicts;
 }
 
-// Filtering keeps the row objects so rows that stay visible while the query
-// changes receive the same props and skip rendering.
+const isKeybindingCommand = Schema.is(KeybindingCommandSchema);
+
+export interface KeybindingsSearch {
+  /** Shows only the bindings of this command. */
+  readonly command?: KeybindingCommand;
+  /** Opens a new binding row for `command`, as the item menu "Keybindings…" does. */
+  readonly add?: true;
+}
+
+export function validateKeybindingsSearch(raw: Record<string, unknown>): KeybindingsSearch {
+  if (!isKeybindingCommand(raw.command)) return {};
+  return raw.add === true ? { command: raw.command, add: true } : { command: raw.command };
+}
+
+/** The condition of the default binding of `command`, the start of a new binding for it. */
+export function defaultWhenForCommand(command: KeybindingCommand): KeybindingWhenNode | undefined {
+  return DEFAULT_RESOLVED_KEYBINDINGS.find((binding) => binding.command === command)?.whenAst;
+}
+
+const FOCUS_LEVEL_VARIABLES: ReadonlySet<string> = new Set(Object.keys(FOCUS_LEVELS_OFF));
+
+/**
+ * True when no state can make `when` true while the focus level flags are false, so the binding
+ * fires only with keyboard focus levels on.
+ */
+export function needsFocusLevels(when: KeybindingWhenNode | undefined): boolean {
+  const identifiers = new Set<string>();
+  collectWhenIdentifiersFromNode(when, identifiers);
+  if (![...identifiers].some((identifier) => FOCUS_LEVEL_VARIABLES.has(identifier))) return false;
+  const free = [...identifiers].filter(
+    (identifier) =>
+      !FOCUS_LEVEL_VARIABLES.has(identifier) && identifier !== "true" && identifier !== "false",
+  );
+  // Conditions name a few variables, so trying every state stays cheap.
+  for (let state = 0; state < 2 ** free.length; state += 1) {
+    const context: Record<string, boolean> = { ...FOCUS_LEVELS_OFF, true: true, false: false };
+    free.forEach((identifier, index) => {
+      context[identifier] = (state & (2 ** index)) !== 0;
+    });
+    if (evaluateWhen(when, context)) return false;
+  }
+  return true;
+}
+
+function evaluateWhen(
+  node: KeybindingWhenNode | undefined,
+  context: Record<string, boolean>,
+): boolean {
+  if (!node) return true;
+  switch (node.type) {
+    case "identifier":
+      return context[node.name] === true;
+    case "not":
+      return !evaluateWhen(node.node, context);
+    case "and":
+      return evaluateWhen(node.left, context) && evaluateWhen(node.right, context);
+    case "or":
+      return evaluateWhen(node.left, context) || evaluateWhen(node.right, context);
+  }
+}
+
+export interface KeybindingRowFilter {
+  readonly query: string;
+  readonly command?: KeybindingCommand | undefined;
+  readonly platform?: string;
+}
+
 export function filterKeybindingRows(
   rows: ReadonlyArray<KeybindingRow>,
-  query: string,
+  filter: KeybindingRowFilter,
 ): ReadonlyArray<KeybindingRow> {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length === 0) return rows;
+  const normalizedQuery = filter.query.trim().toLowerCase();
   return rows.filter((row) => {
+    if (filter.command !== undefined && row.command !== filter.command) return false;
+    if (normalizedQuery.length === 0) return true;
     return (
       row.command.toLowerCase().includes(normalizedQuery) ||
       commandLabel(row.command).toLowerCase().includes(normalizedQuery) ||
       row.key.toLowerCase().includes(normalizedQuery) ||
+      formatShortcutLabel(row.binding.shortcut, filter.platform)
+        .toLowerCase()
+        .includes(normalizedQuery) ||
       row.when.toLowerCase().includes(normalizedQuery) ||
       row.source.toLowerCase().includes(normalizedQuery)
     );
@@ -361,12 +442,14 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  if (command === "workspace.focusNext") return "Focus Next Workspace Area";
+  if (command === "workspace.focusPrevious") return "Focus Previous Workspace Area";
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
   if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
-  if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread ID";
+  if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";
   const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
   if (usageMetric) return `Usage: ${usageMetric.label}`;
   const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);

@@ -1,12 +1,12 @@
 import {
   authScopeRequiredResponse,
-  AuthAccessReadScope,
   AuthAccessWriteScope,
   AuthStandardClientScopes,
   AuthGrantScope,
   EnvironmentAuthInvalidError,
   type EnvironmentAuthInvalidReason,
   EnvironmentHttpApi,
+  EnvironmentHttpForbiddenError,
   EnvironmentInternalError,
   type EnvironmentInternalErrorReason,
   EnvironmentOperationForbiddenError,
@@ -25,7 +25,6 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Cookies from "effect/http/Cookies";
 import * as HttpEffect from "effect/http/HttpEffect";
@@ -37,6 +36,7 @@ import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
 import { deriveAuthClientMetadata, isForwardedRequest } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
+import { requestUrl } from "../requestUrl.ts";
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
@@ -73,7 +73,7 @@ export const annotateEnvironmentRequest =
   /* Request instrumentation already owns the span; keep this helper in that context. */
   Effect.fnUntraced(function* (endpoint: string) {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
     const traceId = yield* currentEnvironmentTraceId;
 
     yield* Effect.addFinalizer((exit) =>
@@ -166,7 +166,7 @@ export const authenticateMediaRequest =
   Effect.fnUntraced(function* (requiredScope: AuthEnvironmentScope) {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
+    const session = yield* serverAuth.authenticateWebSocketUpgrade(request, "media").pipe(
       Effect.catch((error) =>
         Effect.gen(function* () {
           if (EnvironmentAuth.isServerAuthCredentialError(error)) {
@@ -272,21 +272,9 @@ const createCloudflareAccessBrowserSession = Effect.fn(
   request: HttpServerRequest.HttpServerRequest,
   unauthenticated: AuthSessionState,
 ) {
-  const issued = yield* serverAuth
-    .issueCloudflareAccessPairingCredential(request)
-    .pipe(
-      Effect.catchTags({ ServerAuthMachinePausedError: () => Effect.succeed("paused" as const) }),
-    );
-  // Fork (MM-718): the pause shows the lock page, with no new session.
-  if (issued === "paused") {
-    return { ...unauthenticated, machinePaused: true } satisfies AuthSessionState;
-  }
+  const issued = yield* serverAuth.issueCloudflareAccessPairingCredential(request);
   if (issued === undefined) {
     return unauthenticated;
-  }
-  // Fork (MM-920): the browser shows that its key waits for approval.
-  if ("_tag" in issued) {
-    return { ...unauthenticated, clientPending: issued.pending } satisfies AuthSessionState;
   }
   const created = yield* serverAuth
     .createBrowserSession(
@@ -324,16 +312,14 @@ export const layer = HttpApiBuilder.group(
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const request = yield* HttpServerRequest.HttpServerRequest;
             const sessionState = yield* serverAuth.getSessionState(request);
-            // Fork (MM-718): a session that the pause refused gets no new Access session.
-            const result =
-              sessionState.authenticated || sessionState.machinePaused === true
-                ? sessionState
-                : yield* createCloudflareAccessBrowserSession(
-                    serverAuth,
-                    sessions,
-                    request,
-                    sessionState,
-                  );
+            const result = sessionState.authenticated
+              ? sessionState
+              : yield* createCloudflareAccessBrowserSession(
+                  serverAuth,
+                  sessions,
+                  request,
+                  sessionState,
+                );
             const credential = EnvironmentAuth.selectRequestCredential(
               request,
               sessions.cookieName,
@@ -491,6 +477,20 @@ export const layer = HttpApiBuilder.group(
         ),
       )
       .handle(
+        "webSocketTicketFor",
+        Effect.fn("environment.auth.webSocketTicketFor")(
+          function* (args) {
+            yield* annotateEnvironmentRequest(args.endpoint.name);
+            const session = yield* EnvironmentAuthenticatedPrincipal;
+            yield* appendCredentialResponseHeaders;
+            return yield* serverAuth.issueWebSocketTicket(session, { use: args.params.use });
+          },
+          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+            failEnvironmentInternal("websocket_ticket_issuance_failed", error),
+          ),
+        ),
+      )
+      .handle(
         "pairingCredential",
         Effect.fn("environment.auth.pairingCredential")(
           function* (args) {
@@ -513,6 +513,10 @@ export const layer = HttpApiBuilder.group(
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("pairing_credential_issuance_failed", error),
           ),
+          Effect.catchTags({
+            ManagedPolicyRefusedError: (error) =>
+              Effect.fail(new EnvironmentHttpForbiddenError({ message: error.message })),
+          }),
         ),
       )
       .handle(
@@ -521,36 +525,15 @@ export const layer = HttpApiBuilder.group(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const request = yield* HttpServerRequest.HttpServerRequest;
-            const issued = yield* serverAuth.issueCloudflareAccessPairingCredential(request).pipe(
-              Effect.catchTags({
-                ServerAuthMachinePausedError: () => failEnvironmentAuthInvalid("machine_paused"),
-              }),
-            );
+            const issued = yield* serverAuth.issueCloudflareAccessPairingCredential(request);
             if (issued === undefined) {
               return yield* failEnvironmentAuthInvalid("invalid_credential");
-            }
-            // Fork (MM-918): a sibling of a waiting browser stays unpaired until the approval.
-            if ("_tag" in issued) {
-              return yield* failEnvironmentAuthInvalid("client_pending");
             }
             yield* appendCredentialResponseHeaders;
             return issued;
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("pairing_credential_issuance_failed", error),
-          ),
-        ),
-      )
-      .handle(
-        "pairingLinks",
-        Effect.fn("environment.auth.pairingLinks")(
-          function* (args) {
-            yield* annotateEnvironmentRequest(args.endpoint.name);
-            yield* requireEnvironmentScope(AuthAccessReadScope);
-            return yield* serverAuth.listPairingLinks();
-          },
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-            failEnvironmentInternal("pairing_links_load_failed", error),
           ),
         ),
       )
@@ -565,19 +548,6 @@ export const layer = HttpApiBuilder.group(
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("pairing_link_revoke_failed", error),
-          ),
-        ),
-      )
-      .handle(
-        "clients",
-        Effect.fn("environment.auth.clients")(
-          function* (args) {
-            yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessReadScope);
-            return yield* serverAuth.listClientSessions(session.sessionId);
-          },
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-            failEnvironmentInternal("client_sessions_load_failed", error),
           ),
         ),
       )

@@ -1,9 +1,6 @@
 import {
-  DEFAULT_SERVER_SETTINGS,
-  SourceControlProviderKind,
   type PullRequestCheck,
   PullRequestComment,
-  type PullRequestWatchRemarkFilter,
   ThreadPullRequestWatch,
 } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
@@ -11,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   PULL_REQUEST_WATCH_WAKE_LIMIT,
   evaluatePullRequestWatch as evaluate,
+  pullRequestWatchMessage,
 } from "./pullRequestWatch.ts";
 
 // These cases read the head once or at one moment, so the no-checks notice never comes due.
@@ -20,8 +18,7 @@ const evaluatePullRequestWatch = (
   current: EvaluateArgs[0],
   pullRequest: EvaluateArgs[1],
   remarks: EvaluateArgs[2],
-  remarkFilter?: EvaluateArgs[4],
-) => evaluate(current, pullRequest, remarks, 0, remarkFilter);
+) => evaluate(current, pullRequest, remarks, 0);
 
 const STARTED = "2026-10-02T12:00:00.000Z";
 
@@ -47,8 +44,19 @@ const check = (name: string, status: PullRequestCheck["status"]): PullRequestChe
 
 type Detail = Parameters<typeof evaluatePullRequestWatch>[1];
 
+const capabilities = (checksAlwaysReport: boolean): Detail["capabilities"] => ({
+  diff: true,
+  comment: true,
+  actions: [],
+  mergeMethods: [],
+  search: false,
+  review: { inlineComment: false, reply: false, resolve: false, verdicts: [] },
+  reviewers: { request: false, listCandidates: false },
+  checksAlwaysReport,
+});
+
 const detail = (overrides: Partial<Detail> = {}): Detail => ({
-  provider: SourceControlProviderKind.make("github"),
+  capabilities: capabilities(true),
   headSha: "aaaaaaaaaa",
   checks: [check("lint", "success"), check("test", "pending")],
   mergeability: "mergeable",
@@ -141,6 +149,85 @@ describe("evaluatePullRequestWatch", () => {
     ]);
   });
 
+  // regression: #23712 required checks woke the agent early and the rest finishing never did
+  it("wakes again when the other checks finish after the required ones passed", () => {
+    const required = (name: string, status: PullRequestCheck["status"]) => ({
+      ...check(name, status),
+      required: true,
+    });
+    const early = detail({
+      checks: [required("test", "success"), check("e2e", "pending")],
+    });
+    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
+    assert.deepEqual(first.changes, [{ kind: "checks-passed", count: 1, required: true }]);
+
+    const done = detail({
+      checks: [required("test", "success"), check("e2e", "success")],
+    });
+    const final = evaluatePullRequestWatch(first.next, done, noRemarks);
+    assert.deepEqual(
+      final.changes.map((change) => change.kind),
+      ["checks-passed"],
+    );
+    assert.deepEqual(evaluatePullRequestWatch(final.next, done, noRemarks).changes, []);
+    // A later advisory job running and passing is not more news.
+    const botPending = detail({ checks: [...done.checks, check("bot", "pending")] });
+    const churn = evaluatePullRequestWatch(final.next, botPending, noRemarks);
+    assert.deepEqual(churn.changes, []);
+    const botDone = detail({ checks: [...done.checks, check("bot", "success")] });
+    assert.deepEqual(evaluatePullRequestWatch(churn.next, botDone, noRemarks).changes, []);
+
+    // A pending check that turns required on the next read still finishes with one wake.
+    const promoted = detail({
+      checks: [required("test", "success"), required("e2e", "success")],
+    });
+    const gated = evaluatePullRequestWatch(first.next, promoted, noRemarks);
+    assert.deepEqual(gated.changes, [{ kind: "checks-passed", count: 2, required: true }]);
+    assert.deepEqual(evaluatePullRequestWatch(gated.next, promoted, noRemarks).changes, []);
+
+    // Nothing else was pending when the required ones passed, so nothing more is owed.
+    const green = evaluatePullRequestWatch(watch(), done, noRemarks);
+    assert.deepEqual(green.changes, [{ kind: "checks-passed", count: 1, required: true }]);
+    assert.deepEqual(evaluatePullRequestWatch(green.next, botDone, noRemarks).changes, []);
+  });
+
+  it("reports an owed non-required failure once after the required notice", () => {
+    const required = { ...check("test", "success"), required: true };
+    const early = detail({ checks: [required, check("e2e", "pending")] });
+    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
+    assert.deepEqual(first.changes, [{ kind: "checks-passed", count: 1, required: true }]);
+    const failed = detail({ checks: [required, check("e2e", "failure")] });
+    const failure = evaluatePullRequestWatch(first.next, failed, noRemarks);
+    assert.deepEqual(failure.changes, [
+      { kind: "checks-failed", failed: [check("e2e", "failure")] },
+    ]);
+    const repeated = evaluatePullRequestWatch(failure.next, failed, noRemarks);
+    assert.deepEqual(repeated.changes, []);
+    const recovered = detail({ checks: [required, check("e2e", "success")] });
+    const final = evaluatePullRequestWatch(repeated.next, recovered, noRemarks);
+    assert.deepEqual(final.changes, [{ kind: "checks-passed", count: 2, required: false }]);
+    assert.deepEqual(evaluatePullRequestWatch(final.next, recovered, noRemarks).changes, []);
+  });
+
+  it("clears old-head owed checks when a new head is pushed", () => {
+    const required = { ...check("test", "success"), required: true };
+    const early = detail({ checks: [required, check("e2e", "pending")] });
+    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
+    assert.deepEqual(first.next.owedChecks, ["e2e"]);
+    const unreadHead = detail({ headSha: "bbbbbbbbbb", checks: [] });
+    const unread = evaluatePullRequestWatch(first.next, unreadHead, noRemarks);
+    assert.deepEqual(unread.changes, []);
+    assert.deepEqual(unread.next.owedChecks, []);
+    const pushed = detail({ ...unreadHead, checks: [required] });
+    const newHead = evaluatePullRequestWatch(unread.next, pushed, noRemarks);
+    assert.deepEqual(newHead.changes, [{ kind: "checks-passed", count: 1, required: true }]);
+    assert.deepEqual(newHead.next.owedChecks, []);
+    const lateResult = detail({ ...pushed, checks: [required, check("e2e", "success")] });
+    const final = evaluatePullRequestWatch(newHead.next, lateResult, noRemarks);
+    assert.deepEqual(final.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(final.next, lateResult, noRemarks).changes, []);
+  });
+
   // regression: #16208 PR watches burned GitHub's rate limit and gave up
   it("does not report passed again for a new passed check where none is required", () => {
     const first = evaluatePullRequestWatch(
@@ -181,7 +268,7 @@ describe("evaluatePullRequestWatch", () => {
   });
 
   it("reports edits after the watermark once and counts them toward the wake limit", () => {
-    const old = remark("greptile[bot]", "2026-10-02T11:00:00Z");
+    const old = remark("reviewer", "2026-10-02T11:00:00Z");
     const watching = watch({
       headSha: "aaaaaaaaaa",
       remarkIds: [old.id],
@@ -199,6 +286,48 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(report.next, detail(), [edited, late]).changes, [
       { kind: "remarks", remarks: [late] },
     ]);
+  });
+
+  it("wakes once per edit of a remark seen at the watermark, never for the agent's own", () => {
+    const seen = remark("ci-bot", "2026-10-10T19:52:40.000Z");
+    const watching = watch({
+      headSha: "aaaaaaaaaa",
+      remarksThrough: seen.createdAt,
+      remarkIds: [seen.id],
+      wakes: 2,
+    });
+    assert.deepEqual(evaluatePullRequestWatch(watching, detail(), [seen]).changes, []);
+    const edited = { ...seen, editedAt: "2026-10-10T20:04:50.000Z" };
+    const first = evaluatePullRequestWatch(watching, detail(), [edited]);
+    assert.deepEqual(first.changes, [{ kind: "remarks", remarks: [edited] }]);
+    assert.strictEqual(first.next.remarksThrough, edited.editedAt);
+    assert.deepEqual(evaluatePullRequestWatch(first.next, detail(), [edited]).changes, []);
+    const again = { ...seen, editedAt: "2026-10-10T20:05:50.000Z" };
+    const second = evaluatePullRequestWatch(first.next, detail(), [again]);
+    assert.deepEqual(second.changes, [{ kind: "remarks", remarks: [again] }]);
+    assert.deepEqual(evaluatePullRequestWatch(second.next, detail(), [again]).changes, []);
+    const own = { ...edited, author: { login: "agent-user", name: null, avatarUrl: null } };
+    assert.deepEqual(evaluatePullRequestWatch(watching, detail(), [own]).changes, []);
+  });
+
+  // regression: a bot that edited its summary comment woke the thread once per edit
+  it("never wakes again for a bot's edit of a remark it reported", () => {
+    const summary = remark("coderabbitai[bot]", "2026-10-10T19:47:18.000Z");
+    const reported = evaluatePullRequestWatch(watch(), detail(), [summary]);
+    assert.deepEqual(reported.changes, [{ kind: "remarks", remarks: [summary] }]);
+    let current = reported.next;
+    for (const editedAt of ["2026-10-10T19:55:00.000Z", "2026-10-10T20:05:06.000Z"]) {
+      const edit = evaluatePullRequestWatch(current, detail(), [{ ...summary, editedAt }]);
+      assert.deepEqual(edit.changes, []);
+      current = edit.next;
+    }
+    const older = remark("coderabbitai", "2026-10-02T11:00:00Z");
+    const flagged = {
+      ...older,
+      author: { login: "coderabbitai", name: null, avatarUrl: null, isBot: true },
+    };
+    const edited = { ...flagged, editedAt: "2026-10-10T20:04:50.000Z" };
+    assert.deepEqual(evaluatePullRequestWatch(watch(), detail(), [edited]).changes, []);
   });
 
   it("does not treat a failed check read as a rerun", () => {
@@ -231,10 +360,30 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(report.next, detail(), comments).changes, []);
   });
 
+  it("cuts a long remark in the wake message without splitting an emoji", () => {
+    const body = `${"x".repeat(196)}🚀 and more`;
+    const report = evaluatePullRequestWatch(watch(), detail(), [
+      remark("reviewer", "2026-10-02T12:06:00Z", body),
+    ]);
+    const { text } = pullRequestWatchMessage({
+      number: 1,
+      url: "https://github.com/o/r/pull/1",
+      baseBranch: "main",
+      headSha: null,
+      report,
+    });
+    assert.isTrue(text.isWellFormed());
+    assert.include(text, `"${"x".repeat(196)}..."`);
+  });
+
   it("reports a conflict once, until the branch is clean again", () => {
     const conflicting = detail({ mergeability: "conflicting" });
     const first = evaluatePullRequestWatch(watch(), conflicting, noRemarks);
     assert.deepEqual(first.changes, [{ kind: "conflicting" }]);
+    const { headSha: _unreadHead, ...headUnread } = conflicting;
+    const unread = evaluatePullRequestWatch(first.next, headUnread, noRemarks);
+    assert.deepEqual(unread.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(unread.next, conflicting, noRemarks).changes, []);
     const recomputing = evaluatePullRequestWatch(
       first.next,
       detail({ mergeability: "unknown" }),
@@ -248,6 +397,20 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(clean.next, conflicting, noRemarks).changes, [
       { kind: "conflicting" },
     ]);
+    const pushed = { headSha: "bbbbbbbbbb" };
+    const recomputed = evaluatePullRequestWatch(
+      first.next,
+      detail({ ...pushed, mergeability: "unknown" }),
+      noRemarks,
+    );
+    assert.deepEqual(
+      evaluatePullRequestWatch(
+        recomputed.next,
+        detail({ ...pushed, mergeability: "conflicting" }),
+        noRemarks,
+      ).changes,
+      [{ kind: "conflicting" }],
+    );
   });
 
   it("does not spend the comment wake limit on check results", () => {
@@ -292,103 +455,8 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(pushed.flat(), ["no-checks"]);
   });
 
-  it("never reports missing checks on a host whose checks it cannot read", () => {
-    const azure = detail({
-      provider: SourceControlProviderKind.make("azure-devops"),
-      checks: [],
-    });
-    assert.isTrue(anHourLater(watch(), azure).every((kinds) => kinds.length === 0));
-  });
-});
-
-describe("evaluatePullRequestWatch remark filter", () => {
-  const at = "2026-10-02T12:06:00Z";
-  const marker = "<!-- agent -->";
-  const filter = (
-    overrides: Partial<PullRequestWatchRemarkFilter> = {},
-  ): PullRequestWatchRemarkFilter => ({
-    ...DEFAULT_SERVER_SETTINGS.pullRequestWatchRemarkFilter,
-    ...overrides,
-  });
-  const ours = filter({ authorAssociations: ["OWNER", "MEMBER", "COLLABORATOR"] });
-  /** A remark by `login`, with the role GitHub reports for it, or none. */
-  const by = (login: string, authorAssociation?: string, body?: string): PullRequestComment => ({
-    ...remark(login, at, body),
-    id: `${login}-${authorAssociation ?? "none"}-${body ?? ""}`,
-    ...(authorAssociation === undefined ? {} : { authorAssociation }),
-  });
-  const woken = (
-    remarks: ReadonlyArray<PullRequestComment>,
-    remarkFilter: PullRequestWatchRemarkFilter,
-  ) =>
-    evaluatePullRequestWatch(watch(), detail(), remarks, remarkFilter).changes.flatMap((change) =>
-      change.kind === "remarks" ? change.remarks.map((remark) => remark.id) : [],
-    );
-
-  it("keeps the own-account rule when the setting is off", () => {
-    const remarks = [
-      by("agent-user", "OWNER"),
-      by("reviewer", "NONE"),
-      by("dependabot[bot]", "NONE"),
-    ];
-    assert.deepEqual(woken(remarks, filter()), [remarks[1]!.id, remarks[2]!.id]);
-  });
-
-  it("wakes for allowed roles, the server's own account too, and not for others", () => {
-    const owner = by("agent-user", "OWNER");
-    const collaborator = by("TomCohenDev", "collaborator");
-    const remarks = [
-      owner,
-      collaborator,
-      by("drive-by", "CONTRIBUTOR"),
-      by("stranger", "NONE"),
-      // A GitHub App has no role on the repository.
-      by("tick3d-agents[bot]", "NONE"),
-      by("dependabot[bot]", "NONE"),
-    ];
-    assert.deepEqual(woken(remarks, ours), [owner.id, collaborator.id]);
-  });
-
-  it("counts a remark without a reported role only through the login list", () => {
-    const listed = by("TomCohenDev");
-    const unlisted = by("reviewer");
-    assert.deepEqual(woken([listed, unlisted], ours), []);
-    assert.deepEqual(woken([listed, unlisted], { ...ours, authorLogins: ["tomcohendev"] }), [
-      listed.id,
-    ]);
-  });
-
-  it("wakes for listed logins whatever their role", () => {
-    const remarks = [by("agent-user", "OWNER"), by("helper", "NONE"), by("reviewer", "NONE")];
-    assert.deepEqual(woken(remarks, filter({ authorLogins: ["Helper"] })), [remarks[1]!.id]);
-  });
-
-  it("never wakes for a remark with the agent marker, even from an allowed author", () => {
-    const marked = by("agent-user", "OWNER", `${marker}\nPushed the fix.`);
-    const listed = by("helper", "NONE", `Done. ${marker}`);
-    const plain = by("agent-user", "OWNER", "Please also cover the empty case.");
-    const remarkFilter = { ...ours, authorLogins: ["helper"], agentMarker: marker };
-    assert.deepEqual(woken([marked, listed, plain], remarkFilter), [plain.id]);
-  });
-
-  it("with only a marker, skips marked remarks and keeps the own-account rule", () => {
-    const marked = by("reviewer", "OWNER", `Done. ${marker}`);
-    const own = by("agent-user", "OWNER");
-    const plain = by("reviewer", "NONE", "Looks good.");
-    assert.deepEqual(woken([marked, own, plain], filter({ agentMarker: marker })), [plain.id]);
-  });
-
-  it("does not change check and conflict news", () => {
-    const strict = { ...ours, agentMarker: marker };
-    const failing = detail({ checks: [check("lint", "failure")], mergeability: "conflicting" });
-    const report = evaluatePullRequestWatch(watch(), failing, [by("stranger", "NONE")], strict);
-    assert.deepEqual(report.changes, [
-      { kind: "checks-failed", failed: [check("lint", "failure")] },
-      { kind: "conflicting" },
-    ]);
-    const green = detail({ checks: [check("lint", "success")] });
-    assert.deepEqual(evaluatePullRequestWatch(report.next, green, [], strict).changes, [
-      { kind: "checks-passed", count: 1, required: false },
-    ]);
+  it("never reports missing checks on a host where an empty list says nothing", () => {
+    const silent = detail({ capabilities: capabilities(false), checks: [] });
+    assert.isTrue(anHourLater(watch(), silent).every((kinds) => kinds.length === 0));
   });
 });

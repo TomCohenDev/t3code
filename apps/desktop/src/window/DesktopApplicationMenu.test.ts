@@ -101,7 +101,6 @@ const layerElectronMenu = (
     setApplicationMenu: (template) =>
       Deferred.succeed(applicationMenuTemplate, template).pipe(Effect.asVoid),
     popupTemplate: () => Effect.void,
-    showContextMenu: () => Effect.succeedNone,
   } satisfies ElectronMenu.ElectronMenu["Service"]);
 
 const configureMenu = (
@@ -197,6 +196,41 @@ describe("DesktopApplicationMenu", () => {
 
       zoomIn.click({} as Electron.MenuItem, {} as Electron.BrowserWindow, {} as KeyboardEvent);
       assert.equal(yield* Deferred.await(selectedAction), "zoom-in");
+    }),
+  );
+
+  it.effect("never binds Cmd/Ctrl+W to closing the window", () =>
+    Effect.gen(function* () {
+      for (const platform of ["darwin", "linux", "win32"] as const) {
+        const applicationMenuTemplate =
+          yield* Deferred.make<readonly Electron.MenuItemConstructorOptions[]>();
+        yield* configureMenu(yield* Deferred.make<string>(), applicationMenuTemplate, {
+          platform,
+        });
+
+        const items: Electron.MenuItemConstructorOptions[] = [];
+        const collect = (template: readonly Electron.MenuItemConstructorOptions[]) => {
+          for (const item of template) {
+            items.push(item);
+            if (Array.isArray(item.submenu)) collect(item.submenu);
+          }
+        };
+        collect(yield* Deferred.await(applicationMenuTemplate));
+
+        assert.isUndefined(
+          items.find((item) => item.role === "close"),
+          platform,
+        );
+        // Electron's default windowMenu submenu includes a close role.
+        assert.isUndefined(
+          items.find((item) => item.role === "windowMenu" && item.submenu === undefined),
+          platform,
+        );
+        assert.isUndefined(
+          items.find((item) => item.accelerator?.toLowerCase().endsWith("+w")),
+          platform,
+        );
+      }
     }),
   );
 

@@ -25,6 +25,14 @@ export const FORK_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "enter", command: "sidebar.openItem", when: SIDEBAR_KEYS },
   { key: "arrowleft", command: "sidebar.previousTab", when: SIDEBAR_KEYS },
   { key: "arrowright", command: "sidebar.nextTab", when: SIDEBAR_KEYS },
+  { key: "mod+alt+t", command: "chat.newTerminal", when: "!terminalFocus" },
+  { key: "mod+alt+shift+n", command: "chat.newTerminalLocal", when: "!terminalFocus" },
+  { key: "mod+alt+shift+c", command: "chat.compactContext", when: "!terminalFocus" },
+  {
+    key: "mod+alt+shift+k",
+    command: "composer.toggleCompactBeforeSend",
+    when: "compactBeforeSendShown && !terminalFocus",
+  },
   { key: "mod+alt+[", command: "sidebar.previousTab", when: "!terminalFocus" },
   { key: "mod+alt+]", command: "sidebar.nextTab", when: "!terminalFocus" },
   { key: "mod+f", command: "sidebar.search", when: "sidebarFocus" },
@@ -57,6 +65,9 @@ export const FORK_DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+shift+tab", command: "rightPanel.previousTab", when: DESKTOP_KEYS },
   { key: "ctrl+tab", command: "rightPanel.nextTab", when: DESKTOP_KEYS },
   { key: "mod+,", command: "settings.open", when: "isWeb" },
+  // After the upstream `chat.find` rule, so a Settings page takes `mod+f`. It runs only while
+  // the client setting `settingsFind` is on; otherwise the settings search keeps `mod+f`.
+  { key: "mod+f", command: "settings.find", when: "settingsPageOpen" },
   // Ctrl+/ is undo in shells, so the terminal keeps it.
   { key: "mod+/", command: "keyboard.cheatSheet", when: "!terminalFocus" },
 ];

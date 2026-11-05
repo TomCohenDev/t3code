@@ -40,6 +40,7 @@ export const FORK_KEYBINDING_COMMANDS = [
   "timeline.cite",
   "timeline.citeWithNote",
   "timeline.copyMessageLink",
+  "timeline.pinMessage",
   "timeline.jumpToLatest",
   "thread.archive",
   "thread.snooze",
@@ -51,6 +52,11 @@ export const FORK_KEYBINDING_COMMANDS = [
   "rightPanel.previousTab",
   "rightPanel.nextTab",
   "settings.open",
+  "settings.find",
   "keyboard.cheatSheet",
+  "chat.newTerminal",
+  "chat.newTerminalLocal",
+  "chat.compactContext",
+  "composer.toggleCompactBeforeSend",
 ] as const;
 export type ForkKeybindingCommand = (typeof FORK_KEYBINDING_COMMANDS)[number];

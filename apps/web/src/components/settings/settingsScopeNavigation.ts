@@ -14,6 +14,7 @@ const SCOPE_KEYS = [
   "project",
   "machine",
   "checkout",
+  "circle",
 ] as const satisfies readonly (keyof SettingsScopeSearch)[];
 const TARGET_INPUT_KEYS = [...SCOPE_KEYS, "environmentId"];
 

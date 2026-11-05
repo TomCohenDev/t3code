@@ -11,6 +11,7 @@ import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { useSettingsScope } from "./SettingsScopeContext";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -18,7 +19,7 @@ import {
 } from "./useScopedSettings";
 
 /**
- * Fork: setting rows that the General page and the Fork page both render.
+ * Fork: setting rows that their place and the Fork page both render.
  * Each row edits the same value in both places.
  */
 
@@ -90,6 +91,33 @@ export function AgentSessionImportSettingsRows() {
   );
 }
 
+/** Fork: `settingsFind`. */
+export function SettingsFindSettingsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("settings-find")}
+      description="On a Settings page, Find in settings (⌘F or Ctrl+F by default) opens a box that hides the rows of that page that do not match. The search of all settings keeps /. Off: ⌘F goes to the search of all settings."
+      resetAction={
+        settings.settingsFind !== DEFAULT_UNIFIED_SETTINGS.settingsFind ? (
+          <SettingResetButton
+            label="find in settings"
+            onClick={() => updateSettings({ settingsFind: DEFAULT_UNIFIED_SETTINGS.settingsFind })}
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.settingsFind}
+          onCheckedChange={(checked) => updateSettings({ settingsFind: Boolean(checked) })}
+          aria-label="Find in settings"
+        />
+      }
+    />
+  );
+}
+
 /** Fork: `confirmTerminalClose`. */
 export function TerminalCloseConfirmationSettingsRow() {
   const settings = useScopedSettings();
@@ -155,6 +183,68 @@ export function TerminalAppShortcutsFirstSettingsRow() {
   );
 }
 
+/** Fork: `currentProjectTerminalOpensThread`. */
+export function CurrentProjectTerminalOpensThreadSettingsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("current-project-terminal-opens-thread")}
+      description="New terminal thread in current project (Shift+click, its shortcut or the command palette) makes the terminal thread right away, like the enlarge button. The thread shows in the sidebar even if you never run a command."
+      resetAction={
+        settings.currentProjectTerminalOpensThread !==
+        DEFAULT_UNIFIED_SETTINGS.currentProjectTerminalOpensThread ? (
+          <SettingResetButton
+            label="open terminal in current project as a thread"
+            onClick={() =>
+              updateSettings({
+                currentProjectTerminalOpensThread:
+                  DEFAULT_UNIFIED_SETTINGS.currentProjectTerminalOpensThread,
+              })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.currentProjectTerminalOpensThread}
+          onCheckedChange={(checked) =>
+            updateSettings({ currentProjectTerminalOpensThread: Boolean(checked) })
+          }
+          aria-label="Open terminal in current project as a thread"
+        />
+      }
+    />
+  );
+}
+
+/** Fork: `messagePins`. */
+export function MessagePinsSettingsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("message-pins")}
+      description="Pin a message with the pin button next to its copy buttons. Thread details list the pins of the thread. The sidebar lists all pins next to Usage. Every client of an environment shows its pins."
+      resetAction={
+        settings.messagePins !== DEFAULT_UNIFIED_SETTINGS.messagePins ? (
+          <SettingResetButton
+            label="message pins"
+            onClick={() => updateSettings({ messagePins: DEFAULT_UNIFIED_SETTINGS.messagePins })}
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.messagePins}
+          onCheckedChange={(checked) => updateSettings({ messagePins: Boolean(checked) })}
+          aria-label="Message pins"
+        />
+      }
+    />
+  );
+}
+
 /** Fork: `backgroundWorkDetails`. */
 export function BackgroundWorkDetailsSettingsRow() {
   const settings = useScopedSettings();
@@ -186,23 +276,22 @@ export function BackgroundWorkDetailsSettingsRow() {
   );
 }
 
-/** Fork: `checkNewerBeforeUpdateInstall`. Only the desktop app installs downloaded updates. */
-export function CheckNewerBeforeUpdateInstallSettingsRow() {
+/** Fork: `restartReconnectWarningGrace` (forkReconnectWarningGrace.ts). */
+export function RestartReconnectWarningGraceSettingsRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
-      {...searchableSetting("check-newer-before-update-install")}
-      description="Desktop app: before it installs a downloaded update, check for a newer release and offer to download that one instead. Install when idle and the machine map take the newer release."
+      {...searchableSetting("restart-reconnect-warning-grace")}
+      description="For the first 45 seconds after T3 Code starts, do not warn in the composer that a server is reconnecting. A refused sign-in or an offline device still shows at once."
       resetAction={
-        settings.checkNewerBeforeUpdateInstall !==
-        DEFAULT_UNIFIED_SETTINGS.checkNewerBeforeUpdateInstall ? (
+        settings.restartReconnectWarningGrace !==
+        DEFAULT_UNIFIED_SETTINGS.restartReconnectWarningGrace ? (
           <SettingResetButton
-            label="check for a newer update before install"
+            label="quiet reconnect after restart"
             onClick={() =>
               updateSettings({
-                checkNewerBeforeUpdateInstall:
-                  DEFAULT_UNIFIED_SETTINGS.checkNewerBeforeUpdateInstall,
+                restartReconnectWarningGrace: DEFAULT_UNIFIED_SETTINGS.restartReconnectWarningGrace,
               })
             }
           />
@@ -210,44 +299,94 @@ export function CheckNewerBeforeUpdateInstallSettingsRow() {
       }
       control={
         <Switch
-          checked={settings.checkNewerBeforeUpdateInstall}
+          checked={settings.restartReconnectWarningGrace}
           onCheckedChange={(checked) =>
-            updateSettings({ checkNewerBeforeUpdateInstall: Boolean(checked) })
+            updateSettings({ restartReconnectWarningGrace: Boolean(checked) })
           }
-          aria-label="Check for a newer update before install"
+          aria-label="Quiet reconnect after restart"
         />
       }
     />
   );
 }
 
-/** Fork: `forkAutoUpdate`. Only a server that runs as the background service uses it. */
-export function ForkAutoUpdateSettingsRow() {
+/** Fork: `forkUpdateMode`. The background service and the desktop app follow it. */
+export function ForkUpdateModeSettingsRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
-  const mixed = useScopedSettingsMixed(["forkAutoUpdate"]);
+  const mixed = useScopedSettingsMixed(["forkUpdateMode"]);
   return (
     <SettingsRow
-      {...searchableSetting("fork-auto-update")}
+      {...searchableSetting("fork-update-mode")}
       serverScoped
-      settingKeys={["forkAutoUpdate"]}
-      description="A server that runs as the background service installs each newer fork release when no agent runs. The desktop app ignores it and uses its own updater."
+      settingKeys={["forkUpdateMode"]}
+      description="Install the newest fork release when no agent and no terminal program runs. The desktop app and a server that runs as the background service follow it. Off: install only from the update button, t3 update or the kitshn install-update command."
       resetAction={
-        mixed || settings.forkAutoUpdate !== DEFAULT_UNIFIED_SETTINGS.forkAutoUpdate ? (
+        mixed || settings.forkUpdateMode !== DEFAULT_UNIFIED_SETTINGS.forkUpdateMode ? (
           <SettingResetButton
-            label="server auto-update"
+            label="automatic updates"
             onClick={() =>
-              updateSettings({ forkAutoUpdate: DEFAULT_UNIFIED_SETTINGS.forkAutoUpdate })
+              updateSettings({ forkUpdateMode: DEFAULT_UNIFIED_SETTINGS.forkUpdateMode })
             }
           />
         ) : null
       }
       control={
         <ScopedSwitch
-          settingKeys={["forkAutoUpdate"]}
-          checked={settings.forkAutoUpdate}
-          onCheckedChange={(checked) => updateSettings({ forkAutoUpdate: Boolean(checked) })}
-          aria-label="Server auto-update"
+          settingKeys={["forkUpdateMode"]}
+          checked={settings.forkUpdateMode === "automatic"}
+          onCheckedChange={(checked) =>
+            updateSettings({ forkUpdateMode: checked ? "automatic" : "manual" })
+          }
+          aria-label="Automatic updates"
+        />
+      }
+    />
+  );
+}
+
+/** Fork: `autoSettleWaitsForBackgroundCommands`. */
+export function AutoSettleWaitsForBackgroundCommandsSettingsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const mixed = useScopedSettingsMixed(["autoSettleWaitsForBackgroundCommands"]);
+  const { connectedEnvironments } = useSettingsScope();
+  // Like the upstream auto-settle rows beside it.
+  const supportsAutoSettlement =
+    connectedEnvironments.length > 0 &&
+    connectedEnvironments.every(
+      (target) => target.serverConfig?.environment.capabilities.threadAutoSettlement === true,
+    );
+  if (!supportsAutoSettlement) return null;
+  return (
+    <SettingsRow
+      {...searchableSetting("auto-settle-waits-for-background-commands")}
+      serverScoped
+      settingKeys={["autoSettleWaitsForBackgroundCommands"]}
+      resetAction={
+        mixed ||
+        settings.autoSettleWaitsForBackgroundCommands !==
+          DEFAULT_UNIFIED_SETTINGS.autoSettleWaitsForBackgroundCommands ? (
+          <SettingResetButton
+            label="auto-settle waits for background commands"
+            onClick={() =>
+              updateSettings({
+                autoSettleWaitsForBackgroundCommands:
+                  DEFAULT_UNIFIED_SETTINGS.autoSettleWaitsForBackgroundCommands,
+              })
+            }
+          />
+        ) : null
+      }
+      description="Auto-settle skips a thread while its agent runs a background command, so the command can finish and wake the agent. A command that keeps running, such as a dev server, holds the thread until the session releases idle work."
+      control={
+        <ScopedSwitch
+          settingKeys={["autoSettleWaitsForBackgroundCommands"]}
+          checked={settings.autoSettleWaitsForBackgroundCommands}
+          onCheckedChange={(checked) =>
+            updateSettings({ autoSettleWaitsForBackgroundCommands: Boolean(checked) })
+          }
+          aria-label="Auto-settle waits for background commands"
         />
       }
     />

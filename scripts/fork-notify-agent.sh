@@ -2,7 +2,8 @@
 # Posts a failed fork workflow run to the repair agent webhook (a T3 scheduled task).
 # Called by the notify_agent job of fork-ci.yml, fork-release.yml and fork-sync.yml. See docs/fork/operations.md "Repair agent".
 # Env: WEBHOOK_URL, CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET, GH_TOKEN, NEEDS_JSON
-# (the workflow's toJSON(needs)), plus the default GITHUB_* variables.
+# (the workflow's toJSON(needs)), plus the default GITHUB_* variables. Optional: FAILURE_REASON,
+# for example the adopted upstream pull request that conflicted in Fork Sync.
 set -euo pipefail
 
 if [[ -z "${WEBHOOK_URL:-}" ]]; then
@@ -46,16 +47,40 @@ payload="$(jq -n \
   --arg workflow "$GITHUB_WORKFLOW" \
   --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
   --arg run_id "$GITHUB_RUN_ID" \
+  --arg reason "${FAILURE_REASON:-}" \
   --argjson needs "$NEEDS_JSON" \
   '{repository: $repository, branch: $branch, event: $event, workflow: $workflow,
-    run_url: $run_url, run_id: $run_id, jobs: ($needs | map_values(.result))}')"
+    run_url: $run_url, run_id: $run_id, jobs: ($needs | map_values(.result))}
+    + (if $reason == "" then {} else {reason: $reason} end)')"
 echo "$payload"
-# The webhook server can restart, which takes minutes. So retry once a minute for 15 minutes.
-# The notify jobs have timeout-minutes: 20 to cover the last attempt (up to 120 s).
-curl --fail-with-body --silent --show-error \
-  --retry 15 --retry-delay 60 --retry-max-time 900 --max-time 120 --retry-all-errors \
+# The webhook server can restart, which takes minutes. So retry once a minute for 15 minutes on
+# a refused connection and 408, 429 and 5xx (curl's --retry set). The notify jobs have
+# timeout-minutes: 20 to cover the last attempt (up to 120 s).
+# Only 202 with a deliveryId proves that the task took the run. Cloudflare Access answers a 302
+# to its login page when it refuses the service token, and T3 answers 409 for a disabled task:
+# both must fail this job, because a successful notify job silences the next failure for 90 minutes.
+body="$(mktemp)"
+status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+  --retry 15 --retry-delay 60 --retry-max-time 900 --retry-connrefused --max-time 120 \
+  --dump-header "$body.headers" \
   -X POST "$WEBHOOK_URL" \
   -H "content-type: application/json" \
   -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
   -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  --data-binary "$payload"
+  --data-binary "$payload")"
+delivery_id="$(jq -r '.deliveryId // empty' "$body" 2>/dev/null || true)"
+if [[ "$status" == "202" && -n "$delivery_id" ]]; then
+  echo "The repair agent took the run: delivery ${delivery_id}."
+  exit 0
+fi
+# The header is optional, and under pipefail a grep with no match must not end the script here.
+location="$(grep -i '^location:' "$body.headers" | head -1 | tr -d '\r' | cut -d' ' -f2- || true)"
+echo "::error title=Repair agent not notified::The webhook answered ${status}, not 202 with a deliveryId."
+if [[ "$status" == 3* ]]; then
+  echo "Redirect to ${location%%\?*}: Cloudflare Access refused the service token. Check that the repository secrets CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET hold a kitshn device token whose actor reaches the machine's T3 card."
+elif [[ "$status" == "409" ]]; then
+  echo "The task is disabled on the T3 server. Enable the scheduled task \"Fork repair\" there."
+fi
+echo "Answer body (first 300 bytes):"
+head -c 300 "$body"; echo
+exit 1

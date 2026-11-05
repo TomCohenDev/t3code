@@ -10,8 +10,10 @@ import type {
 } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { lazy, Suspense } from "react";
+import SideChatPane from "./SideChatPane";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
 import type { ShortcutMatchContext } from "../../keybindings";
+import type { SideChatParentPanel } from "../../lib/sideChatPane";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import {
   PersistentThreadTerminalPanel,
@@ -38,14 +40,13 @@ export type RightPanelTerminalProps = Omit<
   "visible" | "threadRef" | "surface"
 >;
 
-export interface RightPanelPullRequestProps {
+interface RightPanelPullRequestProps {
   readonly capabilityKnown: boolean;
   readonly supported: boolean;
   readonly projectId: ProjectId | null;
   readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
   readonly branchPullRequest: ThreadLinkedPullRequest | null | undefined;
-  /** Back to the pull request list; absent when there is no list to go back to. */
   readonly onBack: (() => void) | undefined;
 }
 
@@ -58,28 +59,29 @@ export interface RightPanelFileProps {
   readonly onPendingChange: (relativePath: string, pending: boolean) => void;
 }
 
-/** The body of the thread's right panel for the surface it is showing. */
 export function RightPanelSurfaceContent(props: {
   readonly surface: RightPanelSurface | null;
   readonly activeSurfaceId: string | null;
   readonly threadRef: ScopedThreadRef;
   readonly environmentId: EnvironmentId;
   readonly visible: boolean;
-  readonly composerDraftTarget: ScopedThreadRef | DraftId;
+  /** Null on a screen without a composer, which hides the actions that write to it. */
+  readonly composerDraftTarget: ScopedThreadRef | DraftId | null;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly configuredPreviewUrls: ReadonlyArray<string>;
   readonly workspaceMutationId: string | null;
   readonly getShortcutContext: () => ShortcutMatchContext;
-  readonly onSendAnnotation: (
-    annotation: PreviewAnnotationPayload,
-    image: ComposerImageAttachment | null,
-  ) => void;
+  /** Absent on a screen without a composer, which hides "send to chat". */
+  readonly onSendAnnotation:
+    | ((annotation: PreviewAnnotationPayload, image: ComposerImageAttachment | null) => void)
+    | undefined;
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
   readonly files: RightPanelFileProps;
+  readonly sideChatParentPanel: SideChatParentPanel;
 }) {
-  const { surface, threadRef, visible } = props;
+  const { surface, threadRef, visible, onCloseSurface } = props;
   if (surface === null) return null;
   switch (surface.kind) {
     case "preview":
@@ -91,7 +93,7 @@ export function RightPanelSurfaceContent(props: {
             tabId={surface.resourceId}
             configuredUrls={props.configuredPreviewUrls}
             visible={visible}
-            onSendAnnotation={props.onSendAnnotation}
+            {...(props.onSendAnnotation ? { onSendAnnotation: props.onSendAnnotation } : {})}
           />
         </Suspense>
       );
@@ -161,7 +163,9 @@ export function RightPanelSurfaceContent(props: {
             },
             surface,
           )}
-          composerDraftTarget={props.composerDraftTarget}
+          {...(props.composerDraftTarget === null
+            ? {}
+            : { composerDraftTarget: props.composerDraftTarget })}
           onBack={pullRequest.onBack}
         />
       );
@@ -170,6 +174,17 @@ export function RightPanelSurfaceContent(props: {
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "machines":
       return <MachinesPanel environmentId={threadRef.environmentId} />;
+    case "side-chat":
+      // Not lazy: revealing a suspended tiptap editor tears down its view and crashes the composer.
+      return (
+        <SideChatPane
+          key={surface.id}
+          parentRef={threadRef}
+          threadId={surface.threadId}
+          parentPanel={props.sideChatParentPanel}
+          onClose={() => onCloseSurface(surface)}
+        />
+      );
     case "device":
       return (
         <Suspense fallback={null}>

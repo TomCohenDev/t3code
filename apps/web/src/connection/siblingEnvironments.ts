@@ -12,20 +12,10 @@ import { connectPairing as connectPairingAtom } from "./onboarding";
 import { browserKeyProof } from "./browserKeyProof";
 
 /**
- * Fork: Cloudflare Access login for sibling environments. The page's own
- * server lists its siblings in `trustedBrowserOrigins`. For each sibling that
- * is not saved yet, the page asks the sibling for a pairing credential with
- * its Cloudflare cookie, then adds it through the normal pairing path.
- *
- * Limit: "not saved yet" also covers a sibling that the user removed, so a
- * removed sibling comes back on the next load. Revisit when a user wants to
- * hide a sibling without removing it from `trustedBrowserOrigins`.
- *
- * MM-922: the bearer of a browser client's sibling lasts 1 day and is not bound
- * to the browser key. When a saved sibling refuses it, the page pairs again with
- * its key, with a backoff per sibling, so a refusal never loops. Revisit when
- * upstream gives DPoP a bootstrap source that is not the T3 Connect cloud
- * session; then siblings can use key-bound DPoP tokens instead.
+ * Fork: Cloudflare Access login for siblings in `trustedBrowserOrigins`. An unsaved sibling pairs
+ * with its Cloudflare cookie. Limit: a removed sibling returns; revisit if users want to hide one.
+ * MM-922: a sibling bearer lasts 1 day and is not key-bound, so a refused one pairs again with
+ * backoff. Revisit when upstream DPoP can bootstrap without the T3 Connect cloud session.
  */
 
 export const CLOUDFLARE_ACCESS_PAIRING_PATH = "/api/auth/cloudflare-access/pairing-credential";
@@ -129,17 +119,9 @@ function siblingOriginsToPair(input: {
 }
 
 /** Why a sibling is not paired, for the rows in Connections settings. */
-export type SiblingIssue =
-  | "sign-in" // most often no Cloudflare Access cookie for that host yet
-  | "waiting" // MM-918: the browser key waits for approval in the portal
-  | "paused"; // MM-718
+export type SiblingIssue = "sign-in"; // most often no Cloudflare Access cookie for that host yet
 
-const issueOf = (error: unknown): SiblingIssue =>
-  error instanceof SiblingPairingRefused && error.reason === "client_pending"
-    ? "waiting"
-    : error instanceof SiblingPairingRefused && error.reason === "machine_paused"
-      ? "paused"
-      : "sign-in";
+const issueOf = (_error: unknown): SiblingIssue => "sign-in";
 
 let issues: ReadonlyMap<string, SiblingIssue> = new Map();
 const listeners = new Set<() => void>();
@@ -187,37 +169,32 @@ export async function pairSiblingOrigin(
   }
 }
 
-const delayAfter = (issue: SiblingIssue, failures: number): number => {
-  if (issue === "waiting") return WAITING_CHECK_MS;
-  if (issue === "paused") return RETRY_MAX_MS;
-  return Math.min(RETRY_MIN_MS * 2 ** failures, RETRY_MAX_MS);
-};
+const delayAfter = (failures: number): number =>
+  Math.min(RETRY_MIN_MS * 2 ** failures, RETRY_MAX_MS);
 
 /**
  * Pairs a sibling when its backoff allows it, with at most one pairing per origin at a time.
- * `skipped` means that the backoff or a pairing in flight held it back. A success waits
- * `afterSuccessMs` before the next pairing; a failure waits 30 seconds, doubled per failure, up to
- * 10 minutes.
+ * `skipped` means that the backoff or a pairing in flight held it back. A success waits 10 minutes
+ * before the next pairing; a failure waits 30 seconds, doubled per failure, up to 10 minutes.
  */
-export async function pairSiblingWhenDue(
+async function pairSiblingWhenDue(
   origin: string,
   connectPairing: Parameters<typeof pairSiblingOrigin>[1],
-  options: { readonly credentials?: RequestCredentials; readonly afterSuccessMs?: number } = {},
 ): Promise<"skipped" | { readonly issue: SiblingIssue | null; readonly error: unknown }> {
   if (inFlight.has(origin) || (nextAttempt.get(origin)?.atMs ?? 0) > Date.now()) return "skipped";
   inFlight.add(origin);
-  const error = await pairSiblingOrigin(origin, connectPairing, options.credentials);
+  const error = await pairSiblingOrigin(origin, connectPairing);
   inFlight.delete(origin);
   if (error === null) {
     nextAttempt.set(origin, {
-      atMs: Date.now() + (options.afterSuccessMs ?? AFTER_SUCCESS_MS),
+      atMs: Date.now() + AFTER_SUCCESS_MS,
       failures: 0,
     });
     return { issue: null, error };
   }
   const issue = issueOf(error);
   const failures = (nextAttempt.get(origin)?.failures ?? 0) + 1;
-  nextAttempt.set(origin, { atMs: Date.now() + delayAfter(issue, failures), failures });
+  nextAttempt.set(origin, { atMs: Date.now() + delayAfter(failures), failures });
   return { issue, error };
 }
 

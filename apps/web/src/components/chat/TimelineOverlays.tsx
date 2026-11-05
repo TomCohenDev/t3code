@@ -1,5 +1,6 @@
 import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
 
+import { ShortcutTooltip } from "../focusLevels/ShortcutHint";
 import { Button } from "../ui/button";
 
 export function WorkspaceFileDropOverlay() {
@@ -19,9 +20,13 @@ export function WorkspaceFileDropOverlay() {
   );
 }
 
-/** Sits `bottom` pixels up, clear of the composer and its attached banners. */
+/**
+ * Sits `bottom` pixels up, clear of the composer and its attached banners. The summary names
+ * what waits at the end of the timeline, which is out of view while it shows.
+ */
 export function ScrollToEndButton(props: {
   readonly bottom: number;
+  readonly summary: string | null;
   readonly onScrollToEnd: () => void;
 }) {
   return (
@@ -29,17 +34,30 @@ export function ScrollToEndButton(props: {
       className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
       style={{ bottom: props.bottom }}
     >
-      <Button
-        aria-label="Scroll to end"
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={props.onScrollToEnd}
-        className="pointer-events-auto"
-        size="xs"
-        variant="glass"
+      <ShortcutTooltip
+        command="timeline.jumpToLatest"
+        label="Scroll to end"
+        side="top"
+        render={
+          <Button
+            data-scroll-to-end="true"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={props.onScrollToEnd}
+            className="pointer-events-auto"
+            size="xs"
+            variant="glass"
+          />
+        }
       >
         <ChevronDownIcon className="size-3.5" />
         Scroll to end
-      </Button>
+        {props.summary === null ? null : (
+          <span className="text-muted-foreground">
+            <span aria-hidden>· </span>
+            {props.summary}
+          </span>
+        )}
+      </ShortcutTooltip>
     </div>
   );
 }

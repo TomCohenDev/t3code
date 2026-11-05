@@ -1,9 +1,10 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 
-import * as MachinePeers from "../../../fork/machineMap/MachinePeers.ts";
+import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
+import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
+import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -59,27 +60,77 @@ const handlers = {
         );
       }),
   ),
-  schedule_task: McpToolAccess.startsThreads(
-    () => ({}),
-    (input) =>
-      Effect.gen(function* () {
-        const scope = yield* McpInvocationContext.McpInvocationContext;
-        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-        return yield* service.scheduleTask(scope, input);
-      }),
+  t3_background_wait: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const { scope, threads } = yield* readCaller();
+      const caller = yield* McpInvocationContext.requireThreadScope(scope, "t3_background_wait");
+      return yield* threads
+        .awaitBackgroundTasks({
+          threadId: caller.thread.threadId,
+          taskIds: input.taskIds,
+          awaited: input.waiting ?? true,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new OrchestratorMcpFailure({
+                code: cause.reason === "unsupported" ? "invalid_request" : "orchestration_error",
+                message: cause.message,
+              }),
+          ),
+        );
+    }),
+  ),
+  schedule_task: McpToolAccess.either(
+    (input) => input.scheduledTaskId === undefined,
+    McpToolAccess.startsThreads(
+      () => ({}),
+      ({ prompt, schedule, ...input }) =>
+        Effect.gen(function* () {
+          if (prompt === undefined || schedule === undefined) {
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "A new scheduled task needs `prompt` and `schedule`.",
+            });
+          }
+          const scope = yield* McpInvocationContext.McpInvocationContext;
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          return yield* service.scheduleTask(scope, { ...input, prompt, schedule });
+        }),
+      // A scheduled run starts long after its caller, with nothing to carry the link.
+      { refused: "schedule tasks in this environment" },
+    ),
+    McpToolAccess.writes(
+      ({
+        scheduledTaskId,
+        prompt,
+        title,
+        schedule,
+        enabled,
+        bindToCurrentThread,
+        modelSelection,
+      }) =>
+        Effect.gen(function* () {
+          if (scheduledTaskId === undefined) return yield* Effect.die("unreachable");
+          const scope = yield* McpInvocationContext.McpInvocationContext;
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          return yield* service.updateScheduledTask(scope, {
+            scheduledTaskId,
+            prompt,
+            title,
+            schedule,
+            enabled,
+            bindToCurrentThread,
+            modelSelection,
+          });
+        }),
+    ),
   ),
   list_scheduled_tasks: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.listScheduledTasks(scope, input);
-    }),
-  ),
-  update_scheduled_task: McpToolAccess.writes((input) =>
-    Effect.gen(function* () {
-      const scope = yield* McpInvocationContext.McpInvocationContext;
-      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-      return yield* service.updateScheduledTask(scope, input);
     }),
   ),
   delete_scheduled_task: McpToolAccess.writes((input) =>
@@ -113,26 +164,6 @@ const handlers = {
   t3_thread_read: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
-      // Fork: MM-1905. A thread of another machine is read through the machine map arrow.
-      const environmentId = input.environmentId;
-      if (environmentId !== undefined && environmentId !== scope.environmentId) {
-        // The server provides the machine map services; a bare toolkit, as in tests, has none.
-        const peers = yield* Effect.serviceOption(MachinePeers.MachinePeers);
-        if (Option.isNone(peers)) {
-          return yield* new OrchestratorMcpFailure({
-            code: "capability_denied",
-            message: "This server cannot read threads of other machines.",
-          });
-        }
-        return yield* peers.value.readThread({ ...input, environmentId }).pipe(
-          Effect.catchTags({
-            MachinePeerError: (error) =>
-              Effect.fail(
-                new OrchestratorMcpFailure({ code: "capability_denied", message: error.detail }),
-              ),
-          }),
-        );
-      }
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.readThread(scope, input);
     }),
@@ -145,6 +176,7 @@ const handlers = {
         const service = yield* ThreadMetadataMcpService.ThreadMetadataMcpService;
         return yield* service.update(scope, input);
       }),
+    { metadataOnly: true },
   ),
   t3_thread_send: McpToolAccess.writesThreads(
     (input) => [input.threadId],
@@ -160,6 +192,36 @@ const handlers = {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.waitForThread(scope, input);
+    }),
+  ),
+  t3_environment_links: McpToolAccess.reads(() =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const forwarding = yield* PeerForwarding.PeerForwarding;
+      return yield* forwarding.links(scope);
+    }),
+  ),
+  // A link lets every agent here reach the other environment, so it is an
+  // environment setting: full access, and never for linked work.
+  t3_environment_link: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const requests = yield* PeerLinkRequests.PeerLinkRequests;
+      return yield* requests.request(scope, input);
+    }),
+  ),
+  t3_environment_unlink: McpToolAccess.writesEnvironment(({ environmentId }) =>
+    Effect.gen(function* () {
+      const links = yield* PeerLinks.PeerLinks;
+      const removed = yield* links
+        .unlink(environmentId)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+          ),
+        );
+      return { environmentId, removed };
     }),
   ),
   t3_thread_interrupt: McpToolAccess.writesThreads(

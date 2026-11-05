@@ -1,10 +1,15 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
-import type { KeybindingCommand } from "@t3tools/contracts";
+import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import type { ClientSettings, KeybindingCommand } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useClientSettings, useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import {
+  navigateHistory,
+  useCanNavigateHistory,
+  type HistoryDirection,
+} from "../../navigationHistory";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -15,6 +20,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   SidebarFooter,
   SidebarMenu,
@@ -23,15 +29,25 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ShortcutHint } from "../focusLevels/ShortcutHint";
+import { Tooltip, TooltipPopup } from "../ui/tooltip";
+import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
+import { ForkSidebarPinsItem } from "../chat/ForkMessagePins";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+
+const selectBackForwardButtons = (settings: ClientSettings) => settings.backForwardButtons;
+const selectBrandingHidden = (settings: ClientSettings) => settings.brandingHidden;
+
+/** Fork: the `backForwardButtons` setting shows its own buttons, so these hide to avoid a second pair. */
+function useHeaderHistoryButtons(isElectron: boolean): boolean {
+  const forkButtons = useClientSettings(selectBackForwardButtons);
+  return isElectron && !forkButtons;
+}
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
@@ -40,12 +56,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
+  const historyButtons = useHeaderHistoryButtons(isElectron);
+  const brandingHidden = useClientSettings(selectBrandingHidden);
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
-    environmentIdentificationMode === "artwork",
+    environmentIdentificationMode,
   );
   const pillLabel =
-    environmentIdentificationMode === "pill"
+    environmentIdentificationMode === "pill" && !brandingHidden
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
 
@@ -65,10 +83,28 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         />
       </div>
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-        <SidebarBrand onBackdrop={backdropVariant !== null} />
+        <div className="flex shrink-0 items-center gap-1">
+          {brandingHidden ? null : <SidebarBrand onBackdrop={backdropVariant !== null} />}
+          {historyButtons ? (
+            <div
+              className={cn(
+                "hidden items-center md:flex",
+                brandingHidden && "ml-[var(--workspace-titlebar-content-left)]",
+              )}
+            >
+              <HistoryNavigationButton direction="back" onBackdrop={backdropVariant !== null} />
+              <HistoryNavigationButton direction="forward" onBackdrop={backdropVariant !== null} />
+            </div>
+          ) : null}
+        </div>
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
-            <Badge data-environment-identification="pill" size="sm" variant="secondary">
+            <Badge
+              data-environment-identification="pill"
+              data-fork-brand="pill"
+              size="sm"
+              variant="secondary"
+            >
               {pillLabel}
             </Badge>
           </div>
@@ -79,10 +115,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 });
 
 export function SidebarBrandWidthProbe({
+  isElectron,
   onWidthChange,
 }: {
+  isElectron: boolean;
   onWidthChange: (width: number) => void;
 }) {
+  const historyButtons = useHeaderHistoryButtons(isElectron);
+  const brandingHidden = useClientSettings(selectBrandingHidden);
   const observeWidth = (probe: HTMLDivElement) => {
     return observeResize(probe, ([entry]) => {
       if (entry) onWidthChange(entry.borderBoxSize[0]?.inlineSize ?? probe.offsetWidth);
@@ -95,17 +135,60 @@ export function SidebarBrandWidthProbe({
       className="pointer-events-none invisible fixed top-0 left-0 flex w-max border-r border-transparent pr-3"
       ref={observeWidth}
     >
-      <div className="ml-[var(--workspace-titlebar-content-left)] flex">
-        <SidebarBrandMark onBackdrop={false} />
+      <div className="ml-[var(--workspace-titlebar-content-left)] flex gap-1">
+        {brandingHidden ? null : <SidebarBrandMark onBackdrop={false} />}
+        {historyButtons ? (
+          <div className="w-[calc(2*var(--workspace-titlebar-control-size))]" />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function HistoryNavigationButton({
+  direction,
+  onBackdrop,
+}: {
+  direction: HistoryDirection;
+  onBackdrop: boolean;
+}) {
+  const enabled = useCanNavigateHistory(direction);
+  const label = direction === "back" ? "Go back" : "Go forward";
+  const command = direction === "back" ? "navigation.back" : "navigation.forward";
+  const Icon = direction === "back" ? ArrowLeftIcon : ArrowRightIcon;
+  return (
+    <Tooltip>
+      <ShortcutTrigger
+        command={command}
+        render={
+          <Button
+            aria-label={label}
+            className={cn(
+              "[-webkit-app-region:no-drag]",
+              onBackdrop && "relative top-auto translate-y-0",
+            )}
+            disabled={!enabled}
+            onClick={() => navigateHistory(direction)}
+            size="icon-sm"
+            variant={onBackdrop ? "media-navigation" : "ghost"}
+          />
+        }
+      >
+        <Icon className="size-3.5" />
+      </ShortcutTrigger>
+      <TooltipPopup side="bottom">
+        {label}
+        <ShortcutHint command={command} />
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
 function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <Link
-      aria-label="Go to threads"
+      aria-label="T3 Code home"
+      data-fork-brand="wordmark"
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
@@ -147,7 +230,8 @@ function SidebarUtilityItem({
   return (
     <SidebarMenuItem className="shrink-0">
       <Tooltip>
-        <TooltipTrigger
+        <ShortcutTrigger
+          command={command}
           render={
             <SidebarMenuButton aria-label={label} onClick={onClick} size="icon">
               {icon}
@@ -163,7 +247,7 @@ function SidebarUtilityItem({
   );
 }
 
-export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -220,7 +304,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label="Pull Requests"
+              label="Pull requests"
               onClick={handlePullRequestsClick}
             />
           ) : null}
@@ -230,8 +314,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             command="usage.open"
             onClick={handleUsageClick}
           />
+          <ForkSidebarPinsItem />
         </>
       )}
+      <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>
   );
@@ -240,7 +326,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
     <SidebarFooter>
-      <SidebarThreadUndoNotice />
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
       <SidebarUtilityMenu />

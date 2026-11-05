@@ -31,7 +31,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 /** The clickable card surface. Carries `data-testid="sidebar-row-card"` in both users. */
 export const THREAD_CARD_SURFACE_CLASS =
   "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
-export const THREAD_CARD_ACTIVE_CLASS = "bg-sidebar-row-active text-sidebar-foreground";
+export const THREAD_CARD_ACTIVE_CLASS =
+  "bg-sidebar-row-active text-sidebar-foreground light:ring-1 light:ring-inset light:ring-sidebar-border/70";
 export const THREAD_CARD_IDLE_CLASS =
   "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover";
 /** Padding of the card content; a custom layout adds no height of its own. */
@@ -41,7 +42,7 @@ export const THREAD_CARD_TITLE_CLASS =
   "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none";
 /** The element that carries `data-sidebar-status`; themes draw it as a sticker. */
 export const THREAD_CARD_STATUS_LABEL_CLASS =
-  "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity";
+  "flex items-center self-center justify-self-end tabular-nums text-secondary-label";
 export const THREAD_CARD_PIN_CLASS = "size-3 shrink-0 text-muted-foreground/65";
 
 type ThreadCardStatusIcon =
@@ -51,6 +52,7 @@ type ThreadCardStatusIcon =
   | "approval"
   | "failed"
   | "done"
+  | "request"
   | "woke";
 
 export interface ThreadCardStatus {
@@ -67,27 +69,22 @@ export function ThreadCardStatusBadge(props: { status: ThreadCardStatus; trailin
       {status.icon === null || status.icon === "woke" ? null : (
         <AppIcon slot={`status.${status.icon}`} />
       )}
-      {/* The label alone is the live region: a role="status" wrapper around a
-          ticking duration would make screen readers announce every second. */}
-      <span role="status">{status.label}</span>
+      {/* Not a live region: a collapsed sidebar is inert, so
+          BackgroundThreadAnnouncer and the open thread's timeline speak status changes. */}
+      {status.label}
       {props.trailing}
     </span>
   );
 }
 
-function threadCardProjectLabelClassName(recede: boolean): string {
-  return cn(
-    "min-w-0 truncate text-secondary-label text-xs",
-    recede ? "font-normal" : "font-medium",
-  );
-}
+const THREAD_CARD_PROJECT_LABEL_CLASS = "min-w-0 truncate font-normal text-secondary-label text-xs";
 
 /** The branch name with its leading icon (worktree or machine). */
 export function ThreadCardBranch(props: { branch: string; leading: ReactNode }) {
   return (
     <>
       {props.leading}
-      <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+      <span className="flex min-w-0 flex-1">
         <MiddleTruncate value={props.branch} showTitle={false} />
       </span>
     </>
@@ -103,16 +100,8 @@ export function ThreadCardDiff(props: { insertions: number; deletions: number })
   );
 }
 
-export function ThreadCardProjectLabel(props: {
-  name: string;
-  recede: boolean;
-  className?: string;
-}) {
-  return (
-    <span className={cn(threadCardProjectLabelClassName(props.recede), props.className)}>
-      {props.name}
-    </span>
-  );
+export function ThreadCardProjectLabel(props: { name: string; className?: string }) {
+  return <span className={cn(THREAD_CARD_PROJECT_LABEL_CLASS, props.className)}>{props.name}</span>;
 }
 
 /** What each card element shows for one thread; null leaves the element out. */

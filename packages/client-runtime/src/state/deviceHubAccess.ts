@@ -5,6 +5,7 @@
  * stream.
  */
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 import type { HttpClient } from "effect/http";
 
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
@@ -40,14 +41,15 @@ export const resolveDeviceHubAccess = Effect.fn("clientRuntime.state.resolveDevi
       remoteAuthorization,
       group: "auth",
       method: "POST",
-      url: (urls) => urls.webSocketTicket(),
+      url: (urls) => urls.webSocketTicketFor({ params: { use: "media" } }),
       timeoutMs: TICKET_TIMEOUT_MS,
-      request: ({ client, headers }) => client.webSocketTicket({ headers }),
+      request: ({ client, headers }) =>
+        client.webSocketTicketFor({ headers, params: { use: "media" } }),
     });
     return {
       httpBase,
       wsBase,
-      query: { wsTicket: ticket.ticket },
+      query: { wsTicket: Redacted.value(ticket.ticket) },
       // A trusted sibling behind a proxy such as Cloudflare Access needs its cookie.
       credentials: sendsSiblingCredentials(httpBase),
     };

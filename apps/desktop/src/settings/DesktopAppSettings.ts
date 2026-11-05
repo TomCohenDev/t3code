@@ -7,7 +7,7 @@ import {
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -22,7 +22,7 @@ import {
   normalizeLinuxPasswordStorePreference,
   type LinuxPasswordStorePreference,
 } from "../linuxSecretStorage.ts";
-import { resolveDefaultDesktopUpdateChannel } from "../updates/updateChannels.ts";
+import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
 import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
@@ -40,17 +40,11 @@ export interface DesktopSettings {
   // Fork: comma-separated https origins that may call the server with cookies
   // while tunnel pairing is on (T3CODE_TRUSTED_BROWSER_ORIGINS).
   readonly trustedBrowserOrigins: string | null;
-  // Fork: Cloudflare Access login (T3CODE_CLOUDFLARE_ACCESS_*). The backend
-  // gets these only while tunnel pairing is on and all three are set.
-  readonly cloudflareAccessTeamDomain: string | null;
-  readonly cloudflareAccessAud: string | null;
-  readonly cloudflareAccessSubjects: string | null;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updateChannelConfiguredByUser: boolean;
   readonly wslBackendEnabled: boolean;
   readonly wslDistro: string | null;
-  // Changing this requires a desktop restart because the pool's primary spec is
-  // chosen once at layer init.
+  // Requires restart because the pool chooses its primary spec at layer initialization.
   readonly wslOnly: boolean;
 }
 
@@ -87,9 +81,6 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   tunnelPairingEnabled: false,
   tunnelPairingUrl: null,
   trustedBrowserOrigins: null,
-  cloudflareAccessTeamDomain: null,
-  cloudflareAccessAud: null,
-  cloudflareAccessSubjects: null,
   updateChannel: "latest",
   updateChannelConfiguredByUser: false,
   wslBackendEnabled: false,
@@ -115,9 +106,6 @@ const DesktopSettingsDocument = Schema.Struct({
   tunnelPairingEnabled: Schema.optionalKey(Schema.Boolean),
   tunnelPairingUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
   trustedBrowserOrigins: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessTeamDomain: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessAud: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  cloudflareAccessSubjects: Schema.optionalKey(Schema.NullOr(Schema.String)),
   updateChannel: Schema.optionalKey(DesktopUpdateChannelSchema),
   updateChannelConfiguredByUser: Schema.optionalKey(Schema.Boolean),
   wslBackendEnabled: Schema.optionalKey(Schema.Boolean),
@@ -188,7 +176,6 @@ export class DesktopAppSettings extends Context.Service<
       readonly enabled: boolean;
       readonly url: string | null;
       readonly trustedBrowserOrigins: string | null;
-      readonly cloudflareAccess: CloudflareAccessSettings;
     }) => Effect.Effect<DesktopSettingsChange, DesktopSettingsWriteError>;
     readonly setUpdateChannel: (
       channel: DesktopUpdateChannel,
@@ -213,7 +200,7 @@ export class DesktopAppSettings extends Context.Service<
 export function resolveDefaultDesktopSettings(appVersion: string): DesktopSettings {
   return {
     ...DEFAULT_DESKTOP_SETTINGS,
-    updateChannel: resolveDefaultDesktopUpdateChannel(appVersion),
+    updateChannel: desktopUpdateChannelOf(appVersion),
   };
 }
 
@@ -245,26 +232,6 @@ export function normalizeTrustedBrowserOrigins(value: unknown): string | null | 
   const origins = entries.map(normalizeTunnelPairingUrl);
   if (origins.some((origin) => origin === null)) return undefined;
   return origins.length === 0 ? null : origins.join(",");
-}
-
-export type CloudflareAccessSettings = Pick<
-  DesktopSettings,
-  "cloudflareAccessTeamDomain" | "cloudflareAccessAud" | "cloudflareAccessSubjects"
->;
-
-/** Fork: trimmed text, or null when blank or not a string. */
-export function normalizeSettingText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
-}
-
-/** Fork: a bare host such as team.cloudflareaccess.com, else null. */
-export function normalizeCloudflareAccessTeamDomain(value: unknown): string | null {
-  const text = normalizeSettingText(value);
-  if (text === null) return null;
-  const url = URL.parse(`https://${text}`);
-  return url !== null && url.host === text && url.username === "" ? text : null;
 }
 
 function normalizeWslDistro(value: unknown): string | null {
@@ -306,14 +273,8 @@ function normalizeDesktopSettingsDocument(
       parsed.tunnelPairingEnabled === true &&
       normalizeTunnelPairingUrl(parsed.tunnelPairingUrl) !== null,
     trustedBrowserOrigins: normalizeTrustedBrowserOrigins(parsed.trustedBrowserOrigins) ?? null,
-    cloudflareAccessTeamDomain: normalizeCloudflareAccessTeamDomain(
-      parsed.cloudflareAccessTeamDomain,
-    ),
-    cloudflareAccessAud: normalizeSettingText(parsed.cloudflareAccessAud),
-    cloudflareAccessSubjects: normalizeSettingText(parsed.cloudflareAccessSubjects),
-    updateChannel: updateChannelConfiguredByUser
-      ? Option.getOrElse(parsedUpdateChannel, () => defaultSettings.updateChannel)
-      : defaultSettings.updateChannel,
+    // Fork: the fork publishes only nightly builds, so a saved Stable channel reads as nightly.
+    updateChannel: updateChannelConfiguredByUser ? "nightly" : defaultSettings.updateChannel,
     updateChannelConfiguredByUser,
     wslBackendEnabled,
     wslDistro: normalizeWslDistro(parsed.wslDistro),
@@ -357,15 +318,6 @@ function toDesktopSettingsDocument(
   }
   if (settings.trustedBrowserOrigins !== defaults.trustedBrowserOrigins) {
     document.trustedBrowserOrigins = settings.trustedBrowserOrigins;
-  }
-  if (settings.cloudflareAccessTeamDomain !== defaults.cloudflareAccessTeamDomain) {
-    document.cloudflareAccessTeamDomain = settings.cloudflareAccessTeamDomain;
-  }
-  if (settings.cloudflareAccessAud !== defaults.cloudflareAccessAud) {
-    document.cloudflareAccessAud = settings.cloudflareAccessAud;
-  }
-  if (settings.cloudflareAccessSubjects !== defaults.cloudflareAccessSubjects) {
-    document.cloudflareAccessSubjects = settings.cloudflareAccessSubjects;
   }
   if (settings.updateChannel !== defaults.updateChannel) {
     document.updateChannel = settings.updateChannel;
@@ -437,23 +389,17 @@ function setTunnelPairing(
     readonly enabled: boolean;
     readonly url: string | null;
     readonly trustedBrowserOrigins: string | null;
-    readonly cloudflareAccess: CloudflareAccessSettings;
   },
 ): DesktopSettings {
-  const { cloudflareAccess } = input;
   return settings.tunnelPairingEnabled === input.enabled &&
     settings.tunnelPairingUrl === input.url &&
-    settings.trustedBrowserOrigins === input.trustedBrowserOrigins &&
-    settings.cloudflareAccessTeamDomain === cloudflareAccess.cloudflareAccessTeamDomain &&
-    settings.cloudflareAccessAud === cloudflareAccess.cloudflareAccessAud &&
-    settings.cloudflareAccessSubjects === cloudflareAccess.cloudflareAccessSubjects
+    settings.trustedBrowserOrigins === input.trustedBrowserOrigins
     ? settings
     : {
         ...settings,
         tunnelPairingEnabled: input.enabled,
         tunnelPairingUrl: input.url,
         trustedBrowserOrigins: input.trustedBrowserOrigins,
-        ...cloudflareAccess,
       };
 }
 
@@ -574,35 +520,36 @@ const writeSettings = Effect.fn("desktop.settings.writeSettings")(function* (inp
         }),
     ),
   );
-  yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
-    Effect.mapError(
-      (cause) =>
-        new DesktopSettingsWriteError({
-          operation: "write-temporary-file",
-          path: tempPath,
-          cause,
-        }),
-    ),
-  );
-  yield* input.fileSystem.rename(tempPath, targetPath).pipe(
-    Effect.mapError(
-      (cause) =>
-        new DesktopSettingsWriteError({
-          operation: "replace-settings-file",
-          path: input.settingsPath,
-          cause,
-        }),
-    ),
-  );
+  yield* Effect.gen(function* () {
+    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DesktopSettingsWriteError({
+            operation: "write-temporary-file",
+            path: tempPath,
+            cause,
+          }),
+      ),
+    );
+    yield* input.fileSystem.rename(tempPath, targetPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DesktopSettingsWriteError({
+            operation: "replace-settings-file",
+            path: input.settingsPath,
+            cause,
+          }),
+      ),
+    );
+  }).pipe(Effect.ensuring(input.fileSystem.remove(tempPath, { force: true }).pipe(Effect.ignore)));
 });
 
 /** @public */
-/** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const settingsRef = yield* SynchronizedRef.make(environment.defaultDesktopSettings);
 
   const updateInMemory = (update: (settings: DesktopSettings) => DesktopSettings) =>
@@ -620,16 +567,8 @@ export const make = Effect.gen(function* () {
         return Effect.succeed([settingsChange(settings, false), settings] as const);
       }
 
-      return crypto.randomUUIDv4().pipe(
+      return random.uuidV4().pipe(
         Effect.map((uuid) => uuid.replace(/-/g, "")),
-        Effect.mapError(
-          (cause) =>
-            new DesktopSettingsWriteError({
-              operation: "create-temporary-file-name",
-              path: environment.desktopSettingsPath,
-              cause,
-            }),
-        ),
         Effect.flatMap((suffix) =>
           writeSettings({
             fileSystem,
@@ -654,54 +593,61 @@ export const make = Effect.gen(function* () {
       );
       return yield* SynchronizedRef.setAndGet(settingsRef, settings);
     }).pipe(Effect.withSpan("desktop.settings.load")),
-    setMainWindowBounds: (bounds, isMaximized) =>
-      persist((settings) => setMainWindowBounds(settings, bounds, isMaximized)).pipe(
-        Effect.withSpan("desktop.settings.setMainWindowBounds", {
-          attributes: {
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
-            isMaximized,
-          },
-        }),
-      ),
-    setServerExposureMode: (mode) =>
-      persist((settings) => setServerExposureMode(settings, mode)).pipe(
-        Effect.withSpan("desktop.settings.setServerExposureMode", { attributes: { mode } }),
-      ),
-    setTailscaleServe: (input) =>
-      persist((settings) => setTailscaleServe(settings, input)).pipe(
-        Effect.withSpan("desktop.settings.setTailscaleServe", { attributes: input }),
-      ),
-    setTunnelPairing: (input) =>
-      persist((settings) => setTunnelPairing(settings, input)).pipe(
-        Effect.withSpan("desktop.settings.setTunnelPairing", {
-          attributes: { enabled: input.enabled, url: input.url ?? "" },
-        }),
-      ),
-    setUpdateChannel: (channel) =>
-      persist((settings) => setUpdateChannel(settings, channel)).pipe(
-        Effect.withSpan("desktop.settings.setUpdateChannel", { attributes: { channel } }),
-      ),
-    setWslBackendEnabled: (enabled) =>
-      persist((settings) => setWslBackendEnabled(settings, enabled)).pipe(
-        Effect.withSpan("desktop.settings.setWslBackendEnabled", { attributes: { enabled } }),
-      ),
-    setWslDistro: (distro) =>
-      persist((settings) => setWslDistro(settings, distro)).pipe(
-        Effect.withSpan("desktop.settings.setWslDistro", {
-          attributes: { distro: distro ?? null },
-        }),
-      ),
-    setWslOnly: (enabled) =>
-      persist((settings) => setWslOnly(settings, enabled)).pipe(
-        Effect.withSpan("desktop.settings.setWslOnly", { attributes: { enabled } }),
-      ),
-    setLocalEnvironmentEnabled: (enabled) =>
-      persist((settings) => setLocalEnvironmentEnabled(settings, enabled)).pipe(
-        Effect.withSpan("desktop.settings.setLocalEnvironmentEnabled", { attributes: { enabled } }),
-      ),
+    setMainWindowBounds: Effect.fn("desktop.settings.setMainWindowBounds")(
+      function* (bounds, isMaximized) {
+        yield* Effect.annotateCurrentSpan({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          isMaximized,
+        });
+
+        return yield* persist((settings) => setMainWindowBounds(settings, bounds, isMaximized));
+      },
+    ),
+    setServerExposureMode: Effect.fn("desktop.settings.setServerExposureMode")(function* (mode) {
+      yield* Effect.annotateCurrentSpan({ mode });
+
+      return yield* persist((settings) => setServerExposureMode(settings, mode));
+    }),
+    setTailscaleServe: Effect.fn("desktop.settings.setTailscaleServe")(function* (input) {
+      yield* Effect.annotateCurrentSpan(input);
+
+      return yield* persist((settings) => setTailscaleServe(settings, input));
+    }),
+    setTunnelPairing: Effect.fn("desktop.settings.setTunnelPairing")(function* (input) {
+      yield* Effect.annotateCurrentSpan({ enabled: input.enabled, url: input.url ?? "" });
+
+      return yield* persist((settings) => setTunnelPairing(settings, input));
+    }),
+    setUpdateChannel: Effect.fn("desktop.settings.setUpdateChannel")(function* (channel) {
+      yield* Effect.annotateCurrentSpan({ channel });
+
+      return yield* persist((settings) => setUpdateChannel(settings, channel));
+    }),
+    setWslBackendEnabled: Effect.fn("desktop.settings.setWslBackendEnabled")(function* (enabled) {
+      yield* Effect.annotateCurrentSpan({ enabled });
+
+      return yield* persist((settings) => setWslBackendEnabled(settings, enabled));
+    }),
+    setWslDistro: Effect.fn("desktop.settings.setWslDistro")(function* (distro) {
+      yield* Effect.annotateCurrentSpan({ distro: distro ?? null });
+
+      return yield* persist((settings) => setWslDistro(settings, distro));
+    }),
+    setWslOnly: Effect.fn("desktop.settings.setWslOnly")(function* (enabled) {
+      yield* Effect.annotateCurrentSpan({ enabled });
+
+      return yield* persist((settings) => setWslOnly(settings, enabled));
+    }),
+    setLocalEnvironmentEnabled: Effect.fn("desktop.settings.setLocalEnvironmentEnabled")(
+      function* (enabled) {
+        yield* Effect.annotateCurrentSpan({ enabled });
+
+        return yield* persist((settings) => setLocalEnvironmentEnabled(settings, enabled));
+      },
+    ),
     applyWslWindowsFallback: persist(applyWslWindowsFallback).pipe(
       Effect.withSpan("desktop.settings.applyWslWindowsFallback"),
     ),
@@ -733,19 +679,41 @@ export const layerTest = (initialSettings: DesktopSettings = DEFAULT_DESKTOP_SET
       return DesktopAppSettings.of({
         get: SynchronizedRef.get(settingsRef),
         load: SynchronizedRef.get(settingsRef),
-        setMainWindowBounds: (bounds, isMaximized) =>
-          update((settings) => setMainWindowBounds(settings, bounds, isMaximized)),
-        setServerExposureMode: (mode) =>
-          update((settings) => setServerExposureMode(settings, mode)),
-        setTailscaleServe: (input) => update((settings) => setTailscaleServe(settings, input)),
-        setTunnelPairing: (input) => update((settings) => setTunnelPairing(settings, input)),
-        setUpdateChannel: (channel) => update((settings) => setUpdateChannel(settings, channel)),
-        setWslBackendEnabled: (enabled) =>
-          update((settings) => setWslBackendEnabled(settings, enabled)),
-        setWslDistro: (distro) => update((settings) => setWslDistro(settings, distro)),
-        setWslOnly: (enabled) => update((settings) => setWslOnly(settings, enabled)),
-        setLocalEnvironmentEnabled: (enabled) =>
-          update((settings) => setLocalEnvironmentEnabled(settings, enabled)),
+        setMainWindowBounds: Effect.fn("DesktopAppSettings.setMainWindowBounds")(
+          function (bounds, isMaximized) {
+            return update((settings) => setMainWindowBounds(settings, bounds, isMaximized));
+          },
+        ),
+        setServerExposureMode: Effect.fn("DesktopAppSettings.setServerExposureMode")(
+          function (mode) {
+            return update((settings) => setServerExposureMode(settings, mode));
+          },
+        ),
+        setTailscaleServe: Effect.fn("DesktopAppSettings.setTailscaleServe")(function (input) {
+          return update((settings) => setTailscaleServe(settings, input));
+        }),
+        setTunnelPairing: Effect.fn("DesktopAppSettings.setTunnelPairing")(function (input) {
+          return update((settings) => setTunnelPairing(settings, input));
+        }),
+        setUpdateChannel: Effect.fn("DesktopAppSettings.setUpdateChannel")(function (channel) {
+          return update((settings) => setUpdateChannel(settings, channel));
+        }),
+        setWslBackendEnabled: Effect.fn("DesktopAppSettings.setWslBackendEnabled")(
+          function (enabled) {
+            return update((settings) => setWslBackendEnabled(settings, enabled));
+          },
+        ),
+        setWslDistro: Effect.fn("DesktopAppSettings.setWslDistro")(function (distro) {
+          return update((settings) => setWslDistro(settings, distro));
+        }),
+        setWslOnly: Effect.fn("DesktopAppSettings.setWslOnly")(function (enabled) {
+          return update((settings) => setWslOnly(settings, enabled));
+        }),
+        setLocalEnvironmentEnabled: Effect.fn("DesktopAppSettings.setLocalEnvironmentEnabled")(
+          function (enabled) {
+            return update((settings) => setLocalEnvironmentEnabled(settings, enabled));
+          },
+        ),
         applyWslWindowsFallback: update(applyWslWindowsFallback),
         applyWslWindowsFallbackInMemory: update(applyWslWindowsFallback),
       });

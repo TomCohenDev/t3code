@@ -3,6 +3,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { promptLinkAppPath } from "./promptLinks.ts";
+import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
 import { messageLinkFragmentId } from "./threadMessageLinks.ts";
 
 export interface ThreadAddress {
@@ -24,11 +25,10 @@ function decodeSegment(segment: string): string | null {
 }
 
 /**
- * Fork: the thread that a link names with its environment: a web address of a T3 server,
- * `https://<host>/<environmentId>/<threadId>`, or the app link `t3code://threads/<environmentId>/<threadId>`.
- * Both may carry `?message=<messageId>` or `#<messageId>`. The host does not matter: the
- * environment id is the identity, so a client checks it against the environments it knows. Any other query makes it
- * something else, such as a prompt link (`promptLinks.ts`), so it stays a normal link.
+ * Fork: the thread that a web address `https://<host>/<environmentId>/<threadId>` or an app link
+ * `t3code://threads/<environmentId>/<threadId>` names, with optional `?message=` or `#<messageId>`.
+ * The host does not matter: a client checks the environment id against its environments. Any other
+ * query makes it a normal link, such as a prompt link (`promptLinks.ts`).
  */
 export function parseThreadAddress(href: string): ThreadAddress | null {
   if (!URL.canParse(href)) return null;
@@ -75,6 +75,36 @@ export function parseKnownThreadAddress(
 ): ThreadAddress | null {
   const address = parseThreadAddress(href);
   return address !== null && known(address.environmentId) ? address : null;
+}
+
+/**
+ * Fork: the thread of a link that the OS hands to the app: `t3-thread://v2/<environmentId>/<threadId>`
+ * or `t3code://threads/…` (`parseThreadAddress`), with an optional message. A scheme suffix such as
+ * `-dev` names a dev build. Web addresses and v1 links, which name no environment, return null.
+ */
+export function readThreadAppLink(href: string): ThreadAddress | null {
+  if (!URL.canParse(href)) return null;
+  const url = new URL(href);
+  const scheme = url.protocol.slice(0, -1);
+  if (scheme === "https" || scheme === "http") return null;
+  if (scheme !== THREAD_LINK_PROTOCOL && !scheme.startsWith(`${THREAD_LINK_PROTOCOL}-`)) {
+    return parseThreadAddress(href);
+  }
+  // A v2 thread link is the app link of the thread under another scheme.
+  if (url.host !== "v2" || url.search !== "") return null;
+  return parseThreadAddress(`t3code://threads${url.pathname}${url.hash}`);
+}
+
+/**
+ * Fork: the `t3-thread://v2` link of a thread, with `#<messageId>` for a message. The desktop app
+ * and the fork Android app open it. Each id is encoded, so `readThreadAppLink` reads back the same
+ * ids, also for ids that hold percent escapes of their own.
+ */
+export function formatThreadV2Link(address: ThreadAddress): string {
+  const base = `${THREAD_LINK_PROTOCOL}://v2/${encodeURIComponent(address.environmentId)}/${encodeURIComponent(address.threadId)}`;
+  return address.messageId === undefined
+    ? base
+    : `${base}#${encodeURIComponent(address.messageId)}`;
 }
 
 /** Fork: the app link of a thread, the form that `parseThreadAddress` reads back. */

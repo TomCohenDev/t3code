@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -11,7 +12,6 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Config from "../config.ts";
@@ -32,7 +32,7 @@ const layerGit = Git.layer.pipe(
   Layer.provideMerge(SetupTracker.layer),
   Layer.provide(VcsProcess.layer),
   Layer.provideMerge(Config.layerTest(process.cwd(), { prefix: "fork-worktree-artifacts-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -233,14 +233,42 @@ it.effect("recognizes installed dependency payloads without following their inte
   }).pipe(Effect.provide(layerGit)),
 );
 
-it.effect("an incomplete process scan or unreadable cwd keeps all artifacts", () =>
+it.effect("an incomplete process scan keeps all artifacts", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.file("node_modules/.modules.yaml");
     f.processes(null);
     assert.include((yield* f.evict()).reason, "could not be inspected");
-    f.processes([f.path.join(f.root, "unreadable")]);
-    assert.include((yield* f.evict()).reason, "could not be read");
+    assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/.modules.yaml")));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect("deleted working directories outside the worktree do not block eviction", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.file("node_modules/.modules.yaml");
+    f.processes([
+      f.path.join(f.root, "deleted-sibling", "apps/web"),
+      `${f.path.join(f.root, "deleted-sibling")} (deleted)`,
+      f.path.join(f.home, "Library/Caches/JetBrains/Toolbox/gone"),
+      f.path.join(f.path.parse(f.cwd).root, "no-such-folder-for-artifact-test"),
+    ]);
+    assert.strictEqual((yield* f.evict()).directories, 1);
+    assert.isFalse(yield* f.fs.exists(f.path.join(f.cwd, "node_modules")));
+  }).pipe(Effect.provide(layerGit)),
+);
+
+it.effect.each([
+  { label: "a deleted folder", name: "apps/web/gone" },
+  { label: "a Linux deleted marker", name: "apps/web/gone (deleted)" },
+])("$label inside the worktree blocks eviction", ({ name }) =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.file("node_modules/.modules.yaml");
+    f.processes([f.path.join(f.cwd, name)]);
+    const result = yield* f.evict();
+    assert.strictEqual(result.directories, 0);
+    assert.include(result.reason, "in this worktree or its container");
     assert.isTrue(yield* f.fs.exists(f.path.join(f.cwd, "node_modules/.modules.yaml")));
   }).pipe(Effect.provide(layerGit)),
 );
@@ -598,7 +626,10 @@ it.effect(
       let sessionWorktree: string | null = null;
       let setupConfigured = true;
       let hasThread = true;
-      let settings = { ...DEFAULT_SERVER_SETTINGS, worktreeArtifactEviction: false };
+      let settings: typeof DEFAULT_SERVER_SETTINGS = {
+        ...DEFAULT_SERVER_SETTINGS,
+        worktreeArtifactsAfterDays: null,
+      };
       const project = {
         id: base.projectId,
         projectId: base.projectId,
@@ -649,9 +680,7 @@ it.effect(
         Effect.provideService(Projects.ProjectStoreV2, {
           listShells: () => Effect.succeed([project]),
           get: () =>
-            Effect.succeed(
-              Option.some({ ...project, scripts: setupConfigured ? project.scripts : [] }),
-            ),
+            Effect.succeedSome({ ...project, scripts: setupConfigured ? project.scripts : [] }),
         } as unknown as Projects.ProjectStoreV2["Service"]),
         Effect.provideService(Settings.ServerSettingsService, {
           getSettings: Effect.sync(() => settings),
@@ -667,7 +696,7 @@ it.effect(
           return entries;
         });
       assert.lengthOf(yield* run(), 0);
-      settings = { ...settings, worktreeArtifactEviction: true };
+      settings = { ...settings, worktreeArtifactsAfterDays: 14 };
       hasThread = false;
       yield* f.file("apps/mobile/android/app/build/outputs/app.apk");
       assert.lengthOf(yield* run(), 0);

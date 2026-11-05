@@ -1,8 +1,9 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentHttpApi } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -11,63 +12,76 @@ import * as HttpPlatform from "effect/http/HttpPlatform";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpRouter from "effect/http/HttpRouter";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import { answerCheck, layerKitshnConnection } from "../fork/kitshn/KitshnConnection.testkit.ts";
+import * as KitshnGrants from "../fork/kitshn/KitshnGrants.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
+import * as SessionStore from "./SessionStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as AuthHttp from "./http.ts";
 
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 class AuthTestApi extends HttpApi.make("environment").add(EnvironmentHttpApi.groups.auth) {}
 
-const ACCESS_TEAM = "team.cloudflareaccess.com";
-const CERTS_URL = `https://${ACCESS_TEAM}/cdn-cgi/access/certs`;
-const accessKeys = await generateKeyPair("RS256");
-const accessJwk = { ...(await exportJWK(accessKeys.publicKey)), kid: "key-1", alg: "RS256" };
-const signAccessJwt = (email: string) =>
-  new SignJWT({ email })
-    .setProtectedHeader({ alg: "RS256", kid: "key-1" })
-    .setIssuer(`https://${ACCESS_TEAM}`)
-    .setAudience("aud-tag")
-    .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(accessKeys.privateKey);
+const ALLOWED = "token-of-dev";
+const UNLISTED = "token-of-someone";
 
-const layerConfig = Layer.effect(
-  ServerConfig.ServerConfig,
-  Effect.gen(function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    return {
-      ...config,
-      cloudflareAccess: { teamDomain: ACCESS_TEAM, aud: "aud-tag", subjects: ["dev@example.com"] },
-    } satisfies ServerConfig.ServerConfig["Service"];
-  }),
-).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-access-test-" })));
+const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-access-test-" });
+
+// K-721: the daemon names dev@example.com at `t3.app` standard and refuses any other token.
+const layerKitshn = layerKitshnConnection(
+  answerCheck((headers) =>
+    headers["cf-access-jwt-assertion"] === ALLOWED
+      ? {
+          subject: { type: "person", id: "dev@example.com", name: "dev@example.com" },
+          levels: { app: "standard" },
+          rights: [],
+          until: Number.MAX_SAFE_INTEGER,
+        }
+      : headers["cf-access-jwt-assertion"] === undefined
+        ? { anonymous: true }
+        : { refused: { code: "no-access", reason: "no grant" } },
+  ),
+);
+
+const layerGrants = KitshnGrants.layer.pipe(
+  Layer.provide(layerKitshn),
+  Layer.provide(SessionStore.layer),
+  Layer.provide(ServerSecretStore.layer),
+  Layer.provide(SqlitePersistence.layerMemory),
+  Layer.provide(ServerEnvironment.layerIdentity),
+  Layer.provide(layerConfig),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 const layerRoutes = HttpApiBuilder.layer(AuthTestApi).pipe(
   Layer.provide(AuthHttp.layer),
   Layer.provide(AuthHttp.layerAuthenticatedAuth),
   Layer.provideMerge(
     EnvironmentAuth.layer.pipe(
+      Layer.provide(ManagedPolicy.layerTest()),
       Layer.provide(SqlitePersistence.layerMemory),
       Layer.provide(ServerSecretStore.layer),
       Layer.provide(ServerEnvironment.layerIdentity),
+      Layer.provide(layerGrants),
       Layer.provide(layerConfig),
     ),
   ),
   Layer.provide(layerConfig),
   Layer.provideMerge(
     HttpPlatform.layer.pipe(
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provideMerge(Etag.layerWeak),
     ),
   ),
-  Layer.provide(NodeServices.layer),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
-const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const request = (path: string, init?: { method?: string; headers?: Record<string, string> }) =>
   new Request(`http://127.0.0.1${path}`, {
     method: init?.method ?? "GET",
@@ -83,33 +97,18 @@ const unusedSecretStore = ServerSecretStore.ServerSecretStore.of({
   remove: () => Effect.void,
 });
 
-// The Access keys come from the team certs URL, so the test serves them from a fetch stub.
-const withCertsFetch = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const realFetch = globalThis.fetch;
-      globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) =>
-        (input instanceof Request ? input.url : String(input)) === CERTS_URL
-          ? Response.json({ keys: [accessJwk] })
-          : new Response(null, { status: 404 })) as typeof fetch;
-      return realFetch;
-    }),
-    () => effect,
-    (realFetch) => Effect.sync(() => (globalThis.fetch = realFetch)),
-  );
-
-it.effect("logs a Cloudflare Access caller in without a pairing link", () =>
+it.effect("logs a kitshn visitor in through Access, without a pairing link", () =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
+    const random = yield* SecureRandom.SecureRandom;
+    const requestContext = Context.make(SecureRandom.SecureRandom, random).pipe(
       Context.add(ServerSecretStore.ServerSecretStore, unusedSecretStore),
     );
     return yield* Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(layerRoutes, { disableLogger: true })),
       (environment) =>
         Effect.tryPromise(async () => {
-          const allowed = await signAccessJwt("dev@example.com");
-          const unlisted = await signAccessJwt("someone@example.com");
+          const allowed = ALLOWED;
+          const unlisted = UNLISTED;
 
           const anonymous = await environment.handler(
             request("/api/auth/session", { headers: { "cf-access-jwt-assertion": unlisted } }),
@@ -126,20 +125,28 @@ it.effect("logs a Cloudflare Access caller in without a pairing link", () =>
           const cookie = session.headers.getSetCookie()[0]?.split(";", 1)[0] ?? "";
           expect(cookie).toMatch(/^t3_session_/);
           const withCookie = await environment.handler(
-            request("/api/auth/session", { headers: { cookie } }),
+            request("/api/auth/session", {
+              headers: { cookie, "cf-access-jwt-assertion": allowed },
+            }),
             requestContext,
           );
           expect(await withCookie.json()).toMatchObject({ authenticated: true });
+          // A kitshn session works only through a request that kitshn checks.
+          const cookieOnly = await environment.handler(
+            request("/api/auth/session", { headers: { cookie } }),
+            requestContext,
+          );
+          expect(await cookieOnly.json()).toMatchObject({ authenticated: false });
         }),
       (environment) => Effect.promise(() => environment.dispose()),
     );
-  }).pipe(withCertsFetch, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
-it.effect("gives a pairing credential only to a Cloudflare Access caller", () =>
+it.effect("gives a pairing credential only to a kitshn visitor with a level", () =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
+    const random = yield* SecureRandom.SecureRandom;
+    const requestContext = Context.make(SecureRandom.SecureRandom, random).pipe(
       Context.add(ServerSecretStore.ServerSecretStore, unusedSecretStore),
     );
     return yield* Effect.acquireUseRelease(
@@ -153,7 +160,7 @@ it.effect("gives a pairing credential only to a Cloudflare Access caller", () =>
           );
           expect(rejected.status).toBe(401);
 
-          const allowed = await signAccessJwt("dev@example.com");
+          const allowed = ALLOWED;
           const pairing = await environment.handler(
             request(path, { method: "POST", headers: { "cf-access-jwt-assertion": allowed } }),
             requestContext,
@@ -174,5 +181,5 @@ it.effect("gives a pairing credential only to a Cloudflare Access caller", () =>
         }),
       (environment) => Effect.promise(() => environment.dispose()),
     );
-  }).pipe(withCertsFetch, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );

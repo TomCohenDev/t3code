@@ -75,7 +75,7 @@ const successFor =
   (exit: Exit.Exit<unknown, unknown>): Duration.Input =>
     Exit.isSuccess(exit) ? ttl : Duration.zero;
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const github = yield* GitHubRest.GitHubRest;
 
@@ -220,11 +220,17 @@ export const make = Effect.gen(function* () {
 
   return ForkChangelog.of({
     listReleases,
-    releaseChanges: ({ tag }) => Cache.get(releaseChangesCache, tag),
+    releaseChanges: Effect.fn("ForkChangelog.releaseChanges")(function ({ tag }) {
+      return Cache.get(releaseChangesCache, tag);
+    }),
     upstreamPending,
     syncStatus,
     startSync,
   });
 });
 
-export const layer = Layer.effect(ForkChangelog, make);
+// The GitHub driver builds its own `GitHubRest`, so the fork changelog builds one too. Limit: it
+// keeps its own view of the GitHub quota. Revisit if the changelog sends more than its cached reads.
+export const layer = Layer.effect(ForkChangelog, make).pipe(
+  Layer.provide(GitHubRest.layerWithDependencies),
+);

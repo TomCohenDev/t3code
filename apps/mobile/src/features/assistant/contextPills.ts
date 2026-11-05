@@ -1,8 +1,9 @@
 /**
  * Fork: context pills of the Android assistant panel. Each pill is one piece of context from the
- * screen or the phone. A tap attaches or leaves it out; a hold opens it to read and edit.
+ * screen or the phone. A tap attaches or leaves it out; a hold opens it to read and edit. The
+ * panel finds most pills itself; photos and files come from its "+" pill, any number of each.
  */
-export type ImageContextPillKind = "screenshot" | "sharedImage" | "recentPhoto";
+export type ImageContextPillKind = "screenshot" | "sharedImage" | "recentPhoto" | "photo";
 export type TextContextPillKind =
   | "sharedText"
   | "selection"
@@ -10,10 +11,13 @@ export type TextContextPillKind =
   | "link"
   | "location"
   | "clipboard";
-export type ContextPillKind = ImageContextPillKind | TextContextPillKind;
+export type ContextPillKind = ImageContextPillKind | TextContextPillKind | "file";
+/** The pills the "+" pill adds. Each one has its own id. */
+export type AddedContextPillKind = "photo" | "file";
+export type FoundContextPillKind = Exclude<ContextPillKind, AddedContextPillKind>;
 
 /** What the user handed over on purpose comes first, then the screen, then the phone. */
-export const CONTEXT_PILL_ORDER: ReadonlyArray<ContextPillKind> = [
+export const CONTEXT_PILL_ORDER: ReadonlyArray<FoundContextPillKind> = [
   "sharedText",
   "sharedImage",
   "selection",
@@ -28,7 +32,9 @@ export const CONTEXT_PILL_ORDER: ReadonlyArray<ContextPillKind> = [
 const SELECTION_LABEL_LENGTH = 24;
 
 export function isImageContextPill(kind: ContextPillKind): kind is ImageContextPillKind {
-  return kind === "screenshot" || kind === "sharedImage" || kind === "recentPhoto";
+  return (
+    kind === "screenshot" || kind === "sharedImage" || kind === "recentPhoto" || kind === "photo"
+  );
 }
 
 function nonEmptyLines(text: string): number {
@@ -58,6 +64,10 @@ export function contextPillLabel(kind: ContextPillKind, value: string): string {
       return "Shared image";
     case "recentPhoto":
       return "Recent photo";
+    case "photo":
+      return "Photo";
+    case "file":
+      return value;
     case "screenText":
       return `Screen text · ${nonEmptyLines(value)} lines`;
     case "sharedText":
@@ -110,9 +120,9 @@ export function inlineContextText(input: {
     .join("\n\n");
 }
 
-/** The screen text file, headed by the app it came from. */
-export function screenTextDocument(sourcePackage: string | null, text: string): string {
-  return sourcePackage ? `App: ${sourcePackage}\n\n${text}` : text;
+/** The screen text file, headed by what the screen shows. */
+export function screenTextDocument(header: string | null, text: string): string {
+  return header ? `${header}\n\n${text}` : text;
 }
 
 export function joinMessageText(userText: string, contextText: string): string {

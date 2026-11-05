@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -33,15 +34,7 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   confirmThreadUnpin: false,
-  confirmTerminalClose: true,
-  terminalAppShortcutsFirst: false,
-  backgroundWorkDetails: false,
-  forkChangelogEnabled: false,
-  installedAppEnabled: true,
-  webPushEnabled: true,
   contextWindowMeterEnabled: false,
-  composerCollapseOnScroll: true,
-  dismissedProviderUpdateNotificationKeys: [],
   diffFilesCollapsed: true,
   diffIgnoreWhitespace: true,
   diffLayout: "stacked",
@@ -70,7 +63,10 @@ const clientSettings: ClientSettings = {
   },
   sidebarProjectSortOrder: "manual",
   sidebarThreadSortOrder: "created_at",
-  sidebarThreadPreviewCount: 6,
+  boringSidebarEnabled: false,
+  boringSidebarMultilineRows: false,
+  threadDetailsUsageEnabled: false,
+  threadDetailsItems: {},
   legacySidebarEnabled: false,
   sidebarWorkingShelfEnabled: false,
   loadBalancingEnabled: false,
@@ -94,13 +90,17 @@ function layer(baseDir: string) {
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        DesktopConfig.layerTest({ T3CODE_HOME: baseDir }),
+      ),
     ),
   );
 
   return DesktopClientSettings.layer.pipe(
     Layer.provideMerge(layerEnvironment),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 }
 
@@ -113,7 +113,7 @@ const withClientSettings = <A, E, R>(
       prefix: "t3-desktop-client-settings-test-",
     });
     return yield* effect.pipe(Effect.provide(layer(baseDir)));
-  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped);
 
 describe("DesktopClientSettings", () => {
   it.effect("saves through a symlinked client settings file without replacing the link", () =>
@@ -139,6 +139,29 @@ describe("DesktopClientSettings", () => {
         assert.deepEqual(
           yield* decodeClientSettingsJson(yield* fileSystem.readFileString(linkedSettingsPath)),
           clientSettings,
+        );
+      }),
+    ),
+  );
+
+  it.effect("removes its temporary file when replacing the settings file fails", () =>
+    withClientSettings(
+      Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const settings = yield* DesktopClientSettings.DesktopClientSettings;
+        yield* fileSystem.makeDirectory(`${environment.clientSettingsPath}/occupied`, {
+          recursive: true,
+        });
+
+        const error = yield* settings.set(clientSettings).pipe(Effect.flip);
+
+        assert.equal(error.operation, "replace-settings-file");
+        assert.deepEqual(
+          (yield* fileSystem.readDirectory(environment.stateDir)).filter((name) =>
+            name.endsWith(".tmp"),
+          ),
+          [],
         );
       }),
     ),
@@ -214,28 +237,6 @@ describe("DesktopClientSettings", () => {
         assert.isTrue(Option.isSome(persisted));
         if (Option.isSome(persisted)) {
           assert.equal(persisted.value.timestampFormat, "24-hour");
-        }
-      }),
-    ),
-  );
-
-  it.effect("reads the old sidebar group settings as the tab settings", () =>
-    withClientSettings(
-      Effect.gen(function* () {
-        const environment = yield* DesktopEnvironment.DesktopEnvironment;
-        const fileSystem = yield* FileSystem.FileSystem;
-        const settings = yield* DesktopClientSettings.DesktopClientSettings;
-        yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
-        yield* fileSystem.writeFileString(
-          environment.clientSettingsPath,
-          `{ "sidebarGroupsEnabled": true, "sidebarGroupSingleThreadOpens": true }\n`,
-        );
-
-        const persisted = yield* settings.get;
-        assert.isTrue(Option.isSome(persisted));
-        if (Option.isSome(persisted)) {
-          assert.isTrue(persisted.value.sidebarTabsEnabled);
-          assert.isTrue(persisted.value.sidebarTabSingleThreadOpens);
         }
       }),
     ),
