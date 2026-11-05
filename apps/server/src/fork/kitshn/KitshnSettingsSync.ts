@@ -606,11 +606,15 @@ const make = Effect.gen(function* () {
     if (refusal !== null) return yield* new KitshnSettingRefused({ message: refusal });
     const state = yield* currentState;
     const before = reset || Option.isNone(state) ? undefined : state.value.circleParts[circleId];
+    const after = circlePartAfter(before, changes);
+    // An empty part still counts as present, so a reset that leaves nothing removes the part.
+    const clears =
+      reset && Object.keys(after.server).length === 0 && Object.keys(after.client).length === 0;
     yield* storeSettingsPart(
       kitshn,
       yield* newRev,
       { part: "circle", circle: circleId },
-      circlePartAfter(before, changes),
+      clears ? null : after,
     ).pipe(Effect.mapError((error) => new KitshnSettingRefused({ message: error.message })));
   });
 

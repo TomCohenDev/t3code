@@ -473,6 +473,10 @@ it.effect("keeps no failed state ask, and keeps a good answer for a while", () =
 it.effect("asks for the circles again when the connection registers", () =>
   withSync({}, ({ sync, connection, stateAnswer }) =>
     Effect.gen(function* () {
+      yield* sync.clientState(OWNER_SESSION).pipe(
+        Stream.filter((state) => state.circles.some((circle) => circle.name === "Partner")),
+        Stream.runHead,
+      );
       yield* Ref.set(stateAnswer, {
         ...STATE_ANSWER,
         circles: [{ id: "partner", name: "Partner 2" }],

@@ -115,6 +115,8 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     "previousWorktreesDirectories",
     "addProjectBaseDirectory",
     "worktreePathTemplate",
+    // Global scripts live on one environment, so their pins do too.
+    "pinnedGlobalScriptIds",
     // Keyed by project id. A project id is local to one environment.
     "projectSettingsOverrides",
     "projectScriptOverrides",
@@ -169,7 +171,6 @@ const CIRCLE_SERVER_SETTINGS = [
   "mobileComposerCamera",
   "mobileMessagePins",
   "mobileNewThreadProject",
-  "pinnedGlobalScriptIds",
   // Upstream thread tags: which tagged threads a person hides is that person's view.
   "hiddenThreadTags",
   "hideTaggedThreads",

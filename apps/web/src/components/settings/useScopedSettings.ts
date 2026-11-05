@@ -121,10 +121,16 @@ export function useUpdateScopedSettings() {
   const run = useRunScopedPlan();
   const shareToMachineMap = useShareToMachineMap();
   const writeCircle = useWriteSelectedCircle();
+  const selectedCircle = useOptionalSettingsScope()?.search.circle;
   /** `onFailed` runs when any target rejects or drops the patch, so a draft can fall back. */
   return (patch: ScopedSettingsPatch, options?: { readonly onFailed?: () => void }) => {
     // Fork: with a circle picked, the change goes into that circle's part only.
     if (writeCircle !== null) return writeCircle(patch, options);
+    // Fork: a picked circle that the map no longer lists must not fall through to another scope.
+    if (selectedCircle !== undefined) {
+      options?.onFailed?.();
+      return;
+    }
     const plan = planScopedSettingsPatch(scope, environments, patch);
     run(plan, {
       ...(options?.onFailed === undefined ? {} : { onFailed: options.onFailed }),
