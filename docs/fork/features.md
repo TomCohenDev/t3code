@@ -287,7 +287,7 @@ Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives 
 A signed Android APK of fork main, on fork releases that changed the app. It installs next to the store app and speaks the protocol of fork main.
 
 - **Install:** on the phone, add the app in Obtainium from `https://apk.yarden-zamir.com/index.html` (HTML source) with the link filter `t3code-.*-android\.apk`. Each new build shows as an update and downloads from Cloudflare. The GitHub repo `https://github.com/Yarden-zamir/t3code` also works as a source, with "Include prereleases" on and the APK filter `android\.apk$`, but downloads from GitHub.
-- **Mirror:** `apk.yarden-zamir.com` is a kitshn Worker app (`kitshn.config.ts`, `scripts/apk-mirror/worker.js`) that lists the release APKs at `/index.html`, redirects `/latest/t3code-android.apk` to the newest one, and serves each APK from Cloudflare's cache after its first download from GitHub. The list refreshes within 5 minutes of a release.
+- **Mirror:** `apk.yarden-zamir.com` is a kitshn Worker app (`kitshn.config.ts`, `scripts/apk-mirror/worker.js`) that lists the release APKs at `/index.html`, redirects `/latest/t3code-android.apk` to the newest one, and serves each APK from Cloudflare's cache after its first download from GitHub. The list refreshes within 5 minutes of a release. When GitHub refuses the Worker's call, the last good list stays in use for 30 days; a GitHub secret `KITSHN_GITHUB_TOKEN` lifts the limit (K-808).
 - **Install by hand:** open the APK of the newest release that has one, and allow installs from that browser. Install a newer APK over it to update. Most releases have no APK, because only a release that changed the app builds one.
 - **Limits:**
   - No push notifications, because the build has no `google-services.json`. Revisit when the fork has a Firebase project.
@@ -501,10 +501,12 @@ Thread links in chat open the thread in T3 Code, each message has a link of its 
   - **History:** on web and desktop, each jump to a message is a history entry. This includes links, pins and citations. Back and Forward return to where you were in each entry. A scroll by hand adds no entry. No setting turns this off.
 - **Desktop app:** only web browser tabs redirect. The desktop app, the installed web app and app.t3.codes never redirect.
 - **Links from other apps:** the desktop and mobile apps register the `t3-thread` scheme next to `t3code` (`t3-thread-dev` and `t3code-dev` in development). A web page or app can open `t3-thread://v2/<environmentId>/<threadId>#<messageId>` or `t3code://threads/<environmentId>/<threadId>?message=<messageId>`; the message is optional. The app opens the thread like a chip in chat. On the desktop app, a thread of an environment that the app does not know shows "Thread on another machine". The OS hands these links to the app directly, so they work with `threadAddressing` off. The setting controls only the handoff from a browser tab. On mobile, the scheme needs a new native build.
+- **MCP clients outside T3 Code:** a thread result gives `link`, the web address of the thread on the server that the client reached, and `appLink`, the `t3-thread://v2` link that opens the desktop app and the fork Android app, with `#<messageId>` for a message. The fork does not use upstream's app.t3.codes link. `link` is unchanged from fork main; `appLink` is new. See [Fork tools for agents](../fork-agents.md#find-the-tools).
 - **Limits:**
   - On mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
   - The app keeps the position of each history entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
   - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
+  - Copy thread, the thread chip and the mobile **Copy thread link** copy a Markdown `t3-thread://v2` link, not upstream's `https://app.t3.codes/threads/…` link. That hosted link opens only the browser, because the fork APK is not associated with app.t3.codes. A pasted hosted link still becomes a chip. Revisit when the fork has a hosted app with App Links for `com.yardenzamir.t3code`.
 
 ### Message pins
 
@@ -732,6 +734,8 @@ The theme that you select in Settings > Appearance is the one control. A publish
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
+- The sidebar wordmark link carries `data-fork-brand="wordmark"` and the environment pill carries `data-fork-brand="pill"`. Theme CSS can target these, and not the upstream labels, which change.
+
 #### Icons
 
 A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
@@ -806,6 +810,14 @@ Back and forward buttons sit right of the sidebar toggle, like in VS Code. A but
   - The desktop app keeps at most 50 entries, and no forward entries: the start of the app is a new navigation.
   - In a browser without the Navigation API, such as an older Safari or Firefox, both buttons stay enabled, and a missing thread goes to a new thread instead of a skip.
   - Mouse buttons 4 and 5 and trackpad swipes do not go back or forward in the desktop app.
+
+### Hide T3 branding
+
+Hides the T3 Code wordmark in the top left of the sidebar and the build pill, such as "Dev" or "Nightly". New thread in the sidebar header, the command palette and its key still open the home view.
+
+- **Setting:** client setting `brandingHidden` (off by default). Settings > Appearance > Interface > "Hide T3 branding". kitshn syncs it.
+- **Works on:** web, desktop. The mobile app has no wordmark in its sidebar.
+- **Limits:** the standalone pages and the welcome wizard keep their wordmark.
 
 ### App context menu
 

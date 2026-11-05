@@ -95,6 +95,18 @@ export function readThreadAppLink(href: string): ThreadAddress | null {
   return parseThreadAddress(`t3code://threads${url.pathname}${url.hash}`);
 }
 
+/**
+ * Fork: the `t3-thread://v2` link of a thread, with `#<messageId>` for a message. The desktop app
+ * and the fork Android app open it. Each id is encoded, so `readThreadAppLink` reads back the same
+ * ids, also for ids that hold percent escapes of their own.
+ */
+export function formatThreadV2Link(address: ThreadAddress): string {
+  const base = `${THREAD_LINK_PROTOCOL}://v2/${encodeURIComponent(address.environmentId)}/${encodeURIComponent(address.threadId)}`;
+  return address.messageId === undefined
+    ? base
+    : `${base}#${encodeURIComponent(address.messageId)}`;
+}
+
 /** Fork: the app link of a thread, the form that `parseThreadAddress` reads back. */
 export function formatThreadAppLink(address: ThreadAddress): string {
   const base = `t3code://threads/${encodeURIComponent(address.environmentId)}/${encodeURIComponent(address.threadId)}`;

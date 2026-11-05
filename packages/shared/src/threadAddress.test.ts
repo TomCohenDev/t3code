@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 
-import { parseKnownThreadAddress, parseThreadAddress, readThreadAppLink } from "./threadAddress.ts";
+import {
+  formatThreadV2Link,
+  parseKnownThreadAddress,
+  parseThreadAddress,
+  readThreadAppLink,
+} from "./threadAddress.ts";
 import { linkThreadMarkers } from "./threadMarkers.ts";
 
 describe("parseThreadAddress", () => {
@@ -105,5 +110,20 @@ describe("linkThreadMarkers", () => {
     ).toBe(
       "See [Fix](t3code://threads/env-1/thread-1), `[Thread: Fix; ref=ctx_1]`, [Thread: Old; ref=ctx_9].",
     );
+  });
+});
+
+describe("formatThreadV2Link", () => {
+  it("reads back the same ids, also with percent escapes and colons", () => {
+    const thread = {
+      environmentId: EnvironmentId.make("env:one"),
+      threadId: ThreadId.make("thread:delegated-task:mcp%3A1"),
+    };
+    const message = { ...thread, messageId: MessageId.make("msg:2%3A3") };
+    for (const address of [thread, message]) {
+      const link = formatThreadV2Link(address);
+      expect(link.startsWith("t3-thread://v2/")).toBe(true);
+      expect(readThreadAppLink(link)).toEqual(address);
+    }
   });
 });

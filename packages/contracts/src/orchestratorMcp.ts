@@ -211,6 +211,8 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
     Schema.Struct({ environmentId: EnvironmentId, threadId: ThreadId, label: Schema.String }),
   ),
   link: Schema.optional(Schema.String),
+  /** Fork: the t3-thread link that opens the desktop and fork apps. */
+  appLink: Schema.optional(Schema.String),
   childRunId: Schema.NullOr(RunId),
   childNodeId: NodeId,
   status: OrchestratorMcpDelegatedTaskStatus,
@@ -289,6 +291,8 @@ export type OrchestratorMcpCreatedThreadStatus = typeof OrchestratorMcpCreatedTh
 export const OrchestratorMcpCreatedThread = Schema.Struct({
   threadId: ThreadId,
   link: Schema.optional(Schema.String),
+  /** Fork: the t3-thread link that opens the desktop and fork apps. */
+  appLink: Schema.optional(Schema.String),
   runId: Schema.NullOr(RunId),
   status: OrchestratorMcpCreatedThreadStatus,
   title: Schema.String,
@@ -358,6 +362,8 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
   link: Schema.optional(Schema.String),
+  /** Fork: the t3-thread link that opens the desktop and fork apps. */
+  appLink: Schema.optional(Schema.String),
   createdBy: OrchestrationV2Actor,
   creationSource: OrchestrationV2CreationSource,
   status: OrchestratorMcpThreadStatus,
@@ -428,6 +434,8 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
   link: Schema.optional(Schema.String),
+  /** Fork: the t3-thread link that opens the desktop and fork apps. */
+  appLink: Schema.optional(Schema.String),
   createdBy: OrchestrationV2Actor,
   creationSource: OrchestrationV2CreationSource,
   status: OrchestratorMcpThreadStatus,
@@ -477,6 +485,8 @@ export const OrchestratorMcpThreadTimelineItem = Schema.Struct({
   subagentId: Schema.optional(NodeId),
   runId: Schema.NullOr(RunId),
   messageId: Schema.NullOr(MessageId),
+  /** Fork: for an outside client, the t3-thread link of this message. */
+  appLink: Schema.optional(Schema.String),
   createdBy: Schema.NullOr(OrchestrationV2Actor),
   creationSource: Schema.NullOr(OrchestrationV2CreationSource),
   senderThreadId: Schema.optional(ThreadId),
@@ -511,6 +521,8 @@ export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInp
 export const OrchestratorMcpThreadSendResult = Schema.Struct({
   threadId: ThreadId,
   link: Schema.optional(Schema.String),
+  /** Fork: the t3-thread link that opens the desktop and fork apps. */
+  appLink: Schema.optional(Schema.String),
   messageId: MessageId,
   runId: RunId,
   taskId: Schema.optional(NodeId),

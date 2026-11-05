@@ -154,6 +154,12 @@ export const APPEARANCE_ITEMS = [
     to: "/settings/appearance",
     searchTerms: ["back forward arrows navigation history title bar vs code"],
   },
+  {
+    id: "branding-hidden",
+    title: "Hide T3 branding",
+    to: "/settings/appearance",
+    searchTerms: ["logo wordmark brand sidebar pill build stage nightly dev"],
+  },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
 export const GLOBAL_SCRIPTS_ITEMS = [

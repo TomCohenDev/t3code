@@ -36,16 +36,12 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   customShellProblem,
   type TerminalShell,
-  TerminalShellSettings,
+  TerminalSettings,
   terminalShells,
 } from "../terminalShells.ts";
 import { makeTerminalAdapter, TERMINAL_DRIVER } from "./adapter.ts";
 import { TerminalPort, unavailableTerminalPort } from "./port.ts";
 
-const TerminalSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  ...TerminalShellSettings.fields,
-});
 type TerminalSettings = typeof TerminalSettings.Type;
 const decodeTerminalSettings = Schema.decodeSync(TerminalSettings);
 
