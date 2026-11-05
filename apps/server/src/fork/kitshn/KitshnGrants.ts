@@ -191,8 +191,6 @@ type CheckResult = Extract<
   { readonly type: "check" }
 >["results"][number];
 
-const isCircleIds = Schema.is(Schema.Array(Schema.String));
-
 const toCached = (
   result: CheckResult,
   headers: Readonly<Record<string, string>>,
@@ -212,7 +210,7 @@ const toCached = (
       subject: result.subject,
       levels: result.levels,
       exec: result.rights.includes("exec"),
-      circles: "circles" in result && isCircleIds(result.circles) ? result.circles : [],
+      circles: result.circles ?? [],
       until: result.until,
     },
   };

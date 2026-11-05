@@ -1,6 +1,7 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import { readAnswer } from "@kitshn/local";
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -16,9 +17,8 @@ import * as EnvironmentTheme from "../../environmentTheme.ts";
 import * as ServerSettingsModule from "../../serverSettings.ts";
 
 import {
-  checkCirclesFromLine,
   circleListFromState,
-  circlePartsFromLine,
+  circlePartsOf,
   sessionCircleLayer,
   withCircleLayer,
 } from "./kitshnCircles.ts";
@@ -68,29 +68,20 @@ it("shares the saved server values and the client values over the shared part", 
   ).toEqual({ server: { a: 2, keep: true }, client: { chatWidth: "full" } });
 });
 
-const desiredLine = (state: unknown) =>
-  JSON.stringify({ type: "desired", kind: "t3.settings", state, rev: null });
-
 it("reads Circle, then Environment, then Shared, and only person keys from a circle", () => {
   const parts = {
     shared: { server: { sidebarTabs: "shared", terminalThreads: true }, client: {} },
     machine: { server: { sidebarTabs: "machine" }, client: { followUpBehavior: "queue" } },
   };
   const circles = {
-    parts: circlePartsFromLine(
-      desiredLine({
-        ...parts,
-        circles: {
-          partner: {
-            server: { sidebarTabs: "partner", worktreesDirectory: "/x", terminalThreads: false },
-            client: { followUpBehavior: "steer", onboardingCompletedAt: "now" },
-          },
-          family: { server: { sidebarTabs: "family" }, client: {} },
-          broken: "not a part",
-        },
-      }),
-      "t3.settings",
-    ),
+    parts: circlePartsOf({
+      partner: {
+        server: { sidebarTabs: "partner", worktreesDirectory: "/x", terminalThreads: false },
+        client: { followUpBehavior: "steer", onboardingCompletedAt: "now" },
+      },
+      family: { server: { sidebarTabs: "family" }, client: {} },
+      broken: "not a part",
+    }),
     list: [{ id: "partner", name: "Partner", color: "#FF5277" }],
   };
   const machine = effectiveSettings(parts);
@@ -113,7 +104,7 @@ it("reads Circle, then Environment, then Shared, and only person keys from a cir
   expect(sessionCircleLayer(circles, ["ghost", "broken"])).toBeNull();
   // A session without circles, and a daemon that sends no circle fields, keep Environment.
   expect(sessionCircleLayer(circles, [])).toBeNull();
-  expect(circlePartsFromLine(desiredLine(parts), "t3.settings")).toEqual({});
+  expect(circlePartsOf(undefined)).toEqual({});
   // The circle row of a session names the saved value below it.
   expect(
     sessionCircleOf(circles, { circles: ["partner"], owner: false }, { sidebarTabs: "own" })
@@ -121,24 +112,33 @@ it("reads Circle, then Environment, then Shared, and only person keys from a cir
   ).toEqual({ sidebarTabs: "own" });
 });
 
-it("reads the circles of a register answer and of each check result", () => {
-  const register = JSON.stringify({
-    type: "register",
-    saved: {
-      desired: {
-        "t3.settings": { shared: null, machine: null, circles: { a: { server: {}, client: {} } } },
-      },
-    },
+it("keeps the circles of register, desired and check lines through the pinned decoder", () => {
+  const part = { server: {}, client: {} };
+  const state = { shared: null, machine: null, circles: { a: part } };
+  const register = readAnswer(
+    JSON.stringify(
+      registerAnswer({
+        saved: { desired: { "t3.settings": state }, settings: {}, reach: [], served: [] },
+      }),
+    ),
+  );
+  expect(register?.type === "register" && register.saved.desired["t3.settings"]?.circles).toEqual({
+    a: part,
   });
-  expect(circlePartsFromLine(register, "t3.settings")).toEqual({
-    a: { server: {}, client: {} },
-  });
-  const check = JSON.stringify({
-    type: "check",
-    id: "1",
-    results: [{ key: "k1", circles: ["a", "b"] }, { key: "k2" }, { key: "k3", circles: "broken" }],
-  });
-  expect([...checkCirclesFromLine(check)]).toEqual([["k1", ["a", "b"]]]);
+  const desired = readAnswer(
+    JSON.stringify({ type: "desired", kind: "t3.settings", state, rev: null }),
+  );
+  expect(desired?.type === "desired" && desired.state.circles).toEqual({ a: part });
+  const subject = { type: "person", id: "p", name: "P" };
+  const check = readAnswer(
+    JSON.stringify({
+      type: "check",
+      id: "1",
+      results: [{ key: "k1", subject, levels: {}, rights: [], until: 0, circles: ["a", "b"] }],
+    }),
+  );
+  const result = check?.type === "check" ? check.results[0] : undefined;
+  expect(result !== undefined && "subject" in result && result.circles).toEqual(["a", "b"]);
 });
 
 it("lists the circles that hold a T3 card here, the smallest radius first", () => {
@@ -180,14 +180,7 @@ const visitor = (
 it("reads no circle part when the check answer names no circles", () => {
   // A daemon before K-726 passes every circle part on without a filter and names no circles.
   const circles = {
-    parts: circlePartsFromLine(
-      desiredLine({
-        shared: null,
-        machine: null,
-        circles: { partner: { server: { sidebarTabs: "partner" }, client: {} } },
-      }),
-      "t3.settings",
-    ),
+    parts: circlePartsOf({ partner: { server: { sidebarTabs: "partner" }, client: {} } }),
     list: [],
   };
   const session = settingsSessionOf(visitor("person", "standard", []));

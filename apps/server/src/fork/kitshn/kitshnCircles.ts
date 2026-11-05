@@ -1,8 +1,5 @@
-/**
- * Fork: the circle layer of `t3.settings` (kitshn K-726). The pinned `@kitshn/local` drops the
- * `circles` fields, so these readers take them from the daemon's line. Revisit when the pin
- * declares protocol 2.3.0: then read them from the decoded answer.
- */
+/** Fork: the circle layer of `t3.settings` (kitshn K-726). */
+import type { DesiredParts } from "@kitshn/local";
 import {
   circleSettingsOnly,
   ScopedSettingValues,
@@ -23,59 +20,16 @@ export type CircleParts = Readonly<Record<string, ScopedSettingValues>>;
 
 export const NO_CIRCLE_PARTS: CircleParts = {};
 
-const Circles = Schema.Struct({
-  circles: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-});
-const decodeCircles = Schema.decodeUnknownOption(Circles);
 const decodePart = Schema.decodeUnknownOption(ScopedSettingValues);
 
 /** The circle parts of a `t3.settings` desired state. A part that does not decode is left out. */
-const circlePartsOf = (state: unknown): CircleParts => {
+export const circlePartsOf = (circles: DesiredParts["circles"]): CircleParts => {
   const parts: Record<string, ScopedSettingValues> = {};
-  const fields = Option.getOrUndefined(decodeCircles(state));
-  for (const [id, value] of Object.entries(fields?.circles ?? {})) {
+  for (const [id, value] of Object.entries(circles ?? {})) {
     const part = Option.getOrUndefined(decodePart(value));
     if (part !== undefined) parts[id] = circleSettingsOnly(part);
   }
   return parts;
-};
-
-const parse = (text: string): unknown => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-};
-
-const field = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null && Object.hasOwn(value, key)
-    ? (value as Record<string, unknown>)[key]
-    : undefined;
-
-/** The circle parts of the `kind` state in a `register` answer or a `desired` event line. */
-export const circlePartsFromLine = (text: string, kind: string): CircleParts => {
-  const line = parse(text);
-  return circlePartsOf(
-    field(line, "type") === "register"
-      ? field(field(field(line, "saved"), "desired"), kind)
-      : field(line, "state"),
-  );
-};
-
-const decodeIds = Schema.decodeUnknownOption(Schema.Array(Schema.String));
-
-/** The `circles` of each result of a `check` answer line, by key. A daemon before K-726 sends none. */
-export const checkCirclesFromLine = (text: string): ReadonlyMap<string, ReadonlyArray<string>> => {
-  const results = field(parse(text), "results");
-  const circles = new Map<string, ReadonlyArray<string>>();
-  if (!Array.isArray(results)) return circles;
-  for (const result of results) {
-    const key = field(result, "key");
-    const ids = Option.getOrUndefined(decodeIds(field(result, "circles")));
-    if (typeof key === "string" && ids !== undefined) circles.set(key, ids);
-  }
-  return circles;
 };
 
 const StateAnswer = Schema.Struct({
