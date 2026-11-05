@@ -27,6 +27,7 @@ import {
   type ThreadCardLayout,
 } from "@t3tools/contracts";
 
+import type { KeybindingCommand } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
@@ -449,6 +450,8 @@ function SnoozeMenuButton(props: {
   onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   timestampFormat: TimestampFormat;
   environmentId: EnvironmentId;
+  /** The snooze key, for the active thread only, as the pin and settle buttons show theirs. */
+  shortcutCommand: KeybindingCommand | null;
 }) {
   const { open, onOpenChange, onSnooze, timestampFormat, environmentId } = props;
   const presets = open
@@ -458,7 +461,8 @@ function SnoozeMenuButton(props: {
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
       <Tooltip>
-        <TooltipTrigger
+        <ShortcutTrigger
+          command={props.shortcutCommand}
           render={
             <MenuTrigger
               render={
@@ -474,8 +478,11 @@ function SnoozeMenuButton(props: {
           }
         >
           <ClockIcon className="size-3" />
-        </TooltipTrigger>
-        <TooltipPopup>Snooze thread</TooltipPopup>
+        </ShortcutTrigger>
+        <TooltipPopup>
+          Snooze thread
+          <ShortcutHint command={props.shortcutCommand} />
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup side="bottom" align="end">
         {presets.map((preset) => (
@@ -1307,6 +1314,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               onSnooze={handleSnoozePreset}
               timestampFormat={props.timestampFormat}
               environmentId={thread.environmentId}
+              shortcutCommand={props.isActive ? "thread.snooze" : null}
             />
           ) : null}
           {props.settlementSupported ? (
@@ -1524,18 +1532,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                   {variantAction === "unsnooze" ? (
                     !props.snoozeSupported ? null : (
-                      <button
-                        type="button"
-                        aria-label="Wake thread now"
-                        onClick={handleUnsnoozeClick}
-                        onPointerDown={handleActionPointerDown}
-                        className={cn(
-                          "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                          isWoke && "group-any-hover/sidebar-row:static",
-                        )}
-                      >
-                        <AlarmClockOffIcon className="mb-px size-3" />
-                      </button>
+                      <Tooltip>
+                        <ShortcutTrigger
+                          command={props.isActive ? "thread.snooze" : null}
+                          render={
+                            <button
+                              type="button"
+                              aria-label="Wake thread now"
+                              onClick={handleUnsnoozeClick}
+                              onPointerDown={handleActionPointerDown}
+                              className={cn(
+                                "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+                                isWoke && "group-any-hover/sidebar-row:static",
+                              )}
+                            />
+                          }
+                        >
+                          <AlarmClockOffIcon className="mb-px size-3" />
+                        </ShortcutTrigger>
+                        <TooltipPopup>
+                          Wake thread now
+                          <ShortcutHint command={props.isActive ? "thread.snooze" : null} />
+                        </TooltipPopup>
+                      </Tooltip>
                     )
                   ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
                     <Tooltip>

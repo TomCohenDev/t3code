@@ -12,7 +12,7 @@ import {
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
-import { Tooltip, TooltipPopup } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import type { KeybindingCommand } from "@t3tools/contracts";
 
@@ -103,19 +103,26 @@ export function SidebarThreadHeader({
             className="min-w-0 flex-1"
           />
           {isSearching ? (
-            <Button
-              type="button"
-              size="icon-micro"
-              variant="ghost-muted"
-              className="shrink-0"
-              aria-label="Clear thread search"
-              onClick={() => {
-                onClearSearch();
-                searchInputRef.current?.focus();
-              }}
-            >
-              <XIcon className="size-3" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-micro"
+                    variant="ghost-muted"
+                    className="shrink-0"
+                    aria-label="Clear thread search"
+                    onClick={() => {
+                      onClearSearch();
+                      searchInputRef.current?.focus();
+                    }}
+                  />
+                }
+              >
+                <XIcon className="size-3" />
+              </TooltipTrigger>
+              <TooltipPopup>Clear search</TooltipPopup>
+            </Tooltip>
           ) : null}
         </ShortcutTrigger>
         <TooltipPopup side="bottom">
