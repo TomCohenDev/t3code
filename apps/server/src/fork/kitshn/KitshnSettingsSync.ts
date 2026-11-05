@@ -1,19 +1,24 @@
 /**
- * Fork: the T3 settings from kitshn (K-709). The `t3.settings` desired state holds a shared part
- * and a part for each machine, each `{ server, client }`. This server applies the shared part,
- * then its own part over it, to its server settings, themes and keybindings. The clients read the
- * client values from `clientSettings`.
+ * Fork: the T3 settings from kitshn (K-709, K-726). This server applies the shared part, then its
+ * own part, to its files. A circle part never reaches the files: each session reads its circle's
+ * circle-capable keys over them (`KitshnSettingsSession`).
  */
 import type { DesiredParts } from "@kitshn/local";
 import {
+  circleSettingsOnly,
+  isCircleSetting,
   KEYBINDINGS_SETTING_KEY,
   type MachineMapClientState,
+  type MachineMapSetCircleSettingsInput,
+  type MachineMapSessionCircle,
   type MachineMapShareSettingsInput,
   type MachineMapShareSettingsResult,
   isMachineLocalSetting,
   ScopedSettingValues,
   ServerSettings as ServerSettingsSchema,
+  type ServerSettings as ServerSettingsValue,
   ServerSettingsPatch,
+  type SettingsCircle,
   type SettingValues,
   withoutMachineLocalSettings,
 } from "@t3tools/contracts";
@@ -29,6 +34,7 @@ import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import * as ServerConfig from "../../config.ts";
 import * as EnvironmentTheme from "../../environmentTheme.ts";
@@ -39,16 +45,116 @@ import {
   THEME_SETTING_KEYS,
   withSharedThemes,
 } from "../machineMap/themeSync.ts";
+import {
+  type CircleSettings,
+  circleListFromState,
+  circleOf,
+  sessionCircleLayer,
+  withCircleLayer,
+} from "./kitshnCircles.ts";
 import * as KitshnConnection from "./KitshnConnection.ts";
 import * as KitshnGrants from "./KitshnGrants.ts";
+import { APP_RESOURCE_ID, levelFor } from "./kitshnGrantRules.ts";
 import * as KitshnProvider from "./KitshnProvider.ts";
 
 const decodePatch = Schema.decodeUnknownEffect(ServerSettingsPatch);
 const CLIENT_STATE_REFRESH = Duration.seconds(30);
+// K-726: one kitshn `state` ask names the circles for a while; renames show after it.
+const CIRCLE_LIST_LIFETIME = Duration.minutes(15);
 // K-709: the daemon waits up to 60 seconds for kitshn, then the `desired` event echoes the rev.
 const STORE_WAIT = Duration.seconds(65);
 const encodeServerSettings = Schema.encodeEffect(ServerSettingsSchema);
+const encodePatch = Schema.encodeEffect(ServerSettingsPatch);
+const decodePatchOption = Schema.decodeUnknownOption(ServerSettingsPatch);
 const decodePart = Schema.decodeUnknownOption(ScopedSettingValues);
+const EMPTY_PART: ScopedSettingValues = { server: {}, client: {} };
+
+/** What a session brings to the settings chain. */
+export interface SettingsSession {
+  /**
+   * The circles of the session's kitshn visitor, smallest first. Empty without a visitor, and
+   * when the `check` answer has no `circles` (a daemon before K-726): such a daemon passes circle
+   * parts on without a filter, so no circle part applies then.
+   */
+  readonly circles: ReadonlyArray<string>;
+  /**
+   * Writes like the owner: shared and machine parts, and any circle with the person picker.
+   * Otherwise circle-capable changes go only into the first circle of `circles`.
+   */
+  readonly owner: boolean;
+}
+
+export const OWNER_SESSION: SettingsSession = { circles: [], owner: true };
+
+/**
+ * The session of one WebSocket, set at the upgrade. A session without a kitshn identity is the
+ * owner's: local clients and paired devices. Known limit: the circles of an open socket stay as
+ * they were at the upgrade; a reconnect reads them again. Revisit if a circle change must apply
+ * to open sockets.
+ */
+export const KitshnSettingsSession = Context.Reference<SettingsSession>(
+  "t3/fork/kitshn/KitshnSettingsSession",
+  { defaultValue: () => OWNER_SESSION },
+);
+
+/**
+ * The session of a kitshn visitor. A machine reads and writes no circle. A person or device at
+ * the `t3.app` level `admin` (kitshn `control`) is the owner (K-719).
+ */
+export const settingsSessionOf = (visitor: KitshnGrants.AccessVisitor): SettingsSession =>
+  visitor.subject.type === "machine"
+    ? { circles: [], owner: false }
+    : {
+        circles: visitor.circles,
+        owner: levelFor("t3.app", APP_RESOURCE_ID, visitor.levels) === "admin",
+      };
+
+/**
+ * Why this session may not write the part of `circleId`, or null. kitshn cannot tell the people of
+ * one provider apart, so T3 holds the rule: a session that is not the owner's writes only the
+ * first circle of its own `check` answer.
+ */
+export const circleWriteRefusal = (session: SettingsSession, circleId: string): string | null =>
+  session.owner || session.circles[0] === circleId
+    ? null
+    : "A person who is not the owner changes only the settings of their own first circle.";
+
+/** The server values of a circle layer, decoded; a value that does not decode is left out. */
+const decodedServerLayer = (layer: SettingValues): Partial<ServerSettingsValue> => {
+  const decoded: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(layer)) {
+    const patch = Option.getOrUndefined(decodePatchOption({ [key]: value }));
+    if (patch !== undefined && Object.hasOwn(patch, key)) {
+      decoded[key] = (patch as Record<string, unknown>)[key];
+    }
+  }
+  return decoded as Partial<ServerSettingsValue>;
+};
+
+/** The session's circle layer, as clients see it, with the saved server values that it replaced. */
+export const sessionCircleOf = (
+  circles: CircleSettings,
+  session: SettingsSession,
+  saved: Readonly<Record<string, unknown>>,
+): MachineMapSessionCircle | null => {
+  const layer = sessionCircleLayer(circles, session.circles);
+  if (layer === null) return null;
+  const replaced = Object.fromEntries(
+    Object.keys(layer.settings.server).flatMap((key) =>
+      Object.hasOwn(saved, key) ? [[key, saved[key]]] : [],
+    ),
+  );
+  return { ...layer.circle, settings: layer.settings, replaced };
+};
+
+/** The circle part that a session writes into, or null when it writes like the owner. */
+export const sessionWriteCircle = (
+  circles: CircleSettings,
+  session: SettingsSession,
+): SettingsCircle | null => {
+  const first = session.circles[0];
+  return !session.owner && first !== undefined ? circleOf(circles, first) : null;
+};
 
 /** K-709: the shared part, then this machine's part over it. A part that does not decode is empty. */
 export const effectiveSettings = (parts: DesiredParts | null): ScopedSettingValues => {
@@ -80,19 +186,49 @@ export const sharedPartAfterShare = (
   };
 };
 
+/** A circle part with `changes` merged in; only circle-capable keys stay. */
+const circlePartAfter = (
+  before: ScopedSettingValues | undefined,
+  changes: ScopedSettingValues,
+): ScopedSettingValues =>
+  circleSettingsOnly({
+    server: { ...before?.server, ...changes.server },
+    client: { ...before?.client, ...changes.client },
+  });
+
 /** Why one setting could not be set in `t3.settings`. */
 export class KitshnSettingRefused extends Schema.TaggedError<KitshnSettingRefused>()(
   "KitshnSettingRefused",
   { message: Schema.String },
 ) {}
 
-export interface SettingChange {
-  readonly part: "machine" | "shared";
+/** A part of `t3.settings`: the shared part, this machine's part, or the part of one circle. */
+export type SettingsPart =
+  | { readonly part: "machine" | "shared" }
+  | { readonly part: "circle"; readonly circle: string };
+
+export type SettingChange = SettingsPart & {
   readonly scope: "server" | "client";
   readonly key: string;
   /** Undefined clears the key. */
   readonly value: unknown;
-}
+};
+
+type DesiredSet = Extract<KitshnConnection.LocalRequestInput, { readonly type: "desired-set" }>;
+/**
+ * K-709 with circles: a circle part goes as `part: "circle"` with its `circle` id (the "kitshn
+ * contract" of the circle settings PR). `@kitshn/local` does not declare it yet; the line is plain
+ * JSON, so it reaches the daemon as written.
+ */
+const desiredSet = (target: SettingsPart, value: unknown, rev: string): DesiredSet =>
+  ({
+    type: "desired-set",
+    provider: KitshnProvider.PROVIDER_NAME,
+    kind: KitshnProvider.SETTINGS_KIND,
+    value,
+    rev,
+    ...target,
+  }) as DesiredSet;
 
 /**
  * K-709: sets one part of `t3.settings` and waits until kitshn stored it: the next `desired` event
@@ -101,20 +237,13 @@ export interface SettingChange {
 const storeSettingsPart = (
   kitshn: KitshnConnection.KitshnConnection["Service"],
   rev: string,
-  part: "machine" | "shared",
+  target: SettingsPart,
   value: unknown,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
       const subscription = yield* kitshn.subscribe;
-      yield* kitshn.request({
-        type: "desired-set",
-        provider: KitshnProvider.PROVIDER_NAME,
-        kind: KitshnProvider.SETTINGS_KIND,
-        part,
-        value,
-        rev,
-      });
+      yield* kitshn.request(desiredSet(target, value, rev));
       const echoed = yield* PubSub.take(subscription).pipe(
         Effect.repeat({
           until: (event) =>
@@ -151,17 +280,34 @@ export const makeSetOne = (
           "Agents do not change the shared settings of every machine. Set part machine for this machine, or ask the owner to change the shared value in T3 Settings with All environments.",
       });
     }
+    if (change.part === "circle" && by === "agent") {
+      return yield* new KitshnSettingRefused({
+        message:
+          "Agents do not change the settings of a circle of people: a circle part reaches every person of the circle, so kitshn holds that change (desired-set-circle) for the owner (K-726). Set part machine for this machine, or ask the owner to change the circle value in T3 Settings with the person picker.",
+      });
+    }
+    if (change.part === "circle" && !isCircleSetting(change.scope, change.key)) {
+      return yield* new KitshnSettingRefused({
+        message: `${change.key} is not a person setting, so a circle part does not hold it.`,
+      });
+    }
     const current = yield* provider.state.pipe(Stream.runHead);
     const before: ScopedSettingValues = Option.getOrElse(
-      Option.flatMap(current, (state) => decodePart(state.settings?.[change.part] ?? null)),
-      () => ({ server: {}, client: {} }),
+      Option.flatMap(current, (state) =>
+        change.part === "circle"
+          ? Option.some(state.circleParts[change.circle] ?? EMPTY_PART)
+          : decodePart(state.settings?.[change.part] ?? null),
+      ),
+      () => EMPTY_PART,
     );
     const { [change.key]: _old, ...rest } = before[change.scope];
     const next: ScopedSettingValues = {
       ...before,
       [change.scope]: change.value === undefined ? rest : { ...rest, [change.key]: change.value },
     };
-    yield* storeSettingsPart(kitshn, yield* newRev, change.part, next).pipe(
+    const target: SettingsPart =
+      change.part === "circle" ? { part: "circle", circle: change.circle } : { part: change.part };
+    yield* storeSettingsPart(kitshn, yield* newRev, target, next).pipe(
       Effect.mapError((error) => new KitshnSettingRefused({ message: error.message })),
     );
   });
@@ -171,15 +317,46 @@ export class KitshnSettingsSync extends Context.Service<
   {
     /** Applies the settings of kitshn for the life of the server. Never fails. */
     readonly run: Effect.Effect<void>;
-    /** What a client needs of the kitshn connection, then each change (`machineMap.subscribe`). */
-    readonly clientState: Stream.Stream<MachineMapClientState>;
+    /**
+     * What a client of this session needs of the kitshn connection, then each change
+     * (`machineMap.subscribe`). The settings hold the session's circle layer.
+     */
+    readonly clientState: (session: SettingsSession) => Stream.Stream<MachineMapClientState>;
     /**
      * MM-411 on kitshn: puts the saved values of these server keys and these client values into
-     * the shared part of `t3.settings`. False when this server is not a kitshn provider.
+     * the shared part of `t3.settings`. A session that writes to a circle puts only the
+     * circle-capable client values into its circle part; its server values got there with the
+     * save (`writeSessionServerPatch`). False when this server is not a kitshn provider.
      */
     readonly share: (
       input: MachineMapShareSettingsInput,
+      session: SettingsSession,
     ) => Effect.Effect<MachineMapShareSettingsResult>;
+    /** The owner sets values of one circle part from T3 Settings. */
+    readonly setCircle: (
+      input: MachineMapSetCircleSettingsInput,
+      session: SettingsSession,
+    ) => Effect.Effect<void, KitshnSettingRefused>;
+    /** The server settings as this session reads them: its circle layer over the saved values. */
+    readonly sessionServerSettings: (
+      session: SettingsSession,
+      settings: ServerSettingsValue,
+    ) => Effect.Effect<ServerSettingsValue>;
+    /** `changes` as this session reads them, and again when its circle layer changes. */
+    readonly sessionSettingsChanges: <E, R>(
+      session: SettingsSession,
+      initial: ServerSettingsValue,
+      changes: Stream.Stream<ServerSettingsValue, E, R>,
+    ) => Stream.Stream<ServerSettingsValue, E, R>;
+    /**
+     * For a session that writes to a circle: stores the circle-capable keys of a server settings
+     * patch in its circle part, and returns the rest for the settings file. Other sessions get the
+     * patch back as it was.
+     */
+    readonly writeSessionServerPatch: (
+      session: SettingsSession,
+      patch: ServerSettingsPatch,
+    ) => Effect.Effect<ServerSettingsPatch, KitshnSettingRefused>;
     /**
      * K-709: sets or clears one key of one part. The shared part reaches every machine, also
      * machines whose grants this server cannot see, so an agent never sets it; the owner does.
@@ -207,7 +384,7 @@ const make = Effect.gen(function* () {
   const environmentThemes = yield* EnvironmentTheme.EnvironmentThemeService;
 
   const reportedServerSettings = Effect.fn("KitshnSettingsSync.reportedServerSettings")(function* (
-    current: typeof ServerSettingsSchema.Type,
+    current: ServerSettingsValue,
   ) {
     const encoded = yield* encodeServerSettings(
       ServerSettings.redactServerSettingsForClient(current),
@@ -304,38 +481,203 @@ const make = Effect.gen(function* () {
 
   // The machine and the link proxy change without an event of their own, so a tick reads them
   // again; the dedupe below sends only a real change.
-  const clientState: KitshnSettingsSync["Service"]["clientState"] = Stream.zipLatestAll(
-    provider.state,
-    provider.connection,
-    Stream.tick(CLIENT_STATE_REFRESH),
-  ).pipe(
-    Stream.mapEffect(([state, connection]) =>
-      Effect.all([grants.active, grants.machine, provider.linkSocket]).pipe(
-        Effect.map(([joined, machine, linkSocket]): MachineMapClientState => ({
-          joined,
-          machine,
-          settings: effectiveSettings(state.settings),
-          connection: {
-            status: connection.status,
-            detail: connection.detail,
-            restartedAt: connection.status === "registered" ? connection.restartedAt : null,
-            reachedMachines: new Set(state.reach.map((card) => card.machineId)).size,
-            linkProxy: linkSocket !== null,
-            syncedAt: state.syncedAt,
-            paused: state.paused,
-            problems: state.problems,
-          },
-        })),
-      ),
+  const currentState = provider.state.pipe(Stream.runHead);
+  const circleList = yield* SubscriptionRef.make<ReadonlyArray<SettingsCircle>>([]);
+  const refreshCircleList = yield* Effect.cachedWithTTL(
+    kitshn.request({ type: "ask", action: "state", target: "" }).pipe(
+      Effect.flatMap((answer) => {
+        const list = "result" in answer ? circleListFromState(answer.result) : null;
+        return list === null ? Effect.void : SubscriptionRef.set(circleList, list);
+      }),
+      Effect.ignore,
     ),
-    Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
+    CIRCLE_LIST_LIFETIME,
+  );
+  const circlesNow: Effect.Effect<CircleSettings> = Effect.all([
+    currentState,
+    SubscriptionRef.get(circleList),
+  ]).pipe(
+    Effect.map(([state, list]) => ({
+      parts: Option.isSome(state) ? state.value.circleParts : {},
+      list,
+    })),
   );
 
+  const sessionServerSettings: KitshnSettingsSync["Service"]["sessionServerSettings"] = (
+    session,
+    settings,
+  ) =>
+    session.circles.length === 0
+      ? Effect.succeed(settings)
+      : circlesNow.pipe(
+          Effect.map((circles) => {
+            const layer = sessionCircleLayer(circles, session.circles);
+            return layer === null
+              ? settings
+              : withCircleLayer(settings, decodedServerLayer(layer.settings.server));
+          }),
+        );
+
+  const sessionSettingsChanges: KitshnSettingsSync["Service"]["sessionSettingsChanges"] = (
+    session,
+    initial,
+    changes,
+  ) => {
+    if (session.circles.length === 0) return changes;
+    const layers = provider.state.pipe(
+      Stream.map(
+        (state) =>
+          sessionCircleLayer({ parts: state.circleParts, list: [] }, session.circles)?.settings
+            .server ?? {},
+      ),
+      Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
+    );
+    // The first pair is the snapshot that the client has; only a difference from it is sent.
+    return Stream.zipLatestWith(
+      Stream.concat(Stream.make(initial), changes),
+      layers,
+      (settings, layer) => withCircleLayer(settings, decodedServerLayer(layer)),
+    ).pipe(
+      Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
+      Stream.drop(1),
+    );
+  };
+
+  const storeCirclePart = Effect.fn("KitshnSettingsSync.storeCirclePart")(function* (
+    session: SettingsSession,
+    circleId: string,
+    changes: ScopedSettingValues,
+    reset: boolean,
+  ) {
+    const refusal = circleWriteRefusal(session, circleId);
+    if (refusal !== null) return yield* new KitshnSettingRefused({ message: refusal });
+    const state = yield* currentState;
+    const before = reset || Option.isNone(state) ? undefined : state.value.circleParts[circleId];
+    yield* storeSettingsPart(
+      kitshn,
+      yield* newRev,
+      { part: "circle", circle: circleId },
+      circlePartAfter(before, changes),
+    ).pipe(Effect.mapError((error) => new KitshnSettingRefused({ message: error.message })));
+  });
+
+  const writeSessionServerPatch: KitshnSettingsSync["Service"]["writeSessionServerPatch"] =
+    Effect.fn("KitshnSettingsSync.writeSessionServerPatch")(function* (session, patch) {
+      const circle = sessionWriteCircle(yield* circlesNow, session);
+      if (circle === null) return patch;
+      const circleKeys = Object.keys(patch).filter((key) => isCircleSetting("server", key));
+      if (circleKeys.length === 0) return patch;
+      const rest = { ...patch } as Record<string, unknown>;
+      const picked: Record<string, unknown> = {};
+      for (const key of circleKeys) {
+        picked[key] = rest[key];
+        delete rest[key];
+      }
+      const encoded = yield* encodePatch(picked as ServerSettingsPatch).pipe(
+        Effect.mapError((error) => new KitshnSettingRefused({ message: error.message })),
+      );
+      yield* storeCirclePart(session, circle.id, { server: encoded, client: {} }, false);
+      return rest as ServerSettingsPatch;
+    });
+
+  const setCircle: KitshnSettingsSync["Service"]["setCircle"] = Effect.fn(
+    "KitshnSettingsSync.setCircle",
+  )(function* (input, session) {
+    const circles = yield* circlesNow;
+    // kitshn refuses a circle that holds no card of this provider here (K-726).
+    const known =
+      circles.list.some((circle) => circle.id === input.circleId) ||
+      Object.hasOwn(circles.parts, input.circleId) ||
+      !session.owner;
+    if (!known) {
+      return yield* new KitshnSettingRefused({
+        message: "kitshn names no such circle for this machine.",
+      });
+    }
+    yield* storeCirclePart(
+      session,
+      input.circleId,
+      { server: input.server, client: input.client },
+      input.reset === true,
+    );
+  });
+
+  const clientState: KitshnSettingsSync["Service"]["clientState"] = (session) =>
+    Stream.zipLatestAll(
+      provider.state,
+      provider.connection,
+      SubscriptionRef.changes(circleList),
+      Stream.tick(CLIENT_STATE_REFRESH),
+    ).pipe(
+      Stream.tap(() => refreshCircleList.pipe(Effect.forkDetach)),
+      Stream.mapEffect(([state, connection, list]) =>
+        Effect.all([
+          grants.active,
+          grants.machine,
+          provider.linkSocket,
+          // The values below a circle layer only explain it; an unreadable file shows none.
+          settings.getSettings.pipe(Effect.orElseSucceed(() => ({}))),
+        ]).pipe(
+          Effect.map(([joined, machine, linkSocket, saved]): MachineMapClientState => {
+            const machineValues = effectiveSettings(state.settings);
+            const circles: CircleSettings = { parts: state.circleParts, list };
+            const circle = sessionCircleOf(circles, session, saved);
+            const writesTo = sessionWriteCircle(circles, session);
+            return {
+              joined,
+              machine,
+              settings: {
+                server: withCircleLayer(machineValues.server, circle?.settings.server ?? {}),
+                client: withCircleLayer(machineValues.client, circle?.settings.client ?? {}),
+              },
+              circle,
+              writesTo,
+              // The parts of other circles are for the owner's picker only.
+              circles:
+                writesTo !== null
+                  ? []
+                  : [
+                      ...list,
+                      // A part whose circle the last state ask did not name still shows, by its id.
+                      ...Object.keys(state.circleParts)
+                        .filter((id) => !list.some((entry) => entry.id === id))
+                        .map((id) => circleOf(circles, id)),
+                    ].map((entry) => ({ ...entry, settings: state.circleParts[entry.id] ?? null })),
+              connection: {
+                status: connection.status,
+                detail: connection.detail,
+                restartedAt: connection.status === "registered" ? connection.restartedAt : null,
+                reachedMachines: new Set(state.reach.map((card) => card.machineId)).size,
+                linkProxy: linkSocket !== null,
+                syncedAt: state.syncedAt,
+                paused: state.paused,
+                problems: state.problems,
+              },
+            };
+          }),
+        ),
+      ),
+      Stream.changesWith((left, right) => stableStringify(left) === stableStringify(right)),
+    );
+
   const share: KitshnSettingsSync["Service"]["share"] = Effect.fn("KitshnSettingsSync.share")(
-    function* (input) {
+    function* (input, session) {
       if (!(yield* grants.active)) return { shared: false };
+      const circle = sessionWriteCircle(yield* circlesNow, session);
+      if (circle !== null) {
+        const client = circleSettingsOnly({ server: {}, client: input.client }).client;
+        if (Object.keys(client).length === 0) return { shared: true };
+        return yield* storeCirclePart(session, circle.id, { server: {}, client }, false).pipe(
+          Effect.as({ shared: true }),
+          Effect.catch((error) =>
+            Effect.logWarning("kitshn settings: could not store the circle settings.", {
+              cause: error.message,
+            }).pipe(Effect.as({ shared: false })),
+          ),
+        );
+      }
       const current = yield* reportedServerSettings(yield* settings.getSettings);
-      const state = yield* provider.state.pipe(Stream.runHead);
+      const state = yield* currentState;
       const shared = Option.getOrElse(
         Option.flatMap(state, (value) => decodePart(value.settings?.shared ?? null)),
         () => ({ server: {}, client: {} }),
@@ -343,7 +685,7 @@ const make = Effect.gen(function* () {
       return yield* storeSettingsPart(
         kitshn,
         yield* newRev,
-        "shared",
+        { part: "shared" },
         sharedPartAfterShare(shared, current, input),
       ).pipe(
         Effect.as({ shared: true }),
@@ -365,7 +707,16 @@ const make = Effect.gen(function* () {
 
   const setOne = makeSetOne(provider, kitshn, newRev);
 
-  return KitshnSettingsSync.of({ run, clientState, share, setOne });
+  return KitshnSettingsSync.of({
+    run,
+    clientState,
+    share,
+    setOne,
+    setCircle,
+    sessionServerSettings,
+    sessionSettingsChanges,
+    writeSessionServerPatch,
+  });
 });
 
 export const layer = Layer.effect(KitshnSettingsSync, make);

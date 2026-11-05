@@ -20,6 +20,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import { liveThreadShell } from "../../mcp/McpToolAccess.testkit.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
+import { NO_CIRCLE_PARTS } from "../kitshn/kitshnCircles.ts";
 import * as KitshnConnection from "../kitshn/KitshnConnection.ts";
 import { registerAnswer } from "../kitshn/KitshnConnection.testkit.ts";
 import * as KitshnProvider from "../kitshn/KitshnProvider.ts";
@@ -111,6 +112,7 @@ const harness = Effect.fn("MachineExecTest.harness")(function* (script: Script) 
       Layer.mock(KitshnProvider.KitshnProvider)({
         state: Stream.make({
           settings: null,
+          circleParts: NO_CIRCLE_PARTS,
           cardSettings: {},
           reach: [
             {

@@ -6,12 +6,17 @@ import {
   CommandId,
   FORK_WS_METHODS,
   ForkWsRpcGroup,
+  MachineMapRequestError,
   OrchestrationV2ThreadLaunchError,
   type OrchestrationV2ThreadLaunchInput,
   type ServerConfig,
+  ServerSettingsError,
+  type ServerSettings as ServerSettingsValue,
+  type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { HttpServerResponse } from "effect/http";
@@ -68,12 +73,69 @@ export const environmentLabelUpdates = <E>(
     }),
   );
 
+/** The settings session of one socket, from its kitshn visitor (K-721 `check`). */
+export const kitshnSettingsSessionLayer = (request: HttpServerRequest.HttpServerRequest) =>
+  Layer.effect(
+    KitshnSettingsSync.KitshnSettingsSession,
+    Effect.serviceOption(KitshnGrants.KitshnGrants).pipe(
+      Effect.flatMap((grants) =>
+        Option.isNone(grants) ? Effect.succeed(null) : grants.value.visitor(request),
+      ),
+      Effect.map((result) =>
+        result?._tag === "visitor"
+          ? KitshnSettingsSync.settingsSessionOf(result.visitor)
+          : KitshnSettingsSync.OWNER_SESSION,
+      ),
+    ),
+  );
+
+/**
+ * The server settings as the socket's session reads and writes them: the chain Project, Circle,
+ * Environment, Shared, Default, where `ws.ts` sends the Circle layer. Read at layer build, so a
+ * handler keeps the session of its socket.
+ */
+export const sessionSettingsView = Effect.gen(function* () {
+  const session = yield* KitshnSettingsSync.KitshnSettingsSession;
+  const sync = yield* Effect.serviceOption(KitshnSettingsSync.KitshnSettingsSync);
+  if (Option.isNone(sync) || session.circles.length === 0) {
+    return {
+      serverSettings: (settings: ServerSettingsValue) => Effect.succeed(settings),
+      settingsChanges: <E, R>(
+        _initial: ServerSettingsValue,
+        changes: Stream.Stream<ServerSettingsValue, E, R>,
+      ) => changes,
+      writePatch: (patch: ServerSettingsPatch) =>
+        Effect.succeed(patch) as Effect.Effect<ServerSettingsPatch, ServerSettingsError>,
+    };
+  }
+  return {
+    serverSettings: (settings: ServerSettingsValue) =>
+      sync.value.sessionServerSettings(session, settings),
+    settingsChanges: <E, R>(
+      initial: ServerSettingsValue,
+      changes: Stream.Stream<ServerSettingsValue, E, R>,
+    ) => sync.value.sessionSettingsChanges(session, initial, changes),
+    writePatch: (patch: ServerSettingsPatch) =>
+      sync.value.writeSessionServerPatch(session, patch).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath: "kitshn t3.settings circle part",
+              operation: "write-file",
+              cause,
+            }),
+        ),
+      ),
+  };
+});
+
 // A handler layer of its own: one handler object for every RPC is too deep a type for tsc.
 export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
   ForkWsRpcGroup.toLayer(
     Effect.gen(function* () {
       const forkChangelog = yield* ForkChangelog.ForkChangelog;
       const settingsSync = yield* KitshnSettingsSync.KitshnSettingsSync;
+      const settingsSession = yield* KitshnSettingsSync.KitshnSettingsSession;
       // The server provides it; a bare RPC layer, as in tests, reads only this environment.
       const machinePeers = yield* Effect.serviceOption(MachinePeers.MachinePeers);
       const environment = yield* ServerEnvironment.ServerEnvironment;
@@ -104,8 +166,18 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
         [FORK_WS_METHODS.forkChangelogUpstreamPending]: (_input) => forkChangelog.upstreamPending,
         [FORK_WS_METHODS.forkChangelogSyncStatus]: (_input) => forkChangelog.syncStatus,
         [FORK_WS_METHODS.forkChangelogStartSync]: (_input) => forkChangelog.startSync,
-        [FORK_WS_METHODS.machineMapSubscribe]: (_input) => settingsSync.clientState,
-        [FORK_WS_METHODS.machineMapShareSettings]: (input) => settingsSync.share(input),
+        [FORK_WS_METHODS.machineMapSubscribe]: (_input) =>
+          settingsSync.clientState(settingsSession),
+        [FORK_WS_METHODS.machineMapShareSettings]: (input) =>
+          settingsSync.share(input, settingsSession),
+        [FORK_WS_METHODS.machineMapSetCircleSettings]: (input) =>
+          settingsSync.setCircle(input, settingsSession).pipe(
+            Effect.as({}),
+            Effect.mapError(
+              (error) =>
+                new MachineMapRequestError({ reason: "settings-failed", detail: error.message }),
+            ),
+          ),
         [FORK_WS_METHODS.machineMapReadableEnvironments]: (_input) => readableEnvironments(),
         [FORK_WS_METHODS.webPushPublicKey]: (_input) =>
           webPush.publicKey.pipe(Effect.map((publicKey) => ({ publicKey }))),

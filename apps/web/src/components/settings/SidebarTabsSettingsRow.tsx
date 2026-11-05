@@ -1,6 +1,11 @@
-import { type ClientSettings, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import {
+  type ClientSettings,
+  type ClientSettingsPatch,
+  DEFAULT_CLIENT_SETTINGS,
+} from "@t3tools/contracts";
 
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
+import { useSelectedCircleSettings, useWriteSelectedCircle } from "../../machineMap/circleSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -10,8 +15,15 @@ const selectSingleThreadOpens = (settings: ClientSettings) => settings.sidebarTa
 
 /** Fork: `sidebarTabsEnabled` and `sidebarTabSingleThreadOpens`, sidebar tabs. */
 export function SidebarTabsSettingsRow() {
-  const enabled = useClientSettings(selectEnabled);
-  const singleThreadOpens = useClientSettings(selectSingleThreadOpens);
+  // Fork: with a circle picked in the person picker, the row shows and sets that circle's values.
+  const circleValues = useSelectedCircleSettings();
+  const writeCircle = useWriteSelectedCircle();
+  const ownEnabled = useClientSettings(selectEnabled);
+  const ownSingleThreadOpens = useClientSettings(selectSingleThreadOpens);
+  const enabled = circleValues.sidebarTabsEnabled ?? ownEnabled;
+  const singleThreadOpens = circleValues.sidebarTabSingleThreadOpens ?? ownSingleThreadOpens;
+  const update = (patch: ClientSettingsPatch) =>
+    writeCircle === null ? void updateClientSettings(patch) : writeCircle(patch);
   return (
     <>
       <SettingsRow
@@ -22,7 +34,7 @@ export function SidebarTabsSettingsRow() {
             <SettingResetButton
               label="sidebar tabs"
               onClick={() =>
-                void updateClientSettings({
+                update({
                   sidebarTabsEnabled: DEFAULT_CLIENT_SETTINGS.sidebarTabsEnabled,
                 })
               }
@@ -32,9 +44,7 @@ export function SidebarTabsSettingsRow() {
         control={
           <Switch
             checked={enabled}
-            onCheckedChange={(checked) =>
-              void updateClientSettings({ sidebarTabsEnabled: Boolean(checked) })
-            }
+            onCheckedChange={(checked) => update({ sidebarTabsEnabled: Boolean(checked) })}
             aria-label="Sidebar tabs"
           />
         }
@@ -48,7 +58,7 @@ export function SidebarTabsSettingsRow() {
               <SettingResetButton
                 label="single-thread tabs"
                 onClick={() =>
-                  void updateClientSettings({
+                  update({
                     sidebarTabSingleThreadOpens:
                       DEFAULT_CLIENT_SETTINGS.sidebarTabSingleThreadOpens,
                   })
@@ -60,7 +70,7 @@ export function SidebarTabsSettingsRow() {
             <Switch
               checked={singleThreadOpens}
               onCheckedChange={(checked) =>
-                void updateClientSettings({ sidebarTabSingleThreadOpens: Boolean(checked) })
+                update({ sidebarTabSingleThreadOpens: Boolean(checked) })
               }
               aria-label="Single-thread tabs open the thread"
             />

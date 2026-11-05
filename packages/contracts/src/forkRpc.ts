@@ -32,6 +32,7 @@ import {
 } from "./forkTerminalThreads.ts";
 import {
   MachineMapClientState,
+  MachineMapSetCircleSettingsInput,
   MachineMapShareSettingsInput,
   MachineMapShareSettingsResult,
   MachineMapReadableEnvironment,
@@ -59,6 +60,7 @@ export const FORK_WS_METHODS = {
   // Fork: kitshn client state; the method names stay from the machine map.
   machineMapSubscribe: "machineMap.subscribe",
   machineMapShareSettings: "machineMap.shareSettings",
+  machineMapSetCircleSettings: "machineMap.setCircleSettings",
   machineMapReadableEnvironments: "machineMap.readableEnvironments",
 
   // Fork: Web Push (webPush.ts)
@@ -119,6 +121,13 @@ const WsMachineMapSubscribeRpc = Rpc.make(FORK_WS_METHODS.machineMapSubscribe, {
 const WsMachineMapShareSettingsRpc = Rpc.make(FORK_WS_METHODS.machineMapShareSettings, {
   payload: MachineMapShareSettingsInput,
   success: MachineMapShareSettingsResult,
+  error: machineMapError,
+});
+
+/** Fork: the owner sets a circle part of `t3.settings` with the person picker of T3 Settings. */
+const WsMachineMapSetCircleSettingsRpc = Rpc.make(FORK_WS_METHODS.machineMapSetCircleSettings, {
+  payload: MachineMapSetCircleSettingsInput,
+  success: Schema.Struct({}),
   error: machineMapError,
 });
 
@@ -198,6 +207,7 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsMachineMapSubscribeRpc,
   WsMachineMapShareSettingsRpc,
   WsMachineMapReadableEnvironmentsRpc,
+  WsMachineMapSetCircleSettingsRpc,
   WsWebPushPublicKeyRpc,
   WsWebPushSubscribeRpc,
   WsWebPushTestRpc,
@@ -214,6 +224,8 @@ export const FORK_CLIENT_GUARDED_RPC_SCOPES = {
   [FORK_WS_METHODS.forkChangelogStartSync]: AuthSourceControlWriteScope,
   // Fork: MM-411. Sets shared values of the map, like a settings change on every machine.
   [FORK_WS_METHODS.machineMapShareSettings]: AuthSettingsWriteScope,
+  // Fork: sets the values of a circle of people on every machine.
+  [FORK_WS_METHODS.machineMapSetCircleSettings]: AuthSettingsWriteScope,
   // Fork: the local desktop app reports desktop command results and its waiting update.
   // Fork: creates a worktree, as `vcs.createWorktree` does, and runs the project setup script.
   [FORK_WS_METHODS.vcsPrepareDraftWorktree]: AuthSourceControlWriteScope,

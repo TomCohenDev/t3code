@@ -1,0 +1,90 @@
+/**
+ * Fork: the person picker of T3 Settings. The owner picks a kitshn circle, and a change goes into
+ * that circle's part of `t3.settings` instead of the shared or machine part.
+ */
+import type { UnifiedSettings } from "@t3tools/contracts";
+import { useLocation } from "@tanstack/react-router";
+import { AsyncResult } from "effect/reactivity";
+
+import { useOptionalSettingsScope } from "../components/settings/SettingsScopeContext";
+import {
+  splitScopedSettingsPatch,
+  type ScopedSettingsPatch,
+} from "../components/settings/scopedSettings";
+import { SETTINGS_PERSON_PATHS } from "../components/settings/settingsScopeAxis";
+import { toastManager } from "../components/ui/toast";
+import { usePrimaryEnvironmentId } from "../state/environments";
+import { setMachineMapCircleSettings, useMachineMapState } from "../state/machineMap";
+import { useAtomCommand } from "../state/use-atom-command";
+import {
+  circlePartSettings,
+  circleSettingsChange,
+  personPickerCircles,
+} from "./circleSettings.logic";
+
+/** The circles that the owner can pick on this settings page; empty elsewhere and for others. */
+export function useSettingsPersonPicker() {
+  const environmentId = usePrimaryEnvironmentId();
+  const { state } = useMachineMapState(environmentId);
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const circles = SETTINGS_PERSON_PATHS.has(pathname) ? personPickerCircles(state) : [];
+  return { environmentId, circles };
+}
+
+/** The circle that the owner picked on this page, or null for All people. */
+export function useSelectedSettingsCircle() {
+  const context = useOptionalSettingsScope();
+  const { environmentId, circles } = useSettingsPersonPicker();
+  const id = context?.search.circle;
+  const circle = id === undefined ? undefined : circles.find((candidate) => candidate.id === id);
+  return circle === undefined || environmentId === null ? null : { environmentId, circle };
+}
+
+/** The picked circle's values, to show over the saved ones; empty for All people. */
+export function useSelectedCircleSettings(): Partial<UnifiedSettings> {
+  return circlePartSettings(useSelectedSettingsCircle()?.circle.settings ?? null);
+}
+
+/**
+ * A write into the picked circle's part, or null for All people. A key that a circle part cannot
+ * hold is not saved, with a toast, so a circle write never changes a value of every person.
+ */
+export function useWriteSelectedCircle() {
+  const selected = useSelectedSettingsCircle();
+  const send = useAtomCommand(setMachineMapCircleSettings);
+  if (selected === null) return null;
+  const { environmentId, circle } = selected;
+  return (patch: ScopedSettingsPatch, options?: { readonly onFailed?: () => void }) => {
+    const { serverPatch, clientPatch } = splitScopedSettingsPatch(patch);
+    const change = circleSettingsChange(serverPatch, clientPatch);
+    if (change.refused.length > 0) {
+      toastManager.add({
+        type: "warning",
+        title: "Setting not saved",
+        description: `${change.refused.join(", ")} applies to all people. Pick All people to change it.`,
+      });
+      options?.onFailed?.();
+      return;
+    }
+    void send({
+      environmentId,
+      // oxlint-disable-next-line t3code/no-rpc-permission-bypass -- the client settings scope, not an RPC client.
+      input: { circleId: circle.id, server: change.server, client: change.client },
+    }).then((result) => {
+      if (!AsyncResult.isSuccess(result)) options?.onFailed?.();
+    });
+  };
+}
+
+/** Removes the picked circle's part, so the circle inherits every value again. */
+export function useResetSelectedCircle() {
+  const selected = useSelectedSettingsCircle();
+  const send = useAtomCommand(setMachineMapCircleSettings);
+  if (selected === null || selected.circle.settings === null) return null;
+  const { environmentId, circle } = selected;
+  return () =>
+    void send({
+      environmentId,
+      input: { circleId: circle.id, server: {}, client: {}, reset: true },
+    });
+}

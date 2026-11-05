@@ -45,7 +45,7 @@ const KITSHN_NOTE =
 
 const MachinesReadTool = Tool.make("machines_read", {
   ...shared,
-  description: `Read what kitshn shows this machine. Changes nothing. The result is {"_tag":"read", machine, connection, state, stateError, askResults, jobResults, execResults}: machine is {id, name} of this machine on the kitshn map, or null before it registered. connection is {status ("off", "connecting" or "registered"), detail (why it is off or why the last connection ended), linkProxy (boolean), syncedAt (epoch ms of kitshn's last answer), paused (kitshn's emergency pause), problems ([{path, reason}] that kitshn dropped)}. state is null with stateError when kitshn cannot answer; otherwise it is the answer of the kitshn state ask: rights (what kitshn lets this machine do), circles ({id, name, level} that this machine can see), cards (the cards that this machine manages, with kind, name, addresses, status, circles, deploy, backup and uptime), proposals (open asks that this machine may answer) and repos. Newest first: askResults are answers to this machine's waiting asks {proposalId, outcome ("approved", "denied" or "expired"), result, reason}; jobResults are ends of its jobs {jobId, state, exitCode, output}; execResults are machine_exec runs that waited for the owner {proposalId, result}, result being the machine_exec result or {machine, refused}. It does not list other machines or their status. ${KITSHN_NOTE}`,
+  description: `Read what kitshn shows this machine. Changes nothing. The result is {"_tag":"read", machine, connection, circleSettings, state, stateError, askResults, jobResults, execResults}: machine is {id, name} of this machine on the kitshn map, or null before it registered. connection is {status ("off", "connecting" or "registered"), detail (why it is off or why the last connection ended), linkProxy (boolean), syncedAt (epoch ms of kitshn's last answer), paused (kitshn's emergency pause), problems ([{path, reason}] that kitshn dropped)}. circleSettings lists the circles that hold a card of this machine, smallest first, as {id, name, color, settings}: settings is the circle part of the T3 settings state ({server, client}, only person settings) or null. state is null with stateError when kitshn cannot answer; otherwise it is the answer of the kitshn state ask: rights (what kitshn lets this machine do), circles ({id, name, level} that this machine can see), cards (the cards that this machine manages, with kind, name, addresses, status, circles, deploy, backup and uptime), proposals (open asks that this machine may answer) and repos. Newest first: askResults are answers to this machine's waiting asks {proposalId, outcome ("approved", "denied" or "expired"), result, reason}; jobResults are ends of its jobs {jobId, state, exitCode, output}; execResults are machine_exec runs that waited for the owner {proposalId, result}, result being the machine_exec result or {machine, refused}. It does not list other machines or their status. ${KITSHN_NOTE}`,
   success: Schema.Unknown,
 })
   .annotate(Tool.Readonly, true)
@@ -60,10 +60,15 @@ const MachinesResourcesTool = Tool.make("machines_resources", {
   .annotate(Tool.Destructive, false);
 
 export const MachinesSetSettingInput = Schema.Struct({
-  part: Schema.Literals(["machine", "shared"]).annotate({
+  part: Schema.Literals(["machine", "shared", "circle"]).annotate({
     description:
-      "machine: this machine's own value, which applies over the shared one. shared: the value of every machine on kitshn; only the owner sets it, so an agent thread is refused.",
+      "machine: this machine's own value, which applies over the shared one. shared: the value of every machine on kitshn. circle: the value for the people of one circle (with circle), only for person settings. Only the owner sets shared and circle, so an agent thread is refused.",
   }),
+  circle: Schema.optionalKey(
+    TrimmedNonEmptyString.annotate({
+      description: "With part circle: the circle id from circleSettings of machines_read.",
+    }),
+  ),
   scope: SettingScope.annotate({
     description: "server: T3 server settings (settings.json). client: settings of all client apps.",
   }),
@@ -85,7 +90,7 @@ export const MachinesSetSettingInput = Schema.Struct({
 
 const MachinesSetSettingTool = Tool.make("machines_set_setting", {
   ...shared,
-  description: `Set or clear one setting in the T3 settings state on kitshn (K-709): this machine's own part, or the shared part of every machine. Each machine applies the shared part, then its own part over it. It cannot change the part of another machine. The result is {"_tag":"setting", part, scope, key}. ${KITSHN_NOTE}`,
+  description: `Set or clear one setting in the T3 settings state on kitshn (K-709): this machine's own part, or the shared part of every machine. Each machine applies the shared part, then its own part over it. A circle part holds the person settings of one circle of people; an agent thread cannot set it. It cannot change the part of another machine. The result is {"_tag":"setting", part, scope, key}. ${KITSHN_NOTE}`,
   parameters: MachinesSetSettingInput,
   success: Schema.Unknown,
 }).annotate(Tool.Destructive, true);

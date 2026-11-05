@@ -3,6 +3,7 @@
  * `machineMap.subscribe` sends the whole state on each change. The RPC names stay from the
  * machine map.
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import {
@@ -11,7 +12,24 @@ import {
   PositiveInt,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { ScopedSettingValues, SettingValues } from "./machineMap.ts";
+import { ScopedSettingValues, SettingsCircle, SettingValues } from "./machineMap.ts";
+
+/** One circle of `MachineMapClientState.circles`, with its part of `t3.settings` or null. */
+export const MachineMapCircleSettings = Schema.Struct({
+  ...SettingsCircle.fields,
+  settings: Schema.NullOr(ScopedSettingValues),
+});
+export type MachineMapCircleSettings = typeof MachineMapCircleSettings.Type;
+
+/** The circle layer of one session: the circle part that applies to it. */
+export const MachineMapSessionCircle = Schema.Struct({
+  ...SettingsCircle.fields,
+  /** Only the circle-capable keys of the part. */
+  settings: ScopedSettingValues,
+  /** The server values below the circle layer, for the keys that it replaced. */
+  replaced: SettingValues,
+});
+export type MachineMapSessionCircle = typeof MachineMapSessionCircle.Type;
 
 /** What a client needs of this server's kitshn connection. */
 export const MachineMapClientState = Schema.Struct({
@@ -19,8 +37,24 @@ export const MachineMapClientState = Schema.Struct({
   joined: Schema.Boolean,
   /** This machine on the kitshn map; the name is null before the daemon reached kitshn. */
   machine: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.NullOr(Schema.String) })),
-  /** K-709: the effective `t3.settings`: the shared part with this machine's part over it. */
+  /**
+   * K-709: the effective `t3.settings` of this session: the shared part, this machine's part over
+   * it, then the circle-capable keys of the session's circle part.
+   */
   settings: ScopedSettingValues,
+  /** The circle layer of this session, or null. Older servers send none. */
+  circle: Schema.NullOr(MachineMapSessionCircle).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /**
+   * A session of a person who is not the owner writes circle-capable keys into this circle part
+   * instead of the shared part. Null for the owner.
+   */
+  writesTo: Schema.NullOr(SettingsCircle).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /** For the owner: the circles that hold a card of this machine, smallest first. */
+  circles: Schema.Array(MachineMapCircleSettings).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   /** K-1611: the provider connection to the kitshn daemon and what kitshn gave it. */
   connection: Schema.Struct({
     /** `off`: this server does not speak for the machine, with the reason in `detail`. */
@@ -66,6 +100,16 @@ export type MachineMapShareSettingsInput = typeof MachineMapShareSettingsInput.T
 /** False when this server is not a kitshn provider: the change stays a bulk edit. */
 export const MachineMapShareSettingsResult = Schema.Struct({ shared: Schema.Boolean });
 export type MachineMapShareSettingsResult = typeof MachineMapShareSettingsResult.Type;
+
+/** The owner sets values of one circle part from T3 Settings. Only circle-capable keys apply. */
+export const MachineMapSetCircleSettingsInput = Schema.Struct({
+  circleId: TrimmedNonEmptyString,
+  server: SettingValues,
+  client: SettingValues,
+  /** True removes the whole part before the values apply, so the circle inherits again. */
+  reset: Schema.optionalKey(Schema.Boolean),
+});
+export type MachineMapSetCircleSettingsInput = typeof MachineMapSetCircleSettingsInput.Type;
 
 export class MachineMapRequestError extends Schema.TaggedError<MachineMapRequestError>()(
   "MachineMapRequestError",

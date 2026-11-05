@@ -1,8 +1,10 @@
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
 import { useLocation } from "@tanstack/react-router";
-import { CheckIcon, ChevronDownIcon, LayersIcon } from "lucide-react";
+import type { MachineMapCircleSettings } from "@t3tools/contracts";
+import { CheckIcon, ChevronDownIcon, LayersIcon, UsersIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
+import { useResetSelectedCircle, useSettingsPersonPicker } from "../../machineMap/circleSettings";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
@@ -30,8 +32,11 @@ import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope";
 import {
   ALL_ENVIRONMENTS_VALUE,
+  ALL_PEOPLE_VALUE,
   ALL_PROJECTS_VALUE,
   environmentAxisValue,
+  personAxisValue,
+  selectPersonAxis,
   projectAxisValue,
   projectScopeMenuGroups,
   selectEnvironmentAxis,
@@ -66,7 +71,29 @@ export function SettingsScopeSentence() {
   const scope = useOptionalSettingsScope();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { environments } = useEnvironments();
-  if (scope === null || SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) return null;
+  // Fork: the owner picks a kitshn circle on pages with person settings.
+  const { circles } = useSettingsPersonPicker();
+  const resetCircle = useResetSelectedCircle();
+  if (scope === null) return null;
+  const people =
+    circles.length === 0 ? null : (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <PersonScopeMenu value={scope.search} circles={circles} onChange={scope.selectScope} />
+        {resetCircle ? (
+          <Button variant="ghost" size="sm" onClick={resetCircle}>
+            Reset {circles.find((circle) => circle.id === scope.search.circle)?.name}
+          </Button>
+        ) : null}
+      </span>
+    );
+  if (SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) {
+    return people === null ? null : (
+      <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
+        <span className="shrink-0">Applying settings for</span>
+        {people}
+      </p>
+    );
+  }
   const props: SettingsScopeMenuProps = {
     value: scope.search,
     singleEnvironment: scope.singleEnvironment,
@@ -86,7 +113,57 @@ export function SettingsScopeSentence() {
         </span>
         <EnvironmentScopeMenu {...props} />
       </span>
+      {people === null ? null : (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0">for</span>
+          {people}
+        </span>
+      )}
     </p>
+  );
+}
+
+function CircleDot({ color }: { color: string | null }) {
+  return (
+    <span
+      aria-hidden
+      className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
+      style={color === null ? undefined : { backgroundColor: color }}
+    />
+  );
+}
+
+/** Fork: "All people", or one kitshn circle whose part a change goes into. */
+function PersonScopeMenu({
+  value,
+  circles,
+  onChange,
+}: {
+  value: SettingsScopeSearch;
+  circles: readonly MachineMapCircleSettings[];
+  onChange: (next: SettingsScopeSearch) => void;
+}) {
+  const selected = circles.find((circle) => circle.id === value.circle);
+  return (
+    <ScopeMenu
+      ariaLabel="Person scope"
+      icon={selected ? <CircleDot color={selected.color} /> : null}
+      label={selected?.name ?? "All people"}
+      value={selected ? personAxisValue(value) : ALL_PEOPLE_VALUE}
+      onChange={(next) => onChange(selectPersonAxis(value, next))}
+      searchLabel="Search circles"
+      allOption={{
+        value: ALL_PEOPLE_VALUE,
+        label: "All people",
+        icon: <UsersIcon aria-hidden className="size-3.5 shrink-0" />,
+      }}
+      options={circles.map((circle) => ({
+        value: circle.id,
+        label: circle.name,
+        secondary: circle.settings === null ? "Inherits every value" : "Has its own values",
+        icon: <CircleDot color={circle.color} />,
+      }))}
+    />
   );
 }
 

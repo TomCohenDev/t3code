@@ -152,11 +152,21 @@ describe("KitshnGrants (K-721)", () => {
   it.effect("checks each token once and again after its until", () =>
     Effect.gen(function* () {
       const test = yield* harness;
-      yield* Ref.set(test.answers, new Map([["sam", person({ app: "standard" })]]));
+      // The circles of the visitor ride on the answer; a daemon without them sends none.
+      const sam = Object.assign(person({ app: "standard" }), { circles: ["partner", "family"] });
+      yield* Ref.set(
+        test.answers,
+        new Map([
+          ["sam", sam],
+          ["pat", person({ app: "standard" })],
+        ]),
+      );
       yield* test.connect;
       const grants = yield* test.start;
       const first = visitorOf(yield* grants.visitor(tunnelRequest("sam")));
       expect(first.levels).toEqual({ app: "standard" });
+      expect(first.circles).toEqual(["partner", "family"]);
+      expect(visitorOf(yield* grants.visitor(tunnelRequest("pat"))).circles).toEqual([]);
       const cached = yield* Ref.get(test.checks);
       yield* grants.visitor(tunnelRequest("sam"));
       expect(yield* Ref.get(test.checks)).toBe(cached);

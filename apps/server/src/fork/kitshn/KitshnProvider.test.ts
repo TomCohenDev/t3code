@@ -152,7 +152,7 @@ const setup = (
                     )
                   : Effect.succeed({
                       path: "/home/owner/.local/bin/kitshn",
-                      protocol: options.cliProtocol ?? KITSHN_PROTOCOL,
+                      protocol: options.cliProtocol ?? KitshnProvider.T3_KITSHN_PROTOCOL,
                     }),
               ),
             ),
@@ -317,7 +317,7 @@ it.layer(
       expect(register).toMatchObject({
         type: "register",
         protocol: 2,
-        protocolVersion: KITSHN_PROTOCOL,
+        protocolVersion: KitshnProvider.T3_KITSHN_PROTOCOL,
         provider: "t3",
         instance: "environment:kitshn",
         clients: [{ id: "t3code-fork" }, { id: "t3code-fork-desktop" }],
@@ -474,7 +474,7 @@ it.layer(
         Stream.runHead,
       );
       expect(Option.getOrThrow(refused).detail).toContain(
-        "T3 speaks kitshn protocol 2.1.0 and the kitshn CLI speaks 3.0.0",
+        `T3 speaks kitshn protocol ${KitshnProvider.T3_KITSHN_PROTOCOL} and the kitshn CLI speaks 3.0.0`,
       );
       yield* Queue.take(otherMajor.binaryCalls);
       yield* TestClock.adjust("5 seconds");
