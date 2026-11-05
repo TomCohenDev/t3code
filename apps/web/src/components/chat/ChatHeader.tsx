@@ -23,6 +23,7 @@ import {
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ShortcutHint } from "../focusLevels/ShortcutHint";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -341,7 +342,10 @@ export const ChatHeader = memo(function ChatHeader({
                     {activeProjectName}
                   </WorkspaceBreadcrumbText>
                 </TooltipTrigger>
-                <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
+                <TooltipPopup side="top">
+                  New thread in {activeProjectName}
+                  <ShortcutHint command="chat.newLocal" />
+                </TooltipPopup>
               </Tooltip>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>

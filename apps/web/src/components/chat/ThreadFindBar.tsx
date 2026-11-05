@@ -1,6 +1,8 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { cn } from "~/lib/utils";
 import { formatThreadFindCount } from "./threadFind";
@@ -101,27 +103,60 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
               Retry
             </Button>
           ) : null}
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Previous match"
-            disabled={navigationDisabled}
-            onClick={props.onPrevious}
-          >
-            <ChevronUpIcon />
-          </Button>
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Next match"
-            disabled={navigationDisabled}
-            onClick={props.onNext}
-          >
-            <ChevronDownIcon />
-          </Button>
-          <Button size="icon-xs" variant="ghost" aria-label="Close find" onClick={props.onClose}>
-            <XIcon />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Previous match"
+                  disabled={navigationDisabled}
+                  onClick={props.onPrevious}
+                />
+              }
+            >
+              <ChevronUpIcon />
+            </TooltipTrigger>
+            <TooltipPopup>
+              Previous match <Kbd>⇧</Kbd>
+              <Kbd>↵</Kbd>
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Next match"
+                  disabled={navigationDisabled}
+                  onClick={props.onNext}
+                />
+              }
+            >
+              <ChevronDownIcon />
+            </TooltipTrigger>
+            <TooltipPopup>
+              Next match <Kbd>↵</Kbd>
+            </TooltipPopup>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Close find"
+                  onClick={props.onClose}
+                />
+              }
+            >
+              <XIcon />
+            </TooltipTrigger>
+            <TooltipPopup>
+              Close <Kbd>Esc</Kbd>
+            </TooltipPopup>
+          </Tooltip>
         </InputGroupAddon>
       </InputGroup>
     </div>

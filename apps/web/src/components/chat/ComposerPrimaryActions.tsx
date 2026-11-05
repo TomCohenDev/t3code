@@ -11,7 +11,7 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup } from "../ui/tooltip";
-import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
+import { ShortcutCommandRows, ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import {
   alternateComposerDispatchAction,
@@ -125,6 +125,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       alternateModifier: shortcutModifiers.metaKey || shortcutModifiers.ctrlKey,
     }) === "queue";
   const alternateAction = alternateComposerDispatchAction(followUpBehavior);
+  const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
@@ -304,13 +305,25 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     submitStatus ??
     (compactsBeforeSend ? (
       `Summarize ${compactTokens} tokens of history, then send`
-    ) : isRunning && !isEditingQueuedMessage && canSteer ? (
-      <>
-        Click to {followUpBehavior}, Ctrl/⌘-click to {alternateAction}
-        <ShortcutHint command="composer.sendAlternate" context={alternateShortcutContext ?? {}} />
-      </>
     ) : (
-      submitLabel
+      <>
+        {isRunning && !isEditingQueuedMessage && canSteer
+          ? `Click to ${followUpBehavior}, Ctrl/⌘-click to ${alternateAction}`
+          : submitLabel}
+        <ShortcutCommandRows
+          commands={[
+            { command: "composer.sendAlternate", name: capitalize(alternateAction) },
+            { command: "composer.sendBackground", name: "Send in background" },
+            { command: "composer.sendAndNewThread", name: "Send and start a new thread" },
+            { command: "composer.stash", name: "Stash" },
+          ]}
+          context={{
+            composerFocus: true,
+            ...alternateShortcutContext,
+            turnRunning: isRunning && !isEditingQueuedMessage && canSteer,
+          }}
+        />
+      </>
     ));
 
   const sendButton = (

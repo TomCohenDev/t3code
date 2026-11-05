@@ -2,7 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { objectMenuProps } from "../../objectMenu";
 import { ObjectMenuEntryItems, ObjectMenuTrigger } from "../ObjectMenuEntryItems";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
@@ -734,6 +738,21 @@ export function ThreadRelationshipsPanel(props: {
           childThread={node?.thread ?? undefined}
           parentProject={currentProject}
           childProject={project}
+          footer={
+            <ThreadHoverCardActions>
+              <ThreadHoverCardAction onClick={() => openThread(threadId)}>
+                Open chat
+              </ThreadHoverCardAction>
+              {canStopWorkflow ? (
+                <ThreadHoverCardAction
+                  disabled={stoppingId !== null}
+                  onClick={() => void stopWorkflow(agent.id)}
+                >
+                  Stop
+                </ThreadHoverCardAction>
+              ) : null}
+            </ThreadHoverCardActions>
+          }
         />
       </ThreadHoverCardPopup>
     ) : (

@@ -21,7 +21,7 @@ import {
   setFocusLevelsEnabled,
   watchFocusLevelChanges,
 } from "./focusLevels";
-import { registerCommandRunner } from "../../shortcuts/dispatcher";
+import { registerCommandRunner } from "../../shortcuts/commandRunner";
 
 /** Runs a command for the focused element. False lets the key event through untouched. */
 export type FocusLevelCommandHandler = (event: KeyboardEvent) => boolean;

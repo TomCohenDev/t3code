@@ -49,6 +49,8 @@ export function SubagentTooltipContent(props: {
   status: OrchestrationV2TurnItemStatus;
   result?: string | null | undefined;
   progress?: string | null | undefined;
+  /** Fork: buttons under the card, such as open and stop. */
+  footer?: ReactNode;
 }) {
   const { modelLabel, workspace: metadata } = resolveSubagentMetadata(props);
   const preview = subagentDetailPreview(props);
@@ -119,7 +121,7 @@ export function SubagentTooltipContent(props: {
         ? CheckIcon
         : CircleDashedIcon;
   return (
-    <ThreadHoverCard title={props.title}>
+    <ThreadHoverCard title={props.title} footer={props.footer}>
       <div className="flex min-w-0 items-center gap-2">
         {driver ? (
           <ProviderInstanceIcon

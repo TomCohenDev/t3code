@@ -1,4 +1,7 @@
-import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+import { useNavigate } from "@tanstack/react-router";
+import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
+import { buildThreadRouteParams } from "~/threadRoutes";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, PullRequestRef, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -57,6 +60,7 @@ function EnabledPullRequestThreadLinks({
   const thread = useThreadShell(threadRef?.environmentId === environmentId ? threadRef : null);
   const currentThreadRef = thread === null ? null : threadRef;
   const linking = usePullRequestLinking(environmentId);
+  const navigate = useNavigate();
   const linkedHere = linking.isLinked(thread, url);
   const relations = useEnvironmentQuery(
     linking.mode === "multiple" && display !== "menu-item"
@@ -113,8 +117,8 @@ function EnabledPullRequestThreadLinks({
   return (
     <>
       {display === "count" && (linkedThreads.length > 0 || relations.error !== null) ? (
-        <Tooltip>
-          <TooltipTrigger
+        <PreviewCard>
+          <PreviewCardTrigger
             render={
               <Button
                 size="xs"
@@ -134,8 +138,39 @@ function EnabledPullRequestThreadLinks({
               </Button>
             }
           />
-          <TooltipPopup>{linkedThreadsLabel}. Search in the command palette.</TooltipPopup>
-        </Tooltip>
+          <ThreadHoverCardPopup side="bottom" align="end">
+            <ThreadHoverCard title={linkedThreadsLabel}>
+              {linkedThreads.length === 0 ? (
+                <div>Search in the command palette.</div>
+              ) : (
+                <ul className="-mx-1 flex flex-col gap-0.5">
+                  {linkedThreads.map((linked) => (
+                    <li key={linked.id}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() =>
+                          void navigate({
+                            to: "/$environmentId/$threadId",
+                            params: buildThreadRouteParams(
+                              scopeThreadRef(environmentId, linked.id),
+                            ),
+                          })
+                        }
+                      >
+                        <span className="min-w-0 truncate">{linked.title}</span>
+                        {linked.archivedAt !== null ? (
+                          <span className="shrink-0 text-muted-foreground">archived</span>
+                        ) : null}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ThreadHoverCard>
+          </ThreadHoverCardPopup>
+        </PreviewCard>
       ) : null}
       {display === "menu-item" ? (
         <MenuItem

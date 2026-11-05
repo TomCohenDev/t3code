@@ -1,6 +1,7 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
+import { registerCommandRunner } from "./commandRunner";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused, isTerminalThreadAppChord } from "../lib/terminalFocus";
@@ -120,22 +121,6 @@ export function registerCommands(
   return pushScope(scopes, { commands, options });
 }
 
-/**
- * Fork: runs `command` from a click, such as a row in a tooltip that names the command's key, as
- * if its key had been pressed. True when a handler took it. The dispatcher scopes come last;
- * listeners that own their keydown handling (chat shortcuts, focus levels) register a runner.
- */
-export type CommandRunner = (command: KeybindingCommand) => boolean;
-const commandRunners: CommandRunner[] = [];
-
-export function registerCommandRunner(runner: CommandRunner): () => void {
-  commandRunners.push(runner);
-  return () => {
-    const index = commandRunners.lastIndexOf(runner);
-    if (index !== -1) commandRunners.splice(index, 1);
-  };
-}
-
 function runScopeCommand(scope: CommandScope, command: KeybindingCommand): boolean {
   const handler = scope.commands[command];
   if (handler === undefined) return false;
@@ -144,10 +129,9 @@ function runScopeCommand(scope: CommandScope, command: KeybindingCommand): boole
   return handler(event) !== false;
 }
 
-export function runKeybindingCommand(command: KeybindingCommand): boolean {
-  for (let index = commandRunners.length - 1; index >= 0; index -= 1) {
-    if (commandRunners[index]?.(command)) return true;
-  }
+// Fork: the dispatcher scopes answer a click-run command after the runners that own their own
+// keydown handling (chat shortcuts, focus levels), which register later and so run first.
+registerCommandRunner((command) => {
   for (const scopes of [captureScopes, globalScopes]) {
     for (let index = scopes.length - 1; index >= 0; index -= 1) {
       const scope = scopes[index];
@@ -155,7 +139,7 @@ export function runKeybindingCommand(command: KeybindingCommand): boolean {
     }
   }
   return false;
-}
+});
 
 type MenuActionHandler = () => void;
 const menuActionHandlers = new Map<string, MenuActionHandler[]>();

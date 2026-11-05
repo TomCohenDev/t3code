@@ -8,7 +8,11 @@ import { useState, type ReactNode } from "react";
 
 import { AgentElapsed } from "./AgentElapsed";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "../../lib/utils";
@@ -109,6 +113,15 @@ function WorkflowMemberRow({
             status={member.status}
             result={member.result ?? member.error}
             progress={member.progress}
+            footer={
+              canOpen ? (
+                <ThreadHoverCardActions>
+                  <ThreadHoverCardAction onClick={() => onOpen(threadId)}>
+                    Open chat
+                  </ThreadHoverCardAction>
+                </ThreadHoverCardActions>
+              ) : undefined
+            }
           />
         </ThreadHoverCardPopup>
       </PreviewCard>

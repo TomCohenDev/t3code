@@ -13,7 +13,7 @@ import { focusLevelContext } from "../focusLevels/focusLevels";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
-import { registerCommandRunner } from "../../shortcuts/dispatcher";
+import { registerCommandRunner } from "../../shortcuts/commandRunner";
 import { composerShortcutCommands } from "./composerShortcuts";
 
 /** Returning false lets the key event through untouched. */

@@ -12,7 +12,7 @@ import {
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { KEYBINDING_COMMAND_ATTRIBUTE } from "../../keybindingsMenu";
 import { FOCUS_LEVELS_OFF } from "./focusLevels";
-import { runKeybindingCommand } from "../../shortcuts/dispatcher";
+import { runKeybindingCommand } from "../../shortcuts/commandRunner";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -179,6 +179,36 @@ function CommandRow({
       <span className="text-muted-foreground">{children}</span>
       <ShortcutChips labels={labels} />
     </Button>
+  );
+}
+
+/**
+ * Fork: the commands a control runs, as rows that run them, each with its keys. A command without
+ * a key in `context` is left out. For a tooltip that has its own text before the rows.
+ */
+export function ShortcutCommandRows({
+  commands,
+  context,
+}: {
+  commands: ReadonlyArray<NamedCommand>;
+  context?: ShortcutContext;
+}) {
+  const labelLists = useShortcutLabelLists(
+    commands.map((entry) => entry.command),
+    context,
+  );
+  if (!labelLists.some((labels) => labels.length > 0)) return null;
+  return (
+    <span className="mt-1 flex flex-col items-stretch gap-0.5">
+      {commands.map((entry, index) => {
+        const labels = labelLists[index] ?? [];
+        return labels.length > 0 ? (
+          <CommandRow key={entry.command} command={entry.command} labels={labels}>
+            {entry.name}
+          </CommandRow>
+        ) : null;
+      })}
+    </span>
   );
 }
 

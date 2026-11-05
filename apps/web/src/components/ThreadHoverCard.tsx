@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { Button } from "./ui/button";
 import { PreviewCardPopup } from "./ui/preview-card";
 import { cn } from "~/lib/utils";
 
@@ -34,4 +35,13 @@ export function ThreadHoverCard({
       {footer}
     </div>
   );
+}
+
+/** The actions of a card, as buttons in a row under its content. */
+export function ThreadHoverCardActions({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap gap-1 border-t border-border/60 pt-2">{children}</div>;
+}
+
+export function ThreadHoverCardAction(props: ComponentProps<typeof Button>) {
+  return <Button size="xs" variant="outline" {...props} />;
 }

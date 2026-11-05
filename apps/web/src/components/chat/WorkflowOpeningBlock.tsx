@@ -17,7 +17,11 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { providersIgnoringCheckedAtAtom } from "../../state/server";
 import ChatMarkdown from "../ChatMarkdown";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { Button } from "../ui/button";
 import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { AgentElapsed } from "./AgentElapsed";
@@ -192,6 +196,15 @@ function WorkflowMemberRow(props: {
             status={member.status}
             result={member.result ?? member.error}
             progress={member.progress}
+            footer={
+              threadId !== null ? (
+                <ThreadHoverCardActions>
+                  <ThreadHoverCardAction onClick={() => props.onOpenThread(threadId)}>
+                    Open chat
+                  </ThreadHoverCardAction>
+                </ThreadHoverCardActions>
+              ) : undefined
+            }
           />
         </ThreadHoverCardPopup>
       </PreviewCard>

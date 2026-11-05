@@ -1,4 +1,8 @@
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { AgentElapsed } from "./AgentElapsed";
 import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ReactNode } from "react";
@@ -532,6 +536,7 @@ function SubagentTimelineLink(props: {
       <ThreadHoverCardPopup>
         <SubagentTimelineTooltip
           {...props}
+          open={open}
           elapsed={agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null}
           model={agent?.model ?? null}
           modelSelection={agent?.modelSelection}
@@ -549,6 +554,7 @@ function SubagentTimelineTooltip(
     model: string | null;
     modelSelection: OrchestrationV2Subagent["modelSelection"];
     elapsed: ReactNode;
+    open: (() => void) | null;
   },
 ) {
   const environmentId = props.parentRef.environmentId;
@@ -581,6 +587,13 @@ function SubagentTimelineTooltip(
       childThread={child}
       parentProject={parentProject ?? undefined}
       childProject={childProject ?? undefined}
+      footer={
+        props.open ? (
+          <ThreadHoverCardActions>
+            <ThreadHoverCardAction onClick={props.open}>Open chat</ThreadHoverCardAction>
+          </ThreadHoverCardActions>
+        ) : undefined
+      }
     />
   );
 }
