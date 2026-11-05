@@ -12,6 +12,8 @@ import {
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { KEYBINDING_COMMAND_ATTRIBUTE } from "../../keybindingsMenu";
 import { FOCUS_LEVELS_OFF } from "./focusLevels";
+
+const { composerFocus: _composerFocus, ...FORK_LEVELS_OFF } = FOCUS_LEVELS_OFF;
 import { runKeybindingCommand } from "../../shortcuts/commandRunner";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
@@ -48,8 +50,9 @@ function useShortcuts(
 ): ReadonlyArray<ReadonlyArray<KeybindingShortcut>> {
   const levels = useClientSettings(selectFocusLevels);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  // The level flags are always false while focus levels are off, so a key that needs one does nothing.
-  const matchContext = levels ? (context ?? {}) : { ...context, ...FOCUS_LEVELS_OFF };
+  // The fork level flags are false while focus levels are off, so a key that needs one does
+  // nothing. `composerFocus` stays: upstream sets it for its own send keys.
+  const matchContext = levels ? (context ?? {}) : { ...context, ...FORK_LEVELS_OFF };
   return commands.map((command) =>
     effectiveShortcutsForCommand(keybindings, command, { context: matchContext }),
   );
