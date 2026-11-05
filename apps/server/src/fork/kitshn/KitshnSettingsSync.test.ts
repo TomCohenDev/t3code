@@ -180,11 +180,9 @@ it("knows the owner by the level control, and a machine as no circle writer", ()
     circles: ["partner", "family"],
     owner: false,
   });
-  // `admin` is the kitshn level `control`, which the owner always holds (K-719).
-  expect(settingsSessionOf(visitor("person", "admin", ["owner"]))).toEqual({
-    circles: ["owner"],
-    owner: true,
-  });
+  // `admin` is the kitshn level `control`, which the owner always holds (K-719). The owner reads
+  // no circle, also when kitshn names circles that hold them.
+  expect(settingsSessionOf(visitor("person", "admin", ["partner"]))).toEqual(OWNER_SESSION);
   expect(settingsSessionOf(visitor("machine", "admin", ["partner"]))).toEqual({
     circles: [],
     owner: false,

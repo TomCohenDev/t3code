@@ -72,9 +72,10 @@ const EMPTY_PART: ScopedSettingValues = { server: {}, client: {} };
 /** What a session brings to the settings chain. */
 export interface SettingsSession {
   /**
-   * The circles of the session's kitshn visitor, smallest first. Empty without a visitor, and
-   * when the `check` answer has no `circles` (a daemon before K-726): such a daemon passes circle
-   * parts on without a filter, so no circle part applies then.
+   * The circles of the session's kitshn visitor, smallest first. Empty for the owner, who reads
+   * the shared and machine parts and edits circles with the person picker only. Empty too when
+   * the `check` answer has no `circles` (a daemon before K-726), which passes circle parts on
+   * without a filter.
    */
   readonly circles: ReadonlyArray<string>;
   /**
@@ -99,15 +100,14 @@ export const KitshnSettingsSession = Context.Reference<SettingsSession>(
 
 /**
  * The session of a kitshn visitor. A machine reads and writes no circle. A person or device at
- * the `t3.app` level `admin` (kitshn `control`) is the owner (K-719).
+ * the `t3.app` level `admin` (kitshn `control`) is the owner (K-719) and reads no circle.
  */
-export const settingsSessionOf = (visitor: KitshnGrants.AccessVisitor): SettingsSession =>
-  visitor.subject.type === "machine"
-    ? { circles: [], owner: false }
-    : {
-        circles: visitor.circles,
-        owner: levelFor("t3.app", APP_RESOURCE_ID, visitor.levels) === "admin",
-      };
+export const settingsSessionOf = (visitor: KitshnGrants.AccessVisitor): SettingsSession => {
+  if (visitor.subject.type === "machine") return { circles: [], owner: false };
+  return levelFor("t3.app", APP_RESOURCE_ID, visitor.levels) === "admin"
+    ? OWNER_SESSION
+    : { circles: visitor.circles, owner: false };
+};
 
 /**
  * Why this session may not write the part of `circleId`, or null. kitshn cannot tell the people of
