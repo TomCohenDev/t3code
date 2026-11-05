@@ -243,6 +243,8 @@ export const ForkClientSettingsFields = {
   ),
   /** Fork: back and forward buttons next to the sidebar toggle in the title bar. Off, because it changes the title bar. */
   backForwardButtons: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: hides the T3 Code wordmark in the sidebar and the environment pill. */
+  brandingHidden: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
    * Fork: the desktop app keeps the back history after a restart, and back and forward skip
    * threads and drafts that no longer exist. Off, because it changes what back does.
@@ -307,6 +309,7 @@ export const ForkClientSettingsPatchFields = {
   ),
   currentProjectTerminalOpensThread: Schema.optionalKey(Schema.Boolean),
   backForwardButtons: Schema.optionalKey(Schema.Boolean),
+  brandingHidden: Schema.optionalKey(Schema.Boolean),
   rememberBackForwardHistory: Schema.optionalKey(Schema.Boolean),
   restartReconnectWarningGrace: Schema.optionalKey(Schema.Boolean),
   settingsFind: Schema.optionalKey(Schema.Boolean),

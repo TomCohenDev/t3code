@@ -234,6 +234,7 @@ const FORK_SETTING_GROUPS = [
       },
       { ids: ["mobile-published-themes"], place: "appearance-mobile-app" },
       { ids: ["back-forward-buttons"], place: "appearance-interface" },
+      { ids: ["branding-hidden"], place: "appearance-interface" },
       { ids: ["remember-back-forward-history"], place: "general-display" },
     ],
   },

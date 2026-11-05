@@ -5,6 +5,7 @@ import {
   BackForwardButtonsSettingsRow,
   RememberBackForwardHistorySettingsRow,
 } from "./BackForwardSettingsRows";
+import { BrandingHiddenSettingsRow } from "./BrandingHiddenSettingsRow";
 import { EnvironmentLabelSettingsRow } from "./EnvironmentLabelSettingsRow";
 import {
   FocusLevelHighlightSettingsRow,
@@ -120,6 +121,7 @@ export const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>
   "mobile-message-pins": MobileMessagePinsSettingsRow,
   "mobile-sidebar-tabs": MobileSidebarTabsSettingsRow,
   "back-forward-buttons": BackForwardButtonsSettingsRow,
+  "branding-hidden": BrandingHiddenSettingsRow,
   "remember-back-forward-history": RememberBackForwardHistorySettingsRow,
 };
 
