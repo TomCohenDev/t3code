@@ -2,20 +2,34 @@
  * Fork: the person picker of T3 Settings. The owner picks a kitshn circle, and a change goes into
  * that circle's part of `t3.settings` instead of the shared or machine part.
  */
-import { MachineMapRequestError, type UnifiedSettings } from "@t3tools/contracts";
+import {
+  type MachineMapCircleSettings,
+  MachineMapRequestError,
+  type UnifiedSettings,
+} from "@t3tools/contracts";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { useLocation } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
+import { UsersIcon } from "lucide-react";
+import type { ComponentType } from "react";
 
 import { useOptionalSettingsScope } from "../components/settings/SettingsScopeContext";
 import {
   splitScopedSettingsPatch,
   type ScopedSettingsPatch,
 } from "../components/settings/scopedSettings";
-import { SETTINGS_PERSON_PATHS } from "../components/settings/settingsScopeAxis";
+import type { ScopeMenuProps } from "../components/settings/SettingsScopeSentence";
+import type { SettingsScopeSearch } from "../components/settings/settingsScope";
+import {
+  ALL_PEOPLE_VALUE,
+  personAxisValue,
+  selectPersonAxis,
+  SETTINGS_PERSON_PATHS,
+} from "../components/settings/settingsScopeAxis";
+import { Button } from "../components/ui/button";
 import { toastManager } from "../components/ui/toast";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { setMachineMapCircleSettings, useMachineMapState } from "../state/machineMap";
@@ -98,7 +112,7 @@ export function useWriteSelectedCircle() {
 }
 
 /** Removes the picked circle's part, so the circle inherits every value again. */
-export function useResetSelectedCircle() {
+function useResetSelectedCircle() {
   const selected = useSelectedSettingsCircle();
   const send = useAtomCommand(setMachineMapCircleSettings, { reportFailure: false });
   if (selected === null || selected.circle.settings === null) return null;
@@ -108,4 +122,62 @@ export function useResetSelectedCircle() {
       environmentId,
       input: { circleId: circle.id, server: {}, client: {}, reset: true },
     }).then(reportCircleWrite);
+}
+
+function CircleDot({ color }: { color: string | null }) {
+  return (
+    <span
+      aria-hidden
+      className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
+      style={color === null ? undefined : { backgroundColor: color }}
+    />
+  );
+}
+
+/**
+ * The person picker of the scope sentence: "All people", or one kitshn circle whose part a
+ * change goes into, with "Reset <circle>" when that circle has values. `Menu` is the sentence's
+ * own scope menu, so the three pickers look alike.
+ */
+export function PersonScope({
+  value,
+  circles,
+  onChange,
+  Menu,
+}: {
+  value: SettingsScopeSearch;
+  circles: readonly MachineMapCircleSettings[];
+  onChange: (next: SettingsScopeSearch) => void;
+  Menu: ComponentType<ScopeMenuProps>;
+}) {
+  const reset = useResetSelectedCircle();
+  const selected = circles.find((circle) => circle.id === value.circle);
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <Menu
+        ariaLabel="Person scope"
+        icon={selected ? <CircleDot color={selected.color} /> : null}
+        label={selected?.name ?? "All people"}
+        value={selected ? personAxisValue(value) : ALL_PEOPLE_VALUE}
+        onChange={(next) => onChange(selectPersonAxis(value, next))}
+        searchLabel="Search circles"
+        allOption={{
+          value: ALL_PEOPLE_VALUE,
+          label: "All people",
+          icon: <UsersIcon aria-hidden className="size-3.5 shrink-0" />,
+        }}
+        options={circles.map((circle) => ({
+          value: circle.id,
+          label: circle.name,
+          secondary: circle.settings === null ? "Inherits every value" : "Has its own values",
+          icon: <CircleDot color={circle.color} />,
+        }))}
+      />
+      {reset && selected ? (
+        <Button variant="ghost" size="sm" onClick={reset}>
+          Reset {selected.name}
+        </Button>
+      ) : null}
+    </span>
+  );
 }

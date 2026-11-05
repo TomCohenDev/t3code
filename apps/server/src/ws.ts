@@ -1876,6 +1876,7 @@ export const layerWsRpc = (
         const providers = options.workspaceSnapshotsOnDemand
           ? withoutWorkspaceSnapshots(commandProviders)
           : commandProviders;
+        // Fork: the session's circle layer.
         const settings = yield* forkSettings.serverSettings(
           ServerSettings.redactServerSettingsForClient(
             yield* serverSettings.getSettings,
@@ -2654,6 +2655,7 @@ export const layerWsRpc = (
                   Effect.provide(deviceHostContext),
                 )
               : undefined;
+            // Fork: a non-owner's person settings go into their circle part.
             const nextPatch = yield* forkSettings.writePatch({
               ...patch,
               ...(deviceHosts ? { deviceHosts } : {}),
@@ -2661,6 +2663,7 @@ export const layerWsRpc = (
             const settings = yield* providerInstanceMutation === undefined
               ? serverSettings.updateSettings(nextPatch)
               : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
+            // Fork: the session's circle layer.
             return yield* forkSettings.serverSettings(
               ServerSettings.redactServerSettingsForClient(settings, settingsClient),
             );
@@ -3324,22 +3327,18 @@ export const layerWsRpc = (
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = forkSettings
-                .settingsChanges(
-                  config.settings,
-                  settingsChanges.pipe(
-                    Stream.map((settings) =>
-                      ServerSettings.redactServerSettingsForClient(settings, settingsClient),
-                    ),
-                  ),
-                )
-                .pipe(
-                  Stream.map((settings) => ({
-                    version: 1 as const,
-                    type: "settingsUpdated" as const,
-                    payload: { settings },
-                  })),
-                );
+              const settingsUpdates = settingsChanges.pipe(
+                Stream.map((settings) =>
+                  ServerSettings.redactServerSettingsForClient(settings, settingsClient),
+                ),
+                // Fork: the session's circle layer, again when it changes.
+                (changes) => forkSettings.settingsChanges(config.settings, changes),
+                Stream.map((settings) => ({
+                  version: 1 as const,
+                  type: "settingsUpdated" as const,
+                  payload: { settings },
+                })),
+              );
 
               const liveUpdates = Stream.merge(
                 keybindingsUpdates,
@@ -3541,6 +3540,7 @@ export const layer = Layer.unwrap(
               readSettingsClient(url.value),
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
+              // Fork: the socket's kitshn circles for the settings chain.
               Layer.provide(ForkWs.kitshnSettingsSessionLayer(request)),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),

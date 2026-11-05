@@ -1,4 +1,5 @@
 import type { MachineMapCircleSettings } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import { page, userEvent } from "vite-plus/test/browser";
 import { expect, it, vi } from "vite-plus/test";
 
@@ -9,16 +10,19 @@ const mocks = vi.hoisted(() => ({
   circles: [] as MachineMapCircleSettings[],
   search: {} as SettingsScopeSearch,
   selectScope: vi.fn<(next: SettingsScopeSearch) => void>(),
-  reset: vi.fn<() => void>(),
+  send: vi.fn<(request: unknown) => Promise<unknown>>(),
 }));
 
-vi.mock(import("../../machineMap/circleSettings"), async (original) => ({
+vi.mock(import("../../state/machineMap"), async (original) => ({
   ...(await original()),
-  useSettingsPersonPicker: (() => ({ environmentId: "mac", circles: mocks.circles })) as never,
-  useResetSelectedCircle: (() =>
-    mocks.circles.some((circle) => circle.id === mocks.search.circle && circle.settings !== null)
-      ? mocks.reset
-      : null) as never,
+  useMachineMapState: (() => ({
+    state: { joined: true, owner: true, circles: mocks.circles },
+    error: null,
+  })) as never,
+}));
+vi.mock(import("../../state/use-atom-command"), async (original) => ({
+  ...(await original()),
+  useAtomCommand: (() => mocks.send) as never,
 }));
 vi.mock(import("./SettingsScopeContext"), async (original) => ({
   ...(await original()),
@@ -33,6 +37,7 @@ vi.mock(import("./SettingsScopeContext"), async (original) => ({
 vi.mock(import("../../state/environments"), async (original) => ({
   ...(await original()),
   useEnvironments: (() => ({ environments: [] })) as never,
+  usePrimaryEnvironmentId: (() => "mac") as never,
 }));
 
 import { SettingsScopeSentence } from "./SettingsScopeSentence";
@@ -48,7 +53,8 @@ function setup(input: { circles: MachineMapCircleSettings[]; search: SettingsSco
   mocks.circles = input.circles;
   mocks.search = input.search;
   mocks.selectScope.mockClear();
-  mocks.reset.mockClear();
+  mocks.send.mockReset();
+  mocks.send.mockResolvedValue(AsyncResult.success({}));
 }
 
 it("shows the person picker to the owner on a page with person settings", async () => {
@@ -65,7 +71,10 @@ it("names the picked circle and resets its part", async () => {
   setup({ circles: [PARTNER], search: { circle: "partner" } });
   await using _screen = await render(<SettingsScopeSentence />, { router: "/settings/general" });
   await userEvent.click(page.getByRole("button", { name: "Reset Partner" }));
-  expect(mocks.reset).toHaveBeenCalledOnce();
+  expect(mocks.send).toHaveBeenCalledWith({
+    environmentId: "mac",
+    input: { circleId: "partner", server: {}, client: {}, reset: true },
+  });
   await userEvent.click(page.getByRole("button", { name: "Person scope: Partner" }));
   await userEvent.click(page.getByRole("menuitemradio", { name: "All people" }));
   expect(mocks.selectScope).toHaveBeenCalledWith({});
