@@ -1,4 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { EnvironmentId, MessageId } from "@t3tools/contracts";
 import {
   formatThreadLink,
@@ -40,7 +41,12 @@ export function MarkdownThreadLink(props: {
   return (
     <ThreadContextChip
       record={{ ...ref, title }}
-      copyMarkdown={formatThreadLink(ref, title, props.messageId ?? undefined)}
+      copyMarkdown={
+        // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
+        props.messageId
+          ? formatThreadLink(ref, title, props.messageId)
+          : threadChipCopyTarget(ref, title).value
+      }
       messageId={props.messageId ?? null}
     />
   );

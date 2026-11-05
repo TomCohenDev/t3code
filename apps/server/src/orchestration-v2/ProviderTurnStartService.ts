@@ -1165,6 +1165,17 @@ export const layer: Layer.Layer<
             (candidate) => candidate.ordinal > sourceRun.ordinal && isActiveRun(candidate),
           );
           if (!sourceBusy) {
+            // Rolled-back turns are no longer in the source conversation, so they cannot bound a fork.
+            const rolledBackAttemptIds = new Set(
+              sourceProjection.attempts
+                .filter((attempt) =>
+                  sourceProjection.runs.some(
+                    (candidate) =>
+                      candidate.id === attempt.runId && candidate.status === "rolled_back",
+                  ),
+                )
+                .map((attempt) => attempt.id),
+            );
             return yield* loadFromProvider(
               session.forkThread({
                 sourceProviderThread: {
@@ -1174,7 +1185,10 @@ export const layer: Layer.Layer<
                     sourceProviderThread.nativeThreadRef,
                 },
                 sourceProviderTurns: forkSourceTurns(
-                  sourceProjection.providerTurns,
+                  sourceProjection.providerTurns.filter(
+                    (turn) =>
+                      turn.runAttemptId === null || !rolledBackAttemptIds.has(turn.runAttemptId),
+                  ),
                   sourceProviderTurn,
                   nativeForkTransfer.sourcePoint,
                 ),
@@ -1346,6 +1360,14 @@ export const layer: Layer.Layer<
         resumedHandoffContext = undefined;
         resumedRetryHandoff = [];
         if (!(yield* isCurrentAttemptInStatus("starting"))) return undefined;
+        // Another client is still writing to the native thread. A fresh
+        // session here would silently split the conversation from it.
+        if (
+          resumed._tag === "Failure" &&
+          resumed.failure._tag === "ProviderAdapterThreadInUseError"
+        ) {
+          return yield* loadFromProvider(Effect.fail(resumed.failure));
+        }
 
         yield* Effect.logWarning("Recovering provider context in a fresh native session", {
           driver: session.driver,

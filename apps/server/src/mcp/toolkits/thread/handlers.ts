@@ -134,6 +134,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           ? {}
           : {
               link: McpInvocationContext.threadLinkFor(scope, threadId),
+              appLink: McpInvocationContext.threadAppLinkFor(scope, threadId),
             }),
         lastRunStatus: task.lastRunStatus,
         runCount: task.runCount,
@@ -153,6 +154,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         matches: matches.map((match) => ({
           ...match,
           link: McpInvocationContext.threadLinkFor(scope, match.threadId),
+          appLink: McpInvocationContext.threadAppLinkFor(scope, match.threadId),
         })),
       };
     }),
