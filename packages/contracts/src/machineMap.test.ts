@@ -48,11 +48,9 @@ const SHARED_ONLY_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>
     "idleCompaction",
     "keybindingSync",
     "linkedEnvironmentsEnabled",
-    "mobileNewThreadProject",
     "mobilePublishedThemes",
     "newWorktreesStartFromOrigin",
     "observability",
-    "pinnedGlobalScriptIds",
     "preferOriginRemote",
     "previewLocalServerGroups",
     "providerHealthRefreshInterval",
@@ -93,8 +91,16 @@ const SHARED_ONLY_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>
     KEYBINDINGS_SETTING_KEY,
     "sharedThemes",
   ] satisfies ReadonlyArray<keyof ServerSettings | typeof KEYBINDINGS_SETTING_KEY | "sharedThemes">,
-  // Routes agent work between providers, so it changes what the machines do.
-  client: ["loadBalancingEnabled", "loadBalancingWeights"],
+  client: [
+    // Routes agent work between providers, so it changes what the machines do.
+    "loadBalancingEnabled",
+    "loadBalancingWeights",
+    // A person who is not the owner writes their circle part, so these stay with the owner: they
+    // send keystrokes, load a URL or register push delivery on every client of the circle.
+    "terminalKeyMappings",
+    "browserCustomSearchUrl",
+    "webPushEnabled",
+  ],
 };
 
 const KNOWN_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>> = {

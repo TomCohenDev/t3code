@@ -168,6 +168,8 @@ const CIRCLE_SERVER_SETTINGS = [
   "favorites",
   "mobileComposerCamera",
   "mobileMessagePins",
+  "mobileNewThreadProject",
+  "pinnedGlobalScriptIds",
   // Upstream thread tags: which tagged threads a person hides is that person's view.
   "hiddenThreadTags",
   "hideTaggedThreads",
@@ -182,7 +184,6 @@ const CIRCLE_CLIENT_SETTINGS = [
   "boringSidebarMultilineRows",
   "brandingHidden",
   "browserAutoShowFloatingPreview",
-  "browserCustomSearchUrl",
   "browserDefaultAppearance",
   "browserDefaultViewport",
   "browserDefaultZoomFactor",
@@ -260,7 +261,6 @@ const CIRCLE_CLIENT_SETTINGS = [
   "snapShotShortcut",
   "snapShotSound",
   "terminalAppShortcutsFirst",
-  "terminalKeyMappings",
   "terminalThreadFontSizeMax",
   "terminalThreadFontSizeMin",
   "threadDetailsItems",
@@ -268,7 +268,6 @@ const CIRCLE_CLIENT_SETTINGS = [
   "timestampFormat",
   "tooltipShortcutLimit",
   "tooltipShortcuts",
-  "webPushEnabled",
   "wordWrap",
 ] as const satisfies ReadonlyArray<keyof ClientSettings>;
 
