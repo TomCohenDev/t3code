@@ -1,6 +1,6 @@
 import {
   ClientSettingsSchema,
-  moveLegacySidebarTabKeys,
+  moveLegacyForkClientSettingKeys,
   type ClientSettings,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -19,9 +19,9 @@ export function readBrowserClientSettings(): ClientSettings | null {
     return null;
   }
 
-  // Fork: the sidebar tab settings move once from their old keys.
+  // Fork: renamed fork settings move once from their old keys.
   const stored = getLocalStorageItem(CLIENT_SETTINGS_STORAGE_KEY, StoredClientSettings);
-  const moved = stored === null ? null : moveLegacySidebarTabKeys("client", stored);
+  const moved = stored === null ? null : moveLegacyForkClientSettingKeys(stored);
   if (moved !== null) {
     setLocalStorageItem(CLIENT_SETTINGS_STORAGE_KEY, moved, StoredClientSettings);
   }

@@ -185,6 +185,7 @@ const LABELS: Partial<Record<KeybindingCommand, string>> = {
   "modelPicker.toggle": "Choose model",
   "sidebar.toggle": "Toggle sidebar",
   "sidebar.search": "Search threads",
+  "sidebar.filter": "Filter threads",
   "sidebar.previousItem": "Thread above",
   "sidebar.nextItem": "Thread below",
   "sidebar.openItem": "Open thread",

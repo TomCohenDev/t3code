@@ -18,9 +18,13 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { providersIgnoringCheckedAtAtom } from "../../state/server";
 import ChatMarkdown from "../ChatMarkdown";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipTrigger } from "../ui/tooltip";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { AgentElapsed } from "./AgentElapsed";
 import { findRevealRef } from "./markdownFindContext";
 import { shouldCollapseUserMessage } from "./MessagesTimeline.logic";
@@ -125,8 +129,8 @@ function WorkflowMemberRow(props: {
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
   return (
     <li>
-      <Tooltip>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           delay={200}
           render={
             threadId === null ? (
@@ -177,7 +181,7 @@ function WorkflowMemberRow(props: {
               className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover/subagent:text-foreground"
             />
           ) : null}
-        </TooltipTrigger>
+        </PreviewCardTrigger>
         <ThreadHoverCardPopup>
           <SubagentTooltipContent
             title={member.title}
@@ -194,9 +198,18 @@ function WorkflowMemberRow(props: {
             status={member.status}
             result={member.result ?? member.error}
             progress={member.progress}
+            footer={
+              threadId !== null ? (
+                <ThreadHoverCardActions>
+                  <ThreadHoverCardAction onClick={() => props.onOpenThread(threadId)}>
+                    Open chat
+                  </ThreadHoverCardAction>
+                </ThreadHoverCardActions>
+              ) : undefined
+            }
           />
         </ThreadHoverCardPopup>
-      </Tooltip>
+      </PreviewCard>
     </li>
   );
 }

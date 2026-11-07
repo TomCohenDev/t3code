@@ -1,5 +1,4 @@
-import { FilterChip } from "../filters/FilterChip";
-import { Button } from "../ui/button";
+import { FilterChipList } from "../filters/FilterChipList";
 import {
   clearPullRequestFilterChips,
   type PullRequestFilterChip,
@@ -18,31 +17,20 @@ export function PullRequestFilterChips({
   readonly chips: ReadonlyArray<PullRequestFilterChip>;
   readonly onChange: (patch: PullRequestListPreferencePatch) => void;
 }) {
-  if (chips.length === 0) return null;
   return (
-    <div role="group" aria-label="Active filters" className="flex flex-wrap items-center gap-1.5">
-      {chips.map((chip) => {
+    <FilterChipList
+      chips={chips.map((chip) => {
         const flip = chip.flip;
-        return (
-          <FilterChip
-            key={chip.key}
-            field={chip.field}
-            operator={chip.operator}
-            value={chip.value}
-            onFlip={flip ? () => onChange(flip) : undefined}
-            onRemove={() => onChange(chip.remove)}
-          />
-        );
+        return {
+          key: chip.key,
+          field: chip.field,
+          operator: chip.operator,
+          value: chip.value,
+          onFlip: flip ? () => onChange(flip) : undefined,
+          onRemove: () => onChange(chip.remove),
+        };
       })}
-      {chips.length > 1 ? (
-        <Button
-          size="xs"
-          variant="ghost-muted"
-          onClick={() => onChange(clearPullRequestFilterChips(chips))}
-        >
-          Clear all
-        </Button>
-      ) : null}
-    </div>
+      onClearAll={() => onChange(clearPullRequestFilterChips(chips))}
+    />
   );
 }

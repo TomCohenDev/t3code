@@ -30,6 +30,7 @@ import {
   type ThreadCardLayout,
 } from "@t3tools/contracts";
 
+import type { KeybindingCommand } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
@@ -128,9 +129,12 @@ import {
   terminalThreadRowStatus,
   terminalThreadStatusLabel,
 } from "@t3tools/client-runtime/state/fork-terminal-threads";
-import { InlineButton } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
+import { toastManager } from "../ui/toast";
+import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
@@ -243,6 +247,44 @@ function SidebarProviderStack(props: {
   );
 }
 
+/** Fork: the hover card rows that set a sidebar filter to the thread's value. */
+export type SidebarFilterShortcutField = "project" | "machine" | "model";
+
+/** Fork: a hover card row, as a button when it has an action and as text without one. */
+function HoverCardRow(props: {
+  readonly label: string;
+  readonly onClick: (() => void) | undefined;
+  readonly children: ReactNode;
+}) {
+  if (props.onClick === undefined) {
+    return <div className="flex min-w-0 items-center gap-2">{props.children}</div>;
+  }
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="-mx-2 justify-start"
+      aria-label={props.label}
+      title={props.label}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </Button>
+  );
+}
+
+function copyBranchName(branch: string) {
+  writeTextToClipboard(branch, "branch name").then(
+    () => toastManager.add({ type: "success", title: "Branch copied", description: branch }),
+    (error: unknown) =>
+      toastManager.add({
+        type: "error",
+        title: "Failed to copy branch",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      }),
+  );
+}
+
 function SidebarThreadTooltip({
   thread,
   project,
@@ -257,6 +299,9 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  onOpenPullRequest,
+  onShowOnly,
+  canShowOnlyProject,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -274,6 +319,10 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  onOpenPullRequest: (event: ReactMouseEvent<HTMLAnchorElement>, url: string) => void;
+  /** Fork: sets a sidebar filter to this thread's value. Absent leaves the rows as text. */
+  onShowOnly?: ((field: SidebarFilterShortcutField) => void) | undefined;
+  canShowOnlyProject?: boolean | undefined;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
@@ -287,31 +336,40 @@ function SidebarThreadTooltip({
         footer={
           supportsMultiplePullRequests && thread.pullRequests.length > 0 ? (
             <div className="border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
-              <ThreadPullRequestsMiniList pullRequests={thread.pullRequests} />
+              <ThreadPullRequestsMiniList
+                pullRequests={thread.pullRequests}
+                onOpenPullRequest={onOpenPullRequest}
+              />
             </div>
           ) : null
         }
       >
         {projectDisplayName ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this project"
+            onClick={onShowOnly && canShowOnlyProject ? () => onShowOnly("project") : undefined}
+          >
             {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
             <div className="min-w-0 truncate text-foreground/75">{projectDisplayName}</div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {environmentLabel ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this machine"
+            onClick={onShowOnly ? () => onShowOnly("machine") : undefined}
+          >
             <EnvironmentMachineIcon
               kind={environmentMachine}
               className="size-3 shrink-0 stroke-muted-foreground"
             />
             <div className="min-w-0 truncate text-foreground/75">{environmentLabel}</div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {thread.branch ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow label="Copy branch name" onClick={() => copyBranchName(thread.branch!)}>
             <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
             <MiddleTruncate value={thread.branch} className="flex" />
-          </div>
+          </HoverCardRow>
         ) : null}
         {branchMismatch ? (
           <div className="flex min-w-0 items-start gap-2 text-warning">
@@ -322,7 +380,10 @@ function SidebarThreadTooltip({
           </div>
         ) : null}
         {driverKind ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <HoverCardRow
+            label="Show only this model"
+            onClick={onShowOnly ? () => onShowOnly("model") : undefined}
+          >
             <ProviderInstanceIcon
               driverKind={driverKind}
               displayName={
@@ -341,7 +402,7 @@ function SidebarThreadTooltip({
                 ? `${modelLabel} · ${providerEntry.displayName}`
                 : modelLabel}
             </div>
-          </div>
+          </HoverCardRow>
         ) : null}
         {previousProviderNames.length > 0 ? (
           <div className="flex min-w-0 items-center gap-2">
@@ -388,6 +449,8 @@ function SnoozeMenuButton(props: {
   onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   timestampFormat: TimestampFormat;
   environmentId: EnvironmentId;
+  /** The snooze key, for the active thread only, as the pin and settle buttons show theirs. */
+  shortcutCommand: KeybindingCommand | null;
 }) {
   const { open, onOpenChange, onSnooze, timestampFormat, environmentId } = props;
   const presets = open
@@ -397,7 +460,8 @@ function SnoozeMenuButton(props: {
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
       <Tooltip>
-        <TooltipTrigger
+        <ShortcutTrigger
+          command={props.shortcutCommand}
           render={
             <MenuTrigger
               render={
@@ -413,8 +477,11 @@ function SnoozeMenuButton(props: {
           }
         >
           <ClockIcon className="size-3" />
-        </TooltipTrigger>
-        <TooltipPopup>Snooze thread</TooltipPopup>
+        </ShortcutTrigger>
+        <TooltipPopup>
+          Snooze thread
+          <ShortcutHint command={props.shortcutCommand} />
+        </TooltipPopup>
       </Tooltip>
       <MenuPopup side="bottom" align="end">
         {presets.map((preset) => (
@@ -588,6 +655,11 @@ type SidebarThreadRowProps = {
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
+  /** Fork: the hover card rows set a sidebar filter to this thread's value. */
+  onShowOnly?:
+    | ((thread: SidebarThreadSummary, field: SidebarFilterShortcutField) => void)
+    | undefined;
+  canShowOnlyProject?: ((thread: SidebarThreadSummary) => boolean) | undefined;
 };
 
 // Mounted only while renaming, so each rename starts uncommitted.
@@ -811,24 +883,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
-  const detailsTooltip = (
-    <SidebarThreadTooltip
-      thread={thread}
-      project={props.project}
-      projectDisplayName={props.projectDisplayName}
-      environmentLabel={props.environmentLabel}
-      environmentMachine={props.environmentMachine}
-      providerEntry={providerEntry}
-      providerEntryByInstanceId={props.providerEntryByInstanceId}
-      showInstanceBadge={showInstanceBadge}
-      modelInstanceId={modelInstanceId}
-      modelLabel={modelLabel}
-      branchMismatch={branchMismatch}
-      terminalStatus={terminalStatus}
-      terminalProcessCount={terminalProcessCount}
-    />
-  );
-
   const handleClick = (event: ReactMouseEvent) => {
     onThreadClick(event, threadRef);
   };
@@ -951,6 +1005,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onThreadActivate(threadRef);
     }
   };
+
+  const detailsCard = (
+    <SidebarThreadTooltip
+      thread={thread}
+      project={props.project}
+      projectDisplayName={props.projectDisplayName}
+      environmentLabel={props.environmentLabel}
+      environmentMachine={props.environmentMachine}
+      providerEntry={providerEntry}
+      providerEntryByInstanceId={props.providerEntryByInstanceId}
+      showInstanceBadge={showInstanceBadge}
+      modelInstanceId={modelInstanceId}
+      modelLabel={modelLabel}
+      branchMismatch={branchMismatch}
+      terminalStatus={terminalStatus}
+      terminalProcessCount={terminalProcessCount}
+      onOpenPullRequest={handlePrClick}
+      onShowOnly={props.onShowOnly ? (field) => props.onShowOnly?.(thread, field) : undefined}
+      canShowOnlyProject={props.canShowOnlyProject?.(thread)}
+    />
+  );
 
   const rowSurfaceClassName = cn(
     THREAD_CARD_SURFACE_CLASS,
@@ -1243,6 +1318,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               onSnooze={handleSnoozePreset}
               timestampFormat={props.timestampFormat}
               environmentId={thread.environmentId}
+              shortcutCommand={props.isActive ? "thread.snooze" : null}
             />
           ) : null}
           {props.settlementSupported ? (
@@ -1348,8 +1424,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           sortable?.isDragging && "relative z-20",
         )}
       >
-        <Tooltip disabled={sortable?.isDragging}>
-          <TooltipTrigger
+        <PreviewCard>
+          <PreviewCardTrigger
             render={
               <div
                 ref={rowRef}
@@ -1460,18 +1536,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </span>
                   {variantAction === "unsnooze" ? (
                     !props.snoozeSupported ? null : (
-                      <button
-                        type="button"
-                        aria-label="Wake thread now"
-                        onClick={handleUnsnoozeClick}
-                        onPointerDown={handleActionPointerDown}
-                        className={cn(
-                          "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                          isWoke && "group-any-hover/sidebar-row:static",
-                        )}
-                      >
-                        <AlarmClockOffIcon className="mb-px size-3" />
-                      </button>
+                      <Tooltip>
+                        <ShortcutTrigger
+                          command={props.isActive ? "thread.snooze" : null}
+                          render={
+                            <button
+                              type="button"
+                              aria-label="Wake thread now"
+                              onClick={handleUnsnoozeClick}
+                              onPointerDown={handleActionPointerDown}
+                              className={cn(
+                                "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+                                isWoke && "group-any-hover/sidebar-row:static",
+                              )}
+                            />
+                          }
+                        >
+                          <AlarmClockOffIcon className="mb-px size-3" />
+                        </ShortcutTrigger>
+                        <TooltipPopup>
+                          Wake thread now
+                          <ShortcutHint command={props.isActive ? "thread.snooze" : null} />
+                        </TooltipPopup>
+                      </Tooltip>
                     )
                   ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
                     <Tooltip>
@@ -1530,9 +1617,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </div>
               )
             ) : null}
-          </TooltipTrigger>
-          {detailsTooltip}
-        </Tooltip>
+          </PreviewCardTrigger>
+          {sortable?.isDragging ? null : detailsCard}
+        </PreviewCard>
       </li>
     );
   }
@@ -1554,8 +1641,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           : { containIntrinsicSize: `auto ${slotLayoutHeightPx(cardLayout) + 16}px` }
       }
     >
-      <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           render={
             <div
               ref={rowRef}
@@ -1643,9 +1730,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               }}
             />
           )}
-        </TooltipTrigger>
-        {detailsTooltip}
-      </Tooltip>
+        </PreviewCardTrigger>
+        {snoozeMenuOpen || sortable?.isDragging ? null : detailsCard}
+      </PreviewCard>
     </li>
   );
 });
@@ -1682,6 +1769,10 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   onHighlight: () => void;
   onSelect: () => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
+  onShowOnly?:
+    | ((thread: SidebarThreadSummary, field: SidebarFilterShortcutField) => void)
+    | undefined;
+  canShowOnlyProject?: ((thread: SidebarThreadSummary) => boolean) | undefined;
 }) {
   const thread =
     useThreadShell(scopeThreadRef(props.thread.environmentId, props.thread.id)) ?? props.thread;
@@ -1692,6 +1783,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
     isActive: props.isRouteActive,
   });
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+  const openPrLink = useOpenPrLink();
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(
     props.isHighlighted || props.isRouteActive,
   );
@@ -1746,8 +1838,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
       className="list-none"
       {...fileDropHandlers}
     >
-      <Tooltip>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           render={
             <button
               ref={rowRef}
@@ -1820,7 +1912,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
               />
             ) : null}
           </span>
-        </TooltipTrigger>
+        </PreviewCardTrigger>
         <SidebarThreadTooltip
           thread={thread}
           project={props.project}
@@ -1835,8 +1927,11 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
           branchMismatch={branchMismatch}
           terminalStatus={terminalStatus}
           terminalProcessCount={runningTerminalIds.length}
+          onOpenPullRequest={(event, url) => openPrLink(event, url, threadRef)}
+          onShowOnly={props.onShowOnly ? (field) => props.onShowOnly?.(thread, field) : undefined}
+          canShowOnlyProject={props.canShowOnlyProject?.(thread)}
         />
-      </Tooltip>
+      </PreviewCard>
     </li>
   );
 });

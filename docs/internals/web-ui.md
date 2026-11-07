@@ -9,6 +9,12 @@ Don't style a raw `<button>`, `<input>`, `<select>`, or `<textarea>` to look lik
 primitive provides. Raw elements are right when the element isn't that control: semantic rows, tabs,
 resize handles, swatches, editor surfaces, anything whose behavior or geometry differs by design.
 
+Hover popups are hoverable: the pointer can move into a tooltip or a card and click what is
+inside. `Tooltip` is for a label and small actions, such as the keys a control runs. `PreviewCard`
+(or `ThreadHoverCardPopup`, which wraps it) is for a card with rows that open or filter something.
+A card stays out of the tooltip delay group, so a tooltip inside its trigger does not swap it
+away. Anything clickable inside a popup renders as a `Button` or a link, never as styled text.
+
 ## Styles
 
 Style with Tailwind classes in the component that renders the element.

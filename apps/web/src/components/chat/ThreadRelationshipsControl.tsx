@@ -3,7 +3,11 @@ import { objectMenuProps } from "../../objectMenu";
 import { ObjectMenuEntryItems, ObjectMenuTrigger } from "../ObjectMenuEntryItems";
 import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
@@ -58,7 +62,7 @@ import {
   SquareIcon,
   UnplugIcon,
 } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -86,6 +90,7 @@ import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
 import { openSideChatTab } from "../../lib/sideChatPane";
 
 import { Menu, MenuPopup } from "../ui/menu";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { Spinner } from "../ui/spinner";
@@ -215,6 +220,37 @@ function relationshipThreadTitle(input: {
 }): string {
   if (!input.isSubagent) return input.title;
   return formatSubagentDisplayTitle(input.title);
+}
+
+function RelationshipHover({
+  card,
+  render,
+  popup,
+  children,
+}: {
+  readonly card: boolean;
+  readonly render: ReactElement;
+  readonly popup: ReactNode;
+  readonly children: ReactNode;
+}) {
+  if (card) {
+    return (
+      <PreviewCard>
+        <PreviewCardTrigger delay={200} render={render}>
+          {children}
+        </PreviewCardTrigger>
+        {popup}
+      </PreviewCard>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger delay={200} render={render}>
+        {children}
+      </TooltipTrigger>
+      {popup}
+    </Tooltip>
+  );
 }
 
 /** The full title, since the row truncates it, with what a click does. */
@@ -754,28 +790,46 @@ export function ThreadRelationshipsPanel(props: {
       : "";
     const project = projects.find((project) => project.id === node?.thread?.projectId);
     const relationshipHint = `Open ${relationship.toLowerCase()} in this chat`;
-    const RelationshipPopup = agent ? ThreadHoverCardPopup : TooltipPopup;
-    const relationshipTooltip = agent ? (
-      <SubagentTooltipContent
-        title={threadTitle}
-        model={agent.model}
-        providerInstanceId={agent.providerInstanceId}
-        origin={agent.origin}
-        modelSelection={agent.modelSelection}
-        provider={provider}
-        providers={providers}
-        driver={providerDriver}
-        elapsed={<AgentElapsed agent={agent} />}
-        status={agent.status}
-        result={agent.result}
-        progress={agent.progress}
-        parentThread={currentThread ?? undefined}
-        childThread={node?.thread ?? undefined}
-        parentProject={currentProject}
-        childProject={project}
-      />
+    const relationshipPopup = agent ? (
+      <ThreadHoverCardPopup side="left">
+        <SubagentTooltipContent
+          title={threadTitle}
+          model={agent.model}
+          providerInstanceId={agent.providerInstanceId}
+          origin={agent.origin}
+          modelSelection={agent.modelSelection}
+          provider={provider}
+          providers={providers}
+          driver={providerDriver}
+          elapsed={<AgentElapsed agent={agent} />}
+          status={agent.status}
+          result={agent.result}
+          progress={agent.progress}
+          parentThread={currentThread ?? undefined}
+          childThread={node?.thread ?? undefined}
+          parentProject={currentProject}
+          childProject={project}
+          footer={
+            <ThreadHoverCardActions>
+              <ThreadHoverCardAction onClick={() => openThread(threadId)}>
+                Open chat
+              </ThreadHoverCardAction>
+              {canStopWorkflow ? (
+                <ThreadHoverCardAction
+                  disabled={stoppingId !== null}
+                  onClick={() => void stopWorkflow(agent.id)}
+                >
+                  Stop
+                </ThreadHoverCardAction>
+              ) : null}
+            </ThreadHoverCardActions>
+          }
+        />
+      </ThreadHoverCardPopup>
     ) : (
-      <LineageTooltipContent title={threadTitle} hint={relationshipHint} />
+      <TooltipPopup side="left">
+        <LineageTooltipContent title={threadTitle} hint={relationshipHint} />
+      </TooltipPopup>
     );
     const relationshipContent = (
       <>
@@ -814,22 +868,20 @@ export function ThreadRelationshipsPanel(props: {
       </>
     );
     const relationshipLink = (
-      <Tooltip>
-        <TooltipTrigger
-          delay={200}
-          render={
-            <ThreadDetailsControl
-              size="sm"
-              variant="ghost"
-              part={workflowGroup ? "primary" : "row"}
-              onClick={() => openThread(threadId)}
-            />
-          }
-        >
-          {relationshipContent}
-        </TooltipTrigger>
-        <RelationshipPopup side="left">{relationshipTooltip}</RelationshipPopup>
-      </Tooltip>
+      <RelationshipHover
+        card={agent !== undefined}
+        render={
+          <ThreadDetailsControl
+            size="sm"
+            variant="ghost"
+            part={workflowGroup ? "primary" : "row"}
+            onClick={() => openThread(threadId)}
+          />
+        }
+        popup={relationshipPopup}
+      >
+        {relationshipContent}
+      </RelationshipHover>
     );
     if (workflowGroup && agent) {
       return (
@@ -853,23 +905,21 @@ export function ThreadRelationshipsPanel(props: {
       <li key={threadId} className="group relative flex h-8 items-center rounded-lg">
         {isMergeTarget ? (
           <div className={THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS}>
-            <Tooltip>
-              <TooltipTrigger
-                delay={200}
-                render={
-                  <ThreadDetailsControl
-                    size="sm"
-                    variant="ghost"
-                    part="primary"
-                    aria-label={`${threadTitle} ${threadRelationshipStatusLabel(rowStatus)}`}
-                    onClick={() => openThread(threadId)}
-                  />
-                }
-              >
-                {relationshipContent}
-              </TooltipTrigger>
-              <RelationshipPopup side="left">{relationshipTooltip}</RelationshipPopup>
-            </Tooltip>
+            <RelationshipHover
+              card={agent !== undefined}
+              render={
+                <ThreadDetailsControl
+                  size="sm"
+                  variant="ghost"
+                  part="primary"
+                  aria-label={`${threadTitle} ${threadRelationshipStatusLabel(rowStatus)}`}
+                  onClick={() => openThread(threadId)}
+                />
+              }
+              popup={relationshipPopup}
+            >
+              {relationshipContent}
+            </RelationshipHover>
             <span aria-hidden="true" className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS} />
             <Tooltip>
               <TooltipTrigger

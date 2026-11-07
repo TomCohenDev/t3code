@@ -239,17 +239,24 @@ function MessagePinRow(
           </span>
         ) : null}
       </Link>
-      <Button
-        aria-label="Unpin message"
-        size="icon-xs"
-        variant="ghost-muted"
-        className="me-1 mt-1.5"
-        disabled={!canWrite}
-        onClick={() => writePins(environmentId, unpinMessagePatch(pin))}
-        type="button"
-      >
-        <PinOffIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-label="Unpin message"
+              size="icon-xs"
+              variant="ghost-muted"
+              className="me-1 mt-1.5"
+              disabled={!canWrite}
+              onClick={() => writePins(environmentId, unpinMessagePatch(pin))}
+              type="button"
+            />
+          }
+        >
+          <PinOffIcon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup>Unpin message</TooltipPopup>
+      </Tooltip>
     </li>
   );
 }

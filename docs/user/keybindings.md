@@ -79,7 +79,9 @@ the timeline, the right panel and the sidebar with the keyboard. It is off by de
 
 In the sidebar, Up and Down move between threads, and Enter opens one and focuses its timeline.
 Up from the first thread reaches the sidebar tabs. Left and Right, or `1` to `9`, switch tabs.
-`mod+f` focuses sidebar search.
+`mod+f` focuses sidebar search, and `mod+alt+f` does so from anywhere. `mod+shift+f` opens the
+sidebar Filter menu. `mod+alt+1` to `mod+alt+4` focus the sidebar, the timeline, the composer and
+the right panel. In the timeline, `p` pins the focused message and `l` copies its link.
 
 In the timeline, Up and Down move a cursor between messages. Right goes one level deeper:
 blocks such as paragraphs and list items, then sentences or code lines. A sentence also

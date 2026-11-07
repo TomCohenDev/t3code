@@ -246,7 +246,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "sendShortcut",
   "settingsFind",
   "showSkillsInSlashMenu",
-  "sidebarOwnerFilter",
+  "sidebarFilters",
   "sidebarProjectGroupingMode",
   "sidebarProjectGroupingOverrides",
   "sidebarProjectSortOrder",

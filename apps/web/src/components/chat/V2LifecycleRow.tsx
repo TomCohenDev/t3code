@@ -1,4 +1,8 @@
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { AgentElapsed } from "./AgentElapsed";
 import { projectedSubagentsToRuntime } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ReactNode } from "react";
@@ -48,6 +52,7 @@ import {
   MessageSquareIcon,
 } from "lucide-react";
 
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import {
   applyProviderInstanceSettings,
@@ -504,8 +509,8 @@ function SubagentTimelineLink(props: {
   const className =
     "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <PreviewCard>
+      <PreviewCardTrigger
         delay={200}
         render={
           open === null ? (
@@ -532,6 +537,7 @@ function SubagentTimelineLink(props: {
       <ThreadHoverCardPopup>
         <SubagentTimelineTooltip
           {...props}
+          open={open}
           elapsed={agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null}
           model={agent?.model ?? null}
           modelSelection={agent?.modelSelection}
@@ -540,7 +546,7 @@ function SubagentTimelineLink(props: {
           progress={agent?.progress ?? props.progress}
         />
       </ThreadHoverCardPopup>
-    </Tooltip>
+    </PreviewCard>
   );
 }
 
@@ -549,6 +555,7 @@ function SubagentTimelineTooltip(
     model: string | null;
     modelSelection: OrchestrationV2Subagent["modelSelection"];
     elapsed: ReactNode;
+    open: (() => void) | null;
   },
 ) {
   const environmentId = props.parentRef.environmentId;
@@ -581,6 +588,13 @@ function SubagentTimelineTooltip(
       childThread={child}
       parentProject={parentProject ?? undefined}
       childProject={childProject ?? undefined}
+      footer={
+        props.open ? (
+          <ThreadHoverCardActions>
+            <ThreadHoverCardAction onClick={props.open}>Open chat</ThreadHoverCardAction>
+          </ThreadHoverCardActions>
+        ) : undefined
+      }
     />
   );
 }
