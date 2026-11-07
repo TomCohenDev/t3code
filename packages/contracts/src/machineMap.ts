@@ -110,9 +110,14 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     "providerInstances",
     "sourceControlHosts",
     "usageLimitSources",
+    "cloudSpeechCredentials",
     // Paths on the file system of this machine.
     "worktreesDirectory",
     "previousWorktreesDirectories",
+    // The dictation model on this machine: its download, its hardware and its memory.
+    "speechModelId",
+    "speechAcceleration",
+    "speechModelUnloadTimeout",
     "addProjectBaseDirectory",
     "worktreePathTemplate",
     // Global scripts live on one environment, so their pins do too.
@@ -120,6 +125,7 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     // Keyed by project id. A project id is local to one environment.
     "projectSettingsOverrides",
     "projectScriptOverrides",
+    "speechProjectCustomWords",
     "pinnedProjectScriptIds",
     // Keyed by thread id. A thread id is local to one environment.
     "pinnedMessages",
@@ -144,6 +150,8 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     // Browser profiles point to data folders on this machine.
     "browserProfiles",
     "browserDefaultProfileId",
+    // A microphone of this machine.
+    "voiceMicrophone",
   ]),
 };
 
@@ -261,14 +269,23 @@ const CIRCLE_CLIENT_SETTINGS = [
   "snapShotPlaySound",
   "snapShotShortcut",
   "snapShotSound",
+  "speechCorrectionWord",
+  "speechCustomWords",
+  "speechLanguage",
+  "speechPostProcessingPrompt",
+  "speechRemoveFillerWords",
+  "speechSilenceFiltering",
+  "speechTranslateToEnglish",
   "terminalAppShortcutsFirst",
   "terminalThreadFontSizeMax",
   "terminalThreadFontSizeMin",
   "threadDetailsItems",
   "threadDetailsUsageEnabled",
   "timestampFormat",
+  "toolCallVisibility",
   "tooltipShortcutLimit",
   "tooltipShortcuts",
+  "voiceShortcutMode",
   "wordWrap",
 ] as const satisfies ReadonlyArray<keyof ClientSettings>;
 
