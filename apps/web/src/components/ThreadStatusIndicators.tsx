@@ -50,6 +50,8 @@ import {
 
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
+import { PreviewCard, PreviewCardTrigger } from "./ui/preview-card";
+import { ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   PULL_REQUEST_STATE_PRESENTATION,
@@ -281,22 +283,22 @@ function PullRequestBadge({
     },
   });
   return (
-    <Tooltip key={opensList ? "list" : "link"}>
-      <TooltipTrigger render={control}>
+    <PreviewCard key={opensList ? "list" : "link"}>
+      <PreviewCardTrigger render={control}>
         <span
           className={cn("contents font-normal text-xs tabular-nums", presentation.toneClassName)}
         >
           <presentation.Icon aria-hidden className="size-3 shrink-0" />
           <span className="text-secondary-label">{presentation.text}</span>
         </span>
-      </TooltipTrigger>
-      <TooltipPopup
+      </PreviewCardTrigger>
+      <ThreadHoverCardPopup
         side="top"
+        align="center"
         sideOffset={0}
-        variant="glass"
-        className="pointer-events-auto w-80 max-w-[calc(100vw-2rem)] text-left whitespace-normal"
+        className="w-80 max-w-[calc(100vw-2rem)]"
       >
-        <div className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain">
+        <div className="max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain px-1 py-1">
           {visibleThreadPullRequests(pullRequests).length > 0 ? (
             <ThreadPullRequestsMiniList
               pullRequests={pullRequests}
@@ -314,8 +316,8 @@ function PullRequestBadge({
             </ul>
           ) : null}
         </div>
-      </TooltipPopup>
-    </Tooltip>
+      </ThreadHoverCardPopup>
+    </PreviewCard>
   );
 }
 

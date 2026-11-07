@@ -124,6 +124,8 @@ function stepTab(direction: 1 | -1): boolean {
 export function useSidebarKeyboard(input: {
   readonly routeThreadRef: ScopedThreadRef | null;
   readonly searchInputRef: RefObject<HTMLInputElement | null>;
+  /** Opens the sidebar Filter menu. */
+  readonly openFilterMenu: () => void;
   readonly runThreadAction: (
     threadRef: ScopedThreadRef,
     position: { x: number; y: number },
@@ -199,6 +201,10 @@ export function useSidebarKeyboard(input: {
         const field = latest.current.searchInputRef.current;
         if (!field) return false;
         field.focus();
+        return true;
+      },
+      "sidebar.filter": () => {
+        latest.current.openFilterMenu();
         return true;
       },
       ...tabJumps,

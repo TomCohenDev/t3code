@@ -13,6 +13,7 @@ import { focusLevelContext } from "../focusLevels/focusLevels";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { BranchToolbarHandle } from "../BranchToolbar";
 import { shouldTypeToFocusComposer } from "./composerFocusRedirect";
+import { registerCommandRunner } from "../../shortcuts/commandRunner";
 import { composerShortcutCommands } from "./composerShortcuts";
 
 /** Returning false lets the key event through untouched. */
@@ -117,6 +118,17 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     event.preventDefault();
     input.closeThreadFind();
   });
+  // Fork: a click on a command name, such as "Effort" in the model trigger tooltip, runs the command.
+  const runCommand = useEffectEvent((command: KeybindingCommand): boolean => {
+    if (!input.enabled) return false;
+    const run =
+      input.commands[command] ??
+      composerShortcutCommands(input.composerRef, input.branchToolbarRef)[command] ??
+      input.fallback(command);
+    if (!run) return false;
+    const event = new KeyboardEvent("keydown", { cancelable: true });
+    return run({ event, terminalFocusOwner: null }) !== false;
+  });
   const handleComposerShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || isCommandPaletteOpen()) return;
     const command = resolveChatShortcutCommand(event, input.keybindings, input.scriptKeybindings, {
@@ -141,7 +153,9 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const onKeyDown = (event: KeyboardEvent) => dismissFind(event);
     window.addEventListener("keydown", onKeyDownCapture, true);
     window.addEventListener("keydown", onKeyDown);
+    const unregisterRunner = registerCommandRunner((command) => runCommand(command));
     return () => {
+      unregisterRunner();
       window.removeEventListener("keydown", onKeyDownCapture, true);
       window.removeEventListener("keydown", onKeyDown);
     };

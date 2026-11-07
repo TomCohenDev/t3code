@@ -1,6 +1,7 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
+import { registerCommandRunner } from "./commandRunner";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused, isTerminalThreadAppChord } from "../lib/terminalFocus";
@@ -119,6 +120,26 @@ export function registerCommands(
   const scopes = options.observe ? observerScopes : options.capture ? captureScopes : globalScopes;
   return pushScope(scopes, { commands, options });
 }
+
+function runScopeCommand(scope: CommandScope, command: KeybindingCommand): boolean {
+  const handler = scope.commands[command];
+  if (handler === undefined) return false;
+  const event = new KeyboardEvent("keydown", { cancelable: true });
+  if (scope.options.when && !scope.options.when(event)) return false;
+  return handler(event) !== false;
+}
+
+// Fork: the dispatcher scopes answer a click-run command after the runners that own their own
+// keydown handling (chat shortcuts, focus levels), which register later and so run first.
+registerCommandRunner((command) => {
+  for (const scopes of [captureScopes, globalScopes]) {
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const scope = scopes[index];
+      if (scope && runScopeCommand(scope, command)) return true;
+    }
+  }
+  return false;
+});
 
 type MenuActionHandler = () => void;
 const menuActionHandlers = new Map<string, MenuActionHandler[]>();

@@ -573,14 +573,27 @@ Build the thread card from its elements, for desktop and web and for mobile.
 
 Filters the pull request page and the sidebar by the owner of each repository: a GitHub account or organization. The active pull request filters show as chips above the list.
 
-- **Setting:** client setting `pullRequestFilters` (on by default). Settings > General > Sidebar > "Pull request filters". One switch turns the owner filter and the chips on or off together. The sidebar owner choice is the client setting `sidebarOwnerFilter`, a sidebar state and not a switch.
+- **Setting:** client setting `pullRequestFilters` (on by default). Settings > General > Sidebar > "Pull request filters". One switch turns the owner filter and the chips on or off together. The sidebar owner choice is part of the client setting `sidebarFilters`.
 - **Works on:** web, desktop.
 - Pull request page: open Filters > Owner, pick "Show only selected" or "Hide selected", then pick the owners. In the search, type `org:` or `owner:` to show an owner, and `-org:` or `-owner:` to hide one.
-- Sidebar: click the building icon next to the project scope. A chip under the header names the filter, counts the hidden projects, and shows how many hidden threads need you.
+- Sidebar: open Filter > Owner. See [Sidebar filters](#sidebar-filters).
 - A fork checkout counts under the owner of the fork in the sidebar, and under the upstream owner on the pull request page. A project without a remote has no owner: pick "No repository owner" for it.
 - Chips: click "is" or "is not" on a chip to flip it. A label flips into a typed `-label:`. Click × to remove a filter, or "Clear all".
 - When no pull request matches, the empty list names the filters and offers "Clear filters".
 - **Limits:** typed qualifiers stay in the search box and get no chip. The mobile app has no owner filter. Its filter pills already show each active filter, so it needs no chips. Revisit the owner filter when the mobile parity work reaches filters.
+
+### Sidebar filters
+
+One Filter menu narrows the sidebar thread list by project, machine, model, branch and repository owner. The active filters show as chips under the header.
+
+- **Setting:** client setting `sidebarFilters` for owner, machine, model and branch, at most one filter per field. The project filter is the per device project scope in the UI state (`sidebarProjectScopeKeys` and `sidebarProjectScopeOperator`), because a new thread and the route reveal read it. A saved `sidebarOwnerFilter` moves into `sidebarFilters` once.
+- **Works on:** web, desktop.
+- Open the filter button in the sidebar header, or press `mod+shift+f` while the sidebar has focus. Each field has "Show only" and "Hide". Click a value to show only that value. Shift-click adds or removes one value and keeps the menu open. A field with 9 or more values has a search box. In the project list, the thread pin key pins the highlighted project, and right-click opens its settings.
+- Each value shows how many threads it lists under the other filters.
+- Chips: click "is" or "is not" to flip a filter. Click × to remove it, or "Clear all". A chip shows the hidden threads that need you, such as "2 need you".
+- Thread hover card: click the project, machine or model row to show only that value. Click the branch row to copy the branch name.
+- Owner and project filters act on project groups, so every machine's checkout of a repository moves together. Machine, model and branch act on threads. The owner filter applies only while `pullRequestFilters` is on.
+- **Limits:** the mobile app has no sidebar filters. A thread that a machine, model, branch or owner filter hides stays hidden when you open it from the palette or a link. Only the project filter widens for it.
 
 ## Scripts and terminal
 

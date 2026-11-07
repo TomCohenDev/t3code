@@ -1,4 +1,6 @@
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
+import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
+import { Tooltip, TooltipPopup } from "../ui/tooltip";
 import {
   AuthOrchestrationOperateScope,
   buildRemoteOpenUrl,
@@ -368,47 +370,62 @@ export const OpenInPicker = memo(function OpenInPicker({
         ? { className: THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS, ref: panelAnchorRef }
         : {})}
     >
-      <ThreadDetailsControl
-        aria-label={compact ? "Open file in preferred editor" : primaryLabel}
-        size={isPanel ? "sm" : "xs"}
-        variant={isPanel ? "ghost" : "outline"}
-        part="primary"
-        panel={isPanel}
-        disabled={!preferredEditor || !openInCwd || !canOpenEditor}
-        {...(enableShortcut && !backgroundThread ? { [OPEN_FAVORITE_EDITOR_ATTRIBUTE]: "" } : {})}
-        onClick={() => {
-          if (!preferredEditor) return;
-          const label = editorLabelForPlatform(preferredEditor, navigator.platform);
-          void openInEditor(preferredEditor).then((opened) => {
-            if (opened) announce(`Opened in ${label}`);
-          });
-        }}
-      >
-        {primaryOption?.Icon ? (
-          <primaryOption.Icon
-            aria-hidden="true"
-            className={cn(
-              isPanel ? THREAD_DETAILS_PANEL_ICON_CLASS : "size-3.5",
-              getOpenInIconClass(primaryOption.kind),
-            )}
-          />
-        ) : isPanel ? (
-          <SquareArrowOutUpRightIcon
-            aria-hidden="true"
-            className={THREAD_DETAILS_PANEL_ICON_CLASS}
-          />
-        ) : null}
-        <span
-          className={cn(
-            compact
-              ? "sr-only"
-              : "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
-            isPanel && cn("not-sr-only ml-0 min-w-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
-          )}
+      <Tooltip>
+        <ShortcutTrigger
+          command={enableShortcut && !backgroundThread ? "editor.openFavorite" : null}
+          render={
+            <ThreadDetailsControl
+              aria-label={compact ? "Open file in preferred editor" : primaryLabel}
+              size={isPanel ? "sm" : "xs"}
+              variant={isPanel ? "ghost" : "outline"}
+              part="primary"
+              panel={isPanel}
+              disabled={!preferredEditor || !openInCwd || !canOpenEditor}
+              {...(enableShortcut && !backgroundThread
+                ? { [OPEN_FAVORITE_EDITOR_ATTRIBUTE]: "" }
+                : {})}
+              onClick={() => {
+                if (!preferredEditor) return;
+                const label = editorLabelForPlatform(preferredEditor, navigator.platform);
+                void openInEditor(preferredEditor).then((opened) => {
+                  if (opened) announce(`Opened in ${label}`);
+                });
+              }}
+            />
+          }
         >
+          {primaryOption?.Icon ? (
+            <primaryOption.Icon
+              aria-hidden="true"
+              className={cn(
+                isPanel ? THREAD_DETAILS_PANEL_ICON_CLASS : "size-3.5",
+                getOpenInIconClass(primaryOption.kind),
+              )}
+            />
+          ) : isPanel ? (
+            <SquareArrowOutUpRightIcon
+              aria-hidden="true"
+              className={THREAD_DETAILS_PANEL_ICON_CLASS}
+            />
+          ) : null}
+          <span
+            className={cn(
+              compact
+                ? "sr-only"
+                : "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+              isPanel && cn("not-sr-only ml-0 min-w-0 truncate", THREAD_DETAILS_PANEL_LABEL_CLASS),
+            )}
+          >
+            {primaryLabel}
+          </span>
+        </ShortcutTrigger>
+        <TooltipPopup>
           {primaryLabel}
-        </span>
-      </ThreadDetailsControl>
+          <ShortcutHint
+            command={enableShortcut && !backgroundThread ? "editor.openFavorite" : null}
+          />
+        </TooltipPopup>
+      </Tooltip>
       {isPanel ? (
         <span aria-hidden="true" className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS} />
       ) : (

@@ -15,6 +15,17 @@ export const flipFilterOperator = (operator: FilterOperator): FilterOperator =>
 
 const operatorLabel = (operator: FilterOperator) => (operator === "is_not" ? "is not" : "is");
 
+/** Fork: the short summary of one filter in its menu row, such as "All" or "Hiding 2". */
+export function filterMenuSummary(
+  selected: ReadonlyArray<string>,
+  operator: FilterOperator,
+): string {
+  const [first] = selected;
+  if (first === undefined) return "All";
+  if (operator === "is") return selected.length === 1 ? first : `${selected.length} selected`;
+  return selected.length === 1 ? `Not ${first}` : `Hiding ${selected.length}`;
+}
+
 /** Fork: a filter as the sentence that its chip reads, such as "Owner is not qlik-trial". */
 export function filterSentence(filter: {
   readonly field: string;
