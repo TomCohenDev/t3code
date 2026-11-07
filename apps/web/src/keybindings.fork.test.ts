@@ -65,6 +65,19 @@ describe("settings.find", () => {
   });
 });
 
+describe("sidebar.filter", () => {
+  it("takes mod+shift+f from project search only while the sidebar has focus", () => {
+    const filter = event({ key: "f", metaKey: true, shiftKey: true });
+    const resolve = (context: Record<string, boolean>) =>
+      resolveShortcutCommand(filter, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context,
+      });
+    assert.strictEqual(resolve({ sidebarFocus: true }), "sidebar.filter");
+    assert.strictEqual(resolve({}), "projectSearch.toggle");
+  });
+});
+
 describe("compaction keys", () => {
   const resolve = (key: string, context: Record<string, boolean>) =>
     resolveShortcutCommand(

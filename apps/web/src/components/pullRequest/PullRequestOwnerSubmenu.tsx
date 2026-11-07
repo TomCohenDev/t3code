@@ -6,7 +6,7 @@
  */
 import { Building2Icon, EyeIcon, EyeOffIcon, LayersIcon } from "lucide-react";
 
-import type { FilterOperator } from "../filters/FilterChip";
+import { filterMenuSummary, type FilterOperator } from "../filters/FilterChip";
 import {
   MenuCheckboxItem,
   MenuItem,
@@ -34,13 +34,6 @@ export interface PullRequestOwnerSubmenuProps {
   readonly onOperator: (operator: FilterOperator) => void;
 }
 
-function ownerFilterSummary(selected: ReadonlyArray<string>, operator: FilterOperator): string {
-  const [first] = selected;
-  if (first === undefined) return "All";
-  if (operator === "is") return selected.length === 1 ? first : `${selected.length} selected`;
-  return selected.length === 1 ? `Not ${first}` : `Hiding ${selected.length}`;
-}
-
 export function PullRequestOwnerSubmenu({
   selected,
   operator,
@@ -61,7 +54,7 @@ export function PullRequestOwnerSubmenu({
         <Building2Icon aria-hidden className="size-3.5" />
         <span className="flex-1">Owner</span>
         <span className="min-w-0 max-w-32 truncate text-xs text-muted-foreground">
-          {ownerFilterSummary(selected, operator)}
+          {filterMenuSummary(selected, operator)}
         </span>
       </MenuSubTrigger>
       <MenuSubPopup>

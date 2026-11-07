@@ -8,12 +8,17 @@ import { useState, type ReactNode } from "react";
 
 import { AgentElapsed } from "./AgentElapsed";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
-import { ThreadHoverCardPopup } from "../ThreadHoverCard";
+import {
+  ThreadHoverCardAction,
+  ThreadHoverCardActions,
+  ThreadHoverCardPopup,
+} from "../ThreadHoverCard";
 import { ThreadRelationshipIcon } from "./ThreadRelationshipIcon";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
+import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Spinner } from "../ui/spinner";
 import {
@@ -69,8 +74,8 @@ function WorkflowMemberRow({
   const canOpen = threadId !== null;
   return (
     <li>
-      <Tooltip>
-        <TooltipTrigger
+      <PreviewCard>
+        <PreviewCardTrigger
           delay={200}
           render={
             <ThreadDetailsControl
@@ -94,7 +99,7 @@ function WorkflowMemberRow({
               <AgentElapsed agent={member} />
             </span>
           ) : null}
-        </TooltipTrigger>
+        </PreviewCardTrigger>
         <ThreadHoverCardPopup side="left">
           <SubagentTooltipContent
             title={member.title}
@@ -108,9 +113,18 @@ function WorkflowMemberRow({
             status={member.status}
             result={member.result ?? member.error}
             progress={member.progress}
+            footer={
+              canOpen ? (
+                <ThreadHoverCardActions>
+                  <ThreadHoverCardAction onClick={() => onOpen(threadId)}>
+                    Open chat
+                  </ThreadHoverCardAction>
+                </ThreadHoverCardActions>
+              ) : undefined
+            }
           />
         </ThreadHoverCardPopup>
-      </Tooltip>
+      </PreviewCard>
     </li>
   );
 }

@@ -50,7 +50,7 @@ const FORK_RESTORED_SETTINGS = [
   ["sidebarTabSingleThreadOpens", "Single-thread tabs"],
   ["worktreePathTemplate", "Worktree path template"],
   ["pullRequestFilters", "Pull request filters"],
-  ["sidebarOwnerFilter", "Sidebar owner filter"],
+  ["sidebarFilters", "Sidebar filters"],
   ["appToggleShortcuts", "App toggle shortcuts"],
   ["terminalAppShortcutsFirst", "App shortcuts in terminal"],
   ["currentProjectTerminalOpensThread", "Open terminal in current project as a thread"],

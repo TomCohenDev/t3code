@@ -1,6 +1,6 @@
 import {
   ClientSettingsSchema,
-  moveLegacySidebarTabKeys,
+  moveLegacyForkClientSettingKeys,
   type ClientSettings,
 } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -26,9 +26,9 @@ const decodeClientSettingsJson = Effect.fnUntraced(function* (raw: string) {
   const document = yield* decodeClientSettingsDocument(raw);
   // Select the shape before validation so invalid legacy settings cannot become defaults.
   const settings = Object.hasOwn(document, "settings") ? document.settings : document;
-  // Fork: the sidebar tab settings move from their old keys. The next save drops the old keys.
+  // Fork: renamed fork settings move from their old keys. The next save drops the old keys.
   return yield* decodeClientSettingsValue(
-    isRecord(settings) ? (moveLegacySidebarTabKeys("client", settings) ?? settings) : settings,
+    isRecord(settings) ? (moveLegacyForkClientSettingKeys(settings) ?? settings) : settings,
   );
 });
 const encodeClientSettingsJson = Schema.encodeEffect(ClientSettingsJson);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import { ProjectId } from "./baseSchemas.ts";
+import { moveLegacyForkClientSettingKeys, moveLegacySidebarOwnerFilter } from "./forkSettings.ts";
 import {
   ClientSettingsSchema,
   ClientSettingsPatch,
@@ -15,18 +16,68 @@ const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 
-describe("ClientSettings sidebar owner filter", () => {
-  it("shows every owner by default and keeps the operator and the entry for projects without an owner", () => {
-    expect(decodeClientSettings({}).sidebarOwnerFilter).toEqual({ operator: "is", owners: [] });
-    const filter = { operator: "is_not", owners: ["qlik-trial", null] };
-    const saved = encodeClientSettings(decodeClientSettings({ sidebarOwnerFilter: filter }));
-    expect(decodeClientSettings(saved).sidebarOwnerFilter).toEqual(filter);
-    expect(decodeClientSettingsPatch({ sidebarOwnerFilter: filter }).sidebarOwnerFilter).toEqual(
-      filter,
-    );
+describe("ClientSettings sidebar filters", () => {
+  it("filters nothing by default and keeps each filter through a save", () => {
+    expect(decodeClientSettings({}).sidebarFilters).toEqual([]);
+    const filters = [
+      { field: "owner", operator: "is_not", values: ["qlik-trial", ""] },
+      { field: "model", operator: "is", values: ["codex:gpt-5"] },
+    ];
+    const saved = encodeClientSettings(decodeClientSettings({ sidebarFilters: filters }));
+    expect(decodeClientSettings(saved).sidebarFilters).toEqual(filters);
+    expect(decodeClientSettingsPatch({ sidebarFilters: filters }).sidebarFilters).toEqual(filters);
     expect(() =>
-      decodeClientSettingsPatch({ sidebarOwnerFilter: { operator: "contains", owners: [] } }),
+      decodeClientSettingsPatch({
+        sidebarFilters: [{ field: "owner", operator: "contains", values: [] }],
+      }),
     ).toThrow();
+  });
+});
+
+describe("moveLegacySidebarOwnerFilter", () => {
+  it.each([
+    {
+      name: "moves owners into an owner filter, with null as the empty string",
+      stored: { sidebarOwnerFilter: { operator: "is_not", owners: ["qlik-trial", null] } },
+      moved: {
+        sidebarFilters: [{ field: "owner", operator: "is_not", values: ["qlik-trial", ""] }],
+      },
+    },
+    {
+      name: "drops a filter without owners",
+      stored: { sidebarOwnerFilter: { operator: "is", owners: [] }, wordWrap: false },
+      moved: { wordWrap: false },
+    },
+    {
+      name: "drops a malformed filter",
+      stored: { sidebarOwnerFilter: { operator: "contains", owners: ["a"] } },
+      moved: {},
+    },
+    {
+      name: "keeps a value under the new key",
+      stored: { sidebarOwnerFilter: { owners: ["a"] }, sidebarFilters: [] },
+      moved: { sidebarFilters: [] },
+    },
+  ])("$name", ({ stored, moved }) => {
+    expect(moveLegacySidebarOwnerFilter(stored)).toEqual(moved);
+    expect(decodeClientSettings(moved)).not.toHaveProperty("sidebarOwnerFilter");
+  });
+
+  it("returns null without the old key, so a caller writes only after a move", () => {
+    expect(moveLegacySidebarOwnerFilter({ sidebarFilters: [] })).toBeNull();
+    expect(moveLegacyForkClientSettingKeys({ wordWrap: true })).toBeNull();
+  });
+
+  it("moves the sidebar tab keys and the owner filter in one pass", () => {
+    expect(
+      moveLegacyForkClientSettingKeys({
+        sidebarGroupsEnabled: true,
+        sidebarOwnerFilter: { owners: ["a"] },
+      }),
+    ).toEqual({
+      sidebarTabsEnabled: true,
+      sidebarFilters: [{ field: "owner", operator: "is", values: ["a"] }],
+    });
   });
 });
 
