@@ -11,6 +11,10 @@ upstream or the fork lockfile, so the rebuild picked no new package version. A s
 lockfile instead resolves each range that upstream changed to the newest version of today, not to
 the version that upstream locked.
 
+Limits: MERGE_HEAD must be the upstream side (run it in the sync worktree, not in a merge of fork
+main into the sync branch). A fork-only dependency resolves fresh, so a new release of one stops
+the script for a manual check.
+
 With --rebuild, it also runs when git merged the lockfile without a conflict, but the text merge
 broke it (`vp i --frozen-lockfile` fails with ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY).
 """

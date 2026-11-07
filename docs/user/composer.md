@@ -236,7 +236,7 @@ cancellation. The transcript stays in your draft until you send the message to t
 On Android 10 or later, T3 Code can be your digital assistant. Press the assistant
 button in any app to start a thread about what is on the screen.
 
-1. Open **Settings → Voice** in the app and tap **Choose the digital assistant**.
+1. Open **Settings → Assistant** in the app and tap **Choose the digital assistant**.
 2. Pick T3 Code. To share the screen, turn on **Use text from screen** and
    **Use screenshot** on the same page.
 3. Press the assistant button, or hold the home button.
@@ -253,7 +253,7 @@ in the Android share sheet.
 
 Context pills above the text show what goes along: what you shared, the screenshot,
 the screen text, text you selected on screen, the page link, and the clipboard. In
-**Settings → Voice → Context pills** you can also turn on your newest photo and your
+**Settings → Assistant → Context pills** you can also turn on your newest photo and your
 location. Tap a pill to attach it or leave it out. Hold a pill to read and edit its
 text, or to crop or draw on an image. The clipboard, the photo and the location are
 left out until you tap them, and password fields are never included. The **+** pill
@@ -261,19 +261,19 @@ lists every pill with a check mark to attach or leave it out, and adds photos, a
 photo from the camera, files, your newest photo, or your location.
 The screen text pill names what is on screen, such as "Video · YouTube · 6:52",
 "Chat · WhatsApp", or "Page · theverge.com". On a Chrome page it holds the whole
-page; turn this off with **Settings → Voice → Whole page in Chrome**. On a video, the
+page; turn this off with **Settings → Assistant → Whole page in Chrome**. On a video, the
 link opens where you were watching. On the home
 screen, the screenshot and the screen text are left out until you tap them.
 
 If you close the panel without sending, your text comes back when you open it
 again within a minute.
 
-**Settings → Voice** sets what the panel does: send to a new thread or to the
+**Settings → Assistant** sets what the panel does: send to a new thread or to the
 thread you opened last, open with the keyboard or with the speech dialog, and start
 the thread right after you speak. **After sending** closes the panel, opens the
 thread, or shows the reply in the panel so you can answer from there. The panel can
 also read the first reply aloud. **Edge glow** sets how long the glow around the
-screen stays. **Settings → Voice** also sets the project of new threads.
+screen stays. **Settings → Assistant** also sets the project of new threads.
 T3 Code replaces your current assistant while it is selected. To go back, pick the
 other assistant on the same Android page.
 
@@ -281,7 +281,7 @@ other assistant on the same Android page.
 
 Tap the speaker next to a reply to hear it. Tap it again to stop. Hold the speaker
 to hear every new reply in that thread; hold it again to stop. A tinted speaker
-shows a thread that reads new replies. **Settings → Voice** sets the speech rate,
+shows a thread that reads new replies. **Settings → Assistant** sets the speech rate,
 hides the button, and stops all threads that read new replies.
 
 Replies are read only while the app is on screen.

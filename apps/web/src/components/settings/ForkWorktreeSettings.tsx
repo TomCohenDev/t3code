@@ -30,7 +30,7 @@ export function RestoreWorktreesSettingsRow() {
           />
         ) : null
       }
-      description="Recreate a missing worktree and run setup before the next turn. A deleted branch comes back from origin, without old changes. Cleanup deletes the branch of a removed worktree if it has no new commits."
+      description="Recreate a missing worktree and run setup before the next turn. A deleted branch returns from origin; an existing branch is never reset. Cleanup removes unused branches without new commits."
       control={
         <ScopedSwitch
           settingKeys={["restoreWorktreesOnResume"]}
