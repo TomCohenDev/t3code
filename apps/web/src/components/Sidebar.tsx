@@ -1,4 +1,3 @@
-import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import {
   knownSlotLayout,
@@ -23,6 +22,7 @@ import {
   DndContext,
   useSensor,
   useSensors,
+  type AutoScrollOptions,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -149,7 +149,6 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import {
   useEnvironmentIdentities,
   useConnectedEnvironmentIds,
-  useEnvironmentConnectionSummaries,
   useEnvironmentMachines,
   usePrimaryEnvironmentId,
 } from "../state/environments";
@@ -181,6 +180,7 @@ import type { SidebarThreadSummary } from "../types";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { cn } from "~/lib/utils";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
+import { ProjectRowActions } from "./ProjectComboboxRow";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
@@ -195,8 +195,6 @@ import {
   deleteSelectedThreadEntries,
   filterSidebarProjectScopeItems,
   firstValidTimestampMs,
-  belongsInSidebarWorkingShelf,
-  isSidebarEnvironmentDisconnected,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
@@ -367,7 +365,6 @@ interface SidebarThreadPartitionInput {
   readonly workingShelfEnabled: boolean;
   /** Boring mode: folders list active threads by the user's latest message. */
   readonly sortActiveBySend: boolean;
-  readonly disconnectedEnvironmentIds: ReadonlySet<EnvironmentId>;
   // Snooze wakes, the queued-turn grace and the Working shelf's exit grace depend
   // on the clock, so the minute tick, the precise snooze-wake tick and the inbox
   // tracker's expiry version are inputs: a new key repartitions.
@@ -460,18 +457,6 @@ function useSidebarThreads(input: {
   // Folders already separate the work, so boring mode has no Working shelf.
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && folderGroups === null;
-  const environmentConnections = useEnvironmentConnectionSummaries();
-  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
-  const disconnectedEnvironmentIds = new Set(
-    environmentConnections
-      .filter((environment) =>
-        isSidebarEnvironmentDisconnected(
-          environment.connectionState,
-          liveShellEnvironmentIds.has(environment.environmentId),
-        ),
-      )
-      .map((environment) => environment.environmentId),
-  );
   const inboxReturnsVersion = useSyncExternalStore(
     inboxReturns.subscribe,
     inboxReturns.getSnapshot,
@@ -537,7 +522,6 @@ function useSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend: folderGroups !== null,
-    disconnectedEnvironmentIds,
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
@@ -693,7 +677,6 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     optimisticDrop,
     workingShelfEnabled,
     sortActiveBySend,
-    disconnectedEnvironmentIds,
   } = input;
   const preciseNow = new Date().toISOString();
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
@@ -704,17 +687,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   // Fork: a terminal thread also works while a program runs in its shell. A working thread that
   // waits goes to the Waiting shelf.
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) => {
-    if (
-      !belongsInSidebarWorkingShelf(thread, {
-        enabled: workingShelfEnabled,
-        disconnectedEnvironmentIds,
-        isWorking: (candidate) =>
-          forkThreadIsWorking(candidate) ||
-          (!manuallyMoved && inboxObservation.isWorking(candidate)),
-      })
-    ) {
-      return active;
-    }
+    const isWorking =
+      forkThreadIsWorking(thread) || (!manuallyMoved && inboxObservation.isWorking(thread));
+    if (!workingShelfEnabled || !isWorking) return active;
     return forkThreadIsWaiting(thread) ? waiting : working;
   };
   const snoozed: EnvironmentThreadShell[] = [];
@@ -976,6 +951,9 @@ function checkThreadOperations(
 
 const SIDEBAR_DRAG_DISTANCE = 6;
 
+// dnd-kit's 20% edge zone at full speed runs the list away while the pointer rests near the bottom.
+const SIDEBAR_AUTO_SCROLL: AutoScrollOptions = { threshold: { x: 0, y: 0.05 }, acceleration: 3 };
+
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
 
 const threadSearchResultId = (index: number) => `sidebar-thread-search-result-${index}`;
@@ -1158,6 +1136,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   } | null>(null);
   const dragSensorRef = useRef<SidebarPointerSensor | null>(null);
   const contextDragKeyRef = useRef<string | null>(null);
+  const dragScrollRef = useRef<{ readonly viewport: Element; readonly top: number } | null>(null);
   const [actionSweep, setActionSweep] = useState<{
     action: SidebarSweepAction;
     keys: ReadonlySet<string>;
@@ -1836,6 +1815,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
     sidebarTabs.endDrag();
+    dragScrollRef.current = null;
     endThreadContextDrag();
     if (started) {
       listMotionRef.current?.release();
@@ -1862,6 +1842,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const bounds = threadListRef.current?.getBoundingClientRect();
     return bounds !== undefined && (point.x < bounds.left || point.x > bounds.right);
   };
+  // The path out of the list often crosses dnd-kit's edge zone, which autoscrolls the sidebar.
+  const restoreDragScroll = () => {
+    const scroll = dragScrollRef.current;
+    if (scroll && scroll.viewport.scrollTop !== scroll.top) scroll.viewport.scrollTop = scroll.top;
+  };
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
     // Fork: over a sidebar tab the list stops sorting and the ghost follows the pointer.
     const contextDrag = sidebarTabs.moveDrag(point) || pointerOutsideThreadList(point);
@@ -1874,6 +1859,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       endThreadContextDrag();
       return false;
     }
+    restoreDragScroll();
     const threads = contextDragThreads();
     const title =
       threadByKeyRef.current.get(contextDragKeyRef.current ?? "")?.title.trim() || "Thread";
@@ -1883,6 +1869,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
     if (sidebarTabs.dropDrag(point, contextDragThreads().map(scopedThreadKey))) return true;
     if (!pointerOutsideThreadList(point)) return false;
+    restoreDragScroll();
     dropThreadContext(point, contextDragThreads());
     return true;
   };
@@ -2009,6 +1996,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (activeSection === undefined) return;
     listMotionRef.current?.suspend();
     const list = threadListRef.current;
+    const viewport = list?.closest('[data-slot="scroll-area-viewport"]');
+    dragScrollRef.current = viewport ? { viewport, top: viewport.scrollTop } : null;
     const header = list?.querySelector<HTMLElement>('[data-testid="sidebar-pinned-header"]');
     if (list && header) {
       const listRect = list.getBoundingClientRect();
@@ -3198,13 +3187,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     }
                   >
                     {scopedProjectGroups.length > 1 ? (
-                      <span className="flex shrink-0 -space-x-1.5">
-                        {scopedProjectGroups.slice(0, 2).map((project) => (
-                          <ProjectFavicon
+                      <span className="flex shrink-0">
+                        {scopedProjectGroups.slice(0, 2).map((project, index) => (
+                          <span
                             key={project.projectKey}
-                            project={project}
-                            className="size-3.5"
-                          />
+                            className={
+                              index === 0
+                                ? "flex"
+                                : "-ml-1 flex rounded-[25%] bg-sidebar ring-2 ring-sidebar"
+                            }
+                          >
+                            <ProjectFavicon project={project} className="size-3.5" />
+                          </span>
                         ))}
                       </span>
                     ) : scopedProjectGroups[0] ? (
@@ -3295,15 +3289,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 <FolderIcon className="size-4 shrink-0" />
                               )}
                             </ProjectScopeRowIcon>
-                            <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                            {project && canPinProject(project) ? (
-                              <ProjectPinButton
-                                name={project.displayName}
-                                pinned={project.pinned}
-                                shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
-                                onToggle={() => toggleProjectGroupPin(project)}
-                              />
-                            ) : null}
+                            <span className="min-w-0 truncate text-sm">{item.label}</span>
                             {project && showProjectEnvironments ? (
                               <ProjectEnvironmentBadge
                                 group={project}
@@ -3312,21 +3298,40 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               />
                             ) : null}
                             {project ? (
-                              <Button
-                                size="icon-xs"
-                                variant="ghost-muted"
-                                tabIndex={-1}
-                                aria-hidden="true"
-                                title={`Project settings for ${project.displayName}`}
-                                className={canPinProject(project) ? undefined : "ml-auto"}
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  void handleProjectSettings(event, project);
-                                }}
-                              >
-                                <SettingsIcon className="size-3.5" />
-                              </Button>
-                            ) : null}
+                              <ProjectRowActions
+                                pin={
+                                  canPinProject(project) ? (
+                                    <ProjectPinButton
+                                      name={project.displayName}
+                                      pinned={project.pinned}
+                                      shortcutLabel={shortcutLabelForCommand(
+                                        keybindings,
+                                        "thread.pin",
+                                      )}
+                                      onToggle={() => toggleProjectGroupPin(project)}
+                                    />
+                                  ) : null
+                                }
+                                settings={
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost-muted"
+                                    tabIndex={-1}
+                                    aria-hidden="true"
+                                    title={`Project settings for ${project.displayName}`}
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    onClick={(event) => {
+                                      void handleProjectSettings(event, project);
+                                    }}
+                                  >
+                                    <SettingsIcon className="size-3.5" />
+                                  </Button>
+                                }
+                              />
+                            ) : (
+                              // Keeps "All projects" as tall as the project rows.
+                              <span className="ml-auto size-7 shrink-0 sm:size-6" />
+                            )}
                           </ComboboxItem>
                         );
                       }}
@@ -3445,7 +3450,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             >
               <DndContext
                 sensors={dndSensors}
-                autoScroll={!isContextDrag}
+                autoScroll={isContextDrag ? false : SIDEBAR_AUTO_SCROLL}
                 collisionDetection={dndCollisionDetection}
                 modifiers={dndModifiers}
                 onDragStart={handleThreadDragStart}
@@ -3462,6 +3467,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       "relative flex flex-col gap-px",
                       sidebarListItems.length > 0 && "flex-1",
                       actionSweep !== null && "**:pointer-events-none",
+                      // Projected rows (two boundary labels, two hints) extend the scroll range; a range that
+                      // shrinks as the target changes clamps scrollTop and flips the target under a still pointer.
+                      dragState !== null &&
+                        "after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-30 after:h-px after:content-['']",
                     )}
                   >
                     {(() => {
