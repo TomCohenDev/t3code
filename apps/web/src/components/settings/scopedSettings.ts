@@ -217,17 +217,23 @@ function forDestination(previous: ServerSettings, patch: ServerSettingsPatch): S
   return { ...rest, ...idleCompactionPatch(previous, idleCompaction) };
 }
 
-export function planScopedSettingsPatch(
-  scope: ResolvedSettingsScope,
-  environments: readonly ScopedSettingsEnvironment[],
-  patch: ScopedSettingsPatch,
-) {
+/** A key in both schemas is a server key. */
+export function splitScopedSettingsPatch(patch: ScopedSettingsPatch) {
   const clientPatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => CLIENT_KEYS.has(key) && !SERVER_KEYS.has(key)),
   ) as ClientSettingsPatch;
   const serverPatch = Object.fromEntries(
     Object.entries(patch).filter(([key]) => SERVER_KEYS.has(key)),
   ) as ServerSettingsPatch;
+  return { clientPatch, serverPatch };
+}
+
+export function planScopedSettingsPatch(
+  scope: ResolvedSettingsScope,
+  environments: readonly ScopedSettingsEnvironment[],
+  patch: ScopedSettingsPatch,
+) {
+  const { clientPatch, serverPatch } = splitScopedSettingsPatch(patch);
   const serverKeys = Object.keys(serverPatch);
   const { connectedEnvironments } = selectScopedSettingsEnvironments(scope, environments, null);
   const isProjectScope = scope.kind === "project" || scope.kind === "checkout";

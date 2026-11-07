@@ -3,6 +3,7 @@ import { useLocation } from "@tanstack/react-router";
 import { CheckIcon, ChevronDownIcon, LayersIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
+import { PersonScope, useSettingsPersonPicker } from "../../machineMap/circleSettings";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
@@ -66,7 +67,26 @@ export function SettingsScopeSentence() {
   const scope = useOptionalSettingsScope();
   const pathname = useLocation({ select: (location) => location.pathname });
   const { environments } = useEnvironments();
-  if (scope === null || SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) return null;
+  // Fork: the owner picks a kitshn circle on pages with person settings.
+  const { circles } = useSettingsPersonPicker();
+  if (scope === null) return null;
+  const people =
+    circles.length === 0 ? null : (
+      <PersonScope
+        value={scope.search}
+        circles={circles}
+        onChange={scope.selectScope}
+        Menu={ScopeMenu}
+      />
+    );
+  if (SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) {
+    return people === null ? null : (
+      <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 px-3 text-sm text-muted-foreground sm:px-4">
+        <span className="shrink-0">Applying settings for</span>
+        {people}
+      </p>
+    );
+  }
   const props: SettingsScopeMenuProps = {
     value: scope.search,
     singleEnvironment: scope.singleEnvironment,
@@ -86,11 +106,17 @@ export function SettingsScopeSentence() {
         </span>
         <EnvironmentScopeMenu {...props} />
       </span>
+      {people === null ? null : (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0">for</span>
+          {people}
+        </span>
+      )}
     </p>
   );
 }
 
-interface ScopeOption {
+export interface ScopeOption {
   value: string;
   label: string;
   secondary?: string;
@@ -115,6 +141,17 @@ function ScopeOptionLabel({ option }: { option: ScopeOption }) {
   );
 }
 
+export interface ScopeMenuProps {
+  ariaLabel: string;
+  icon: ReactNode;
+  label: string;
+  value: string;
+  options: ScopeOption[];
+  allOption: ScopeOption | null;
+  searchLabel: string;
+  onChange: (next: string) => void;
+}
+
 function ScopeMenu({
   ariaLabel,
   icon,
@@ -124,16 +161,7 @@ function ScopeMenu({
   allOption,
   searchLabel,
   onChange,
-}: {
-  ariaLabel: string;
-  icon: ReactNode;
-  label: string;
-  value: string;
-  options: ScopeOption[];
-  allOption: ScopeOption | null;
-  searchLabel: string;
-  onChange: (next: string) => void;
-}) {
+}: ScopeMenuProps) {
   const [query, setQuery] = useState("");
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (

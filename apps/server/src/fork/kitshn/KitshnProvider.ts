@@ -52,6 +52,7 @@ import * as MachineHost from "../machineMap/MachineHost.ts";
 import { redactSecretsInText } from "../redactUrlSecrets.ts";
 import * as ThreadIdentity from "../ThreadIdentity.ts";
 import { attestedLabels } from "./kitshnAttest.ts";
+import { type CircleParts, circlePartsOf, NO_CIRCLE_PARTS } from "./kitshnCircles.ts";
 import * as KitshnCli from "./KitshnCli.ts";
 import * as KitshnConnection from "./KitshnConnection.ts";
 import { APP_RESOURCE_ID, KINDS, threadResourceId } from "./kitshnGrantRules.ts";
@@ -281,6 +282,7 @@ const matchKitshn = (name: string, version: string) =>
 
 /** K-709: the desired state kind of the T3 settings, in the `ForkSettingsState` shape. */
 export const SETTINGS_KIND = "t3.settings";
+
 /** K-717: the update channel of the app card. */
 const UPDATE_CHANNEL_SETTING = "updateChannel";
 /** The switch that keeps this server off kitshn. */
@@ -344,6 +346,8 @@ export type KitshnConnectionStatus =
 /** What kitshn keeps for this provider and says about it. */
 export interface KitshnProviderState {
   readonly settings: DesiredParts | null;
+  /** K-726: the circle parts of `t3.settings`, by circle id. */
+  readonly circleParts: CircleParts;
   readonly cardSettings: CardSettingValues;
   /** K-1609: the cards of other machines that this machine reaches. */
   readonly reach: ReadonlyArray<ReachedCard>;
@@ -405,6 +409,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
   const off = kitshnOff({ devUrl: config.devUrl, env: yield* HostProcess.Environment });
   const providerState = yield* SubscriptionRef.make<KitshnProviderState>({
     settings: null,
+    circleParts: NO_CIRCLE_PARTS,
     cardSettings: {},
     reach: [],
     syncedAt: null,
@@ -675,6 +680,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
         }
         yield* SubscriptionRef.set(providerState, {
           settings: answer.saved.desired[SETTINGS_KIND] ?? null,
+          circleParts: circlePartsOf(answer.saved.desired[SETTINGS_KIND]?.circles),
           cardSettings: answer.saved.settings,
           reach: answer.saved.reach,
           syncedAt: answer.syncedAt,
@@ -726,7 +732,9 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
               : undefined;
           }
           const asked = waiting.get(answer.id);
-          if (asked !== undefined) return yield* Deferred.succeed(asked, answer);
+          if (asked !== undefined) {
+            return yield* Deferred.succeed(asked, answer);
+          }
           if (answer.id === registerId) {
             if (answer.type === "register") return yield* onRegistered(answer);
             if (answer.type === "error") {
@@ -766,6 +774,7 @@ export const make = Effect.fn("KitshnProvider.make")(function* (
             return yield* SubscriptionRef.update(providerState, (current) => ({
               ...current,
               settings: answer.state,
+              circleParts: circlePartsOf(answer.state.circles),
             }));
           case "settings":
             return yield* SubscriptionRef.update(providerState, (current) => ({

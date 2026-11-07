@@ -1,5 +1,5 @@
 import { liveShellEnvironmentIdsAtom } from "../state/shell";
-import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
+import { attachSidebarTree } from "../lib/sidebarTree";
 import {
   knownSlotLayout,
   THREAD_CARD_ELEMENTS,
@@ -1066,6 +1066,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     },
   });
   const boringSidebarEnabled = useBoringSidebarEnabled();
+  const legacySidebarEnabled = useClientSettings((settings) => settings.legacySidebarEnabled);
   const folderRowsMultiline = useClientSettings((settings) => settings.boringSidebarMultilineRows);
   const newThreadContext = useHandleNewThread();
   // Row callbacks capture only the handler; the rest of the context changes with the route.
@@ -1089,7 +1090,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const allProjectSnapshotsReady = useAllEnvironmentProjectSnapshotsReady();
   const allProjectConfigsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
-  const headerSearchRef = useRef<HTMLDivElement | null>(null);
   // Hold dropped rows until server placement is confirmed; block another pickup from replacing the hold.
   const [optimisticDrop, setOptimisticDrop] = useState<SidebarOptimisticDrop | null>(null);
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
@@ -2913,6 +2913,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             }
             return;
           case "copy-thread":
+            // Fork: a t3-thread link; the fork app has no hosted-origin App Links. Revisit when it does.
             void copyThreadReference(threadChipCopyTarget(threadRef, thread.title));
             return;
           case "copy-thread-id":
@@ -2984,7 +2985,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   useSidebarKeyboard({
     routeThreadRef,
-    searchFieldRef: headerSearchRef,
+    searchInputRef: threadSearchInputRef,
     openFilterMenu: () => setFilterMenuOpen(true),
     runThreadAction: handleThreadContextMenu,
   });
@@ -3063,7 +3064,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const handleNewThreadClick = (event?: ReactMouseEvent, kind: NewThreadKind = "chat") => {
     if (
-      boringSidebarEnabled ||
+      legacySidebarEnabled ||
       shouldCreateNewThreadInCurrentProject(
         event?.shiftKey ?? false,
         scopeGroups.length,
@@ -3129,7 +3130,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         fixedHeader={
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
-              searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
               terminalThreadButton={
                 <ForkNewTerminalThreadButton
@@ -3161,7 +3161,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onNewThread={handleNewThreadClick}
               newThreadDisabled={projects.length === 0}
               newThreadCommand={newThreadCommand}
-              showNewThreadInProjectHint={!boringSidebarEnabled && opensProjectPicker}
+              showNewThreadInProjectHint={!legacySidebarEnabled && opensProjectPicker}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {
@@ -3279,8 +3279,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               >
                 <SortableContext items={sortableIds} strategy={sidebarSortingStrategy}>
                   <ul
-                    {...SIDEBAR_TREE_PROPS}
                     ref={attachTreeRef}
+                    // Presentation flattens VoiceOver's list interaction boundary while preserving descendant
+                    // controls.
+                    role="presentation"
                     className={cn(
                       "relative flex flex-col gap-px",
                       sidebarListItems.length > 0 && "flex-1",
@@ -3591,8 +3593,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       <li className="list-none">
                         <button
                           type="button"
-                          role="treeitem"
-                          tabIndex={-1}
                           data-sidebar-row="settled:more"
                           data-sidebar-parent="shelf:settled"
                           disabled={olderSettledShelf.loading}

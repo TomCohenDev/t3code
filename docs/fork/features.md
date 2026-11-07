@@ -229,6 +229,22 @@ The `t3.settings` state on kitshn holds a shared part and a part for each machin
 - Agents set one value of their own machine with `machines_set_setting`. Only the owner changes the shared part: in T3 Settings, or with `t3 tool call` from a shell.
 - Paths, secrets and project-keyed maps stay on each machine.
 
+#### Settings by circle
+
+`t3.settings` also holds a part for each kitshn circle that holds a card of this machine (kitshn K-726). People in a circle get their own values for person settings, such as their sidebar tabs, on the servers that they share with the owner.
+
+- **Chain:** each session reads Project, then Circle, then Environment (this machine's part), then Shared, then Default. Circle is the first circle of the person's kitshn `check` answer that has a part. kitshn lists circles from the smallest radius on the map, so a nested circle wins.
+- **Keys:** a circle part applies only person settings (`CIRCLE_SETTINGS` in `packages/contracts/src/machineMap.ts`): all client settings except load balancing, `terminalKeyMappings`, `browserCustomSearchUrl` and `webPushEnabled`, and the server settings `sidebarTabs`, `mobileSidebarTabs`, `defaultTheme`, `threadCardLayouts`, `snoozePresets`, `favorites`, `mobileComposerCamera`, `mobileMessagePins`, `mobileNewThreadProject`, `pinnedGlobalScriptIds`, `hiddenThreadTags` and `hideTaggedThreads`. Machine-local and shared-only settings never come from a circle.
+- **Owner:** the owner's own values come from the shared and machine parts, as before; no circle part applies to the owner. On Settings > General, Appearance, Chat, Diffs and Browser, the scope sentence has a person picker: "All people" or a circle. With a circle picked, the rows show and change that circle's values. A setting that is not a person setting is not saved then. "Reset <circle>" removes the circle's values.
+- **Other people:** a person who is not the owner sees no picker. A change of a person setting goes into the part of their first circle. Another client setting stays on their device, and another server setting changes that server as before.
+- **Inheritance card:** a person setting shows a "Circle: <name>" row between Project and Environment. It shows "Inherits" when the circle has no value, and the check mark when its value wins.
+- **Mobile:** the phone shows the values of the person who paired it, through the same client settings.
+- **Limits:**
+  - An open connection keeps the circles that it had when it connected. A reload reads them again. Revisit if circle changes must apply at once.
+  - The picker shows no circle colors, because kitshn's `state` answer has none. Circle names refresh every 15 minutes.
+  - Without kitshn protocol 2.3.0 on the daemon, no circle part applies, and a person writes as before.
+  - Only the person picker of T3 Settings sets a circle. Edits of the sidebar tabs themselves always go to the part of the person who edits them.
+
 ### Settings > Machines
 
 Settings > Machines shows how to join this machine to kitshn, and the kitshn settings of the selected environment. It also shows the kitshn connection: connected, connecting with the last error, or off with the reason, and the reached machines, link proxy and kitshn's last sync. `machines_read` gives agents the same state.
@@ -271,7 +287,7 @@ Nightly desktop builds for macOS, Windows and Linux, plus Linux server archives 
 A signed Android APK of fork main, on fork releases that changed the app. It installs next to the store app and speaks the protocol of fork main.
 
 - **Install:** on the phone, add the app in Obtainium from `https://apk.yarden-zamir.com/index.html` (HTML source) with the link filter `t3code-.*-android\.apk`. Each new build shows as an update and downloads from Cloudflare. The GitHub repo `https://github.com/Yarden-zamir/t3code` also works as a source, with "Include prereleases" on and the APK filter `android\.apk$`, but downloads from GitHub.
-- **Mirror:** `apk.yarden-zamir.com` is a kitshn Worker app (`kitshn.config.ts`, `scripts/apk-mirror/worker.js`) that lists the release APKs at `/index.html`, redirects `/latest/t3code-android.apk` to the newest one, and serves each APK from Cloudflare's cache after its first download from GitHub. The list refreshes within 5 minutes of a release.
+- **Mirror:** `apk.yarden-zamir.com` is a kitshn Worker app (`kitshn.config.ts`, `scripts/apk-mirror/worker.js`) that lists the release APKs at `/index.html`, redirects `/latest/t3code-android.apk` to the newest one, and serves each APK from Cloudflare's cache after its first download from GitHub. The list refreshes within 5 minutes of a release. When GitHub refuses the Worker's call, the last good list stays in use for 30 days; a GitHub secret `KITSHN_GITHUB_TOKEN` lifts the limit (K-808).
 - **Install by hand:** open the APK of the newest release that has one, and allow installs from that browser. Install a newer APK over it to update. Most releases have no APK, because only a release that changed the app builds one.
 - **Limits:**
   - No push notifications, because the build has no `google-services.json`. Revisit when the fork has a Firebase project.
@@ -450,6 +466,7 @@ Tabs under the sidebar search hold threads. A thread lives in one tab, so the ta
   - The hosted app at app.t3.codes has no primary server to keep the tabs, so it shows no tabs. Revisit if hosted clients get a place for shared settings.
   - When two devices change tabs at the same moment, the last change wins. Revisit if tabs get lost in practice.
   - A machine without the map role `edit`, or off the map, keeps a change on its own server only.
+  - A person in a kitshn circle gets their own tabs: their edits go into the part of their first circle. See [Settings by circle](#settings-by-circle).
   - Tabs were called groups before. A server moves `sidebarGroups` and `mobileSidebarGroups` in `settings.json` to the new keys once at start, and renames the old `sidebar.group.*`, `sidebar.previousGroup` and `sidebar.nextGroup` keybindings. A client moves `sidebarGroupsEnabled` and `sidebarGroupSingleThreadOpens` when it loads. A machine on an older version keeps the old keys, so it does not sync tabs with a machine on a newer version until both update. The open tab resets to "Threads" once.
   - Applies only after upstream thread groups merge ([pingdotgg/t3code#15988](https://github.com/pingdotgg/t3code/pull/15988) "feat: related threads stay together as a group"): a nested thread always shows in the tab of its top thread, so a nested group never splits across tabs. This holds for views too. A drag or "Assign to tab" on a nested thread assigns its top thread. Fork Sync resolves that merge with this rule.
 
@@ -484,10 +501,12 @@ Thread links in chat open the thread in T3 Code, each message has a link of its 
   - **History:** on web and desktop, each jump to a message is a history entry. This includes links, pins and citations. Back and Forward return to where you were in each entry. A scroll by hand adds no entry. No setting turns this off.
 - **Desktop app:** only web browser tabs redirect. The desktop app, the installed web app and app.t3.codes never redirect.
 - **Links from other apps:** the desktop and mobile apps register the `t3-thread` scheme next to `t3code` (`t3-thread-dev` and `t3code-dev` in development). A web page or app can open `t3-thread://v2/<environmentId>/<threadId>#<messageId>` or `t3code://threads/<environmentId>/<threadId>?message=<messageId>`; the message is optional. The app opens the thread like a chip in chat. On the desktop app, a thread of an environment that the app does not know shows "Thread on another machine". The OS hands these links to the app directly, so they work with `threadAddressing` off. The setting controls only the handoff from a browser tab. On mobile, the scheme needs a new native build.
+- **MCP clients outside T3 Code:** a thread result gives `link`, the web address of the thread on the server that the client reached, and `appLink`, the `t3-thread://v2` link that opens the desktop app and the fork Android app, with `#<messageId>` for a message. The fork does not use upstream's app.t3.codes link. `link` is unchanged from fork main; `appLink` is new. See [Fork tools for agents](../fork-agents.md#find-the-tools).
 - **Limits:**
   - On mobile, the project icon of the thread replaces the message icon in chat messages (upstream pingdotgg/t3code#22585). Revisit if message links on mobile need their marker back.
   - The app keeps the position of each history entry in memory, so after a reload Back opens the message of the entry again. On mobile, a jump in the same thread adds no Back step. On mobile, a reply hidden in the fold of a prompt without a run shows as not found. Revisit when upstream pingdotgg/t3code#19203 merges; then use its scroll code.
   - When the desktop app is not running, the link that starts it is lost (upstream pingdotgg/t3code#18613). Revisit when pingdotgg/t3code#18422 merges upstream.
+  - Copy thread, the thread chip and the mobile **Copy thread link** copy a Markdown `t3-thread://v2` link, not upstream's `https://app.t3.codes/threads/…` link. That hosted link opens only the browser, because the fork APK is not associated with app.t3.codes. A pasted hosted link still becomes a chip. Revisit when the fork has a hosted app with App Links for `com.yardenzamir.t3code`.
 
 ### Message pins
 
@@ -728,6 +747,8 @@ The theme that you select in Settings > Appearance is the one control. A publish
 
 Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
 
+- The sidebar wordmark link carries `data-fork-brand="wordmark"` and the environment pill carries `data-fork-brand="pill"`. Theme CSS can target these, and not the upstream labels, which change.
+
 #### Icons
 
 A published theme can replace app icons with its own SVGs, in the theme JSON field `icons`. Without it, every icon stays stock.
@@ -802,6 +823,14 @@ Back and forward buttons sit right of the sidebar toggle, like in VS Code. A but
   - The desktop app keeps at most 50 entries, and no forward entries: the start of the app is a new navigation.
   - In a browser without the Navigation API, such as an older Safari or Firefox, both buttons stay enabled, and a missing thread goes to a new thread instead of a skip.
   - Mouse buttons 4 and 5 and trackpad swipes do not go back or forward in the desktop app.
+
+### Hide T3 branding
+
+Hides the T3 Code wordmark in the top left of the sidebar and the build pill, such as "Dev" or "Nightly". New thread in the sidebar header, the command palette and its key still open the home view.
+
+- **Setting:** client setting `brandingHidden` (off by default). Settings > Appearance > Interface > "Hide T3 branding". kitshn syncs it.
+- **Works on:** web, desktop. The mobile app has no wordmark in its sidebar.
+- **Limits:** the standalone pages and the welcome wizard keep their wordmark.
 
 ### App context menu
 

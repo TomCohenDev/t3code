@@ -17,6 +17,7 @@ import {
   AuthTerminalReadScope,
 } from "./auth.ts";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import type { ClientSettings, ServerSettings } from "./settings.ts";
 
 /** An ISO 8601 time, for example `2026-10-13T08:00:00.000Z`. */
 export const MapTime = TrimmedNonEmptyString;
@@ -114,6 +115,8 @@ const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>
     "previousWorktreesDirectories",
     "addProjectBaseDirectory",
     "worktreePathTemplate",
+    // Global scripts live on one environment, so their pins do too.
+    "pinnedGlobalScriptIds",
     // Keyed by project id. A project id is local to one environment.
     "projectSettingsOverrides",
     "projectScriptOverrides",
@@ -152,6 +155,149 @@ export const withoutMachineLocalSettings = (
   values: Readonly<Record<string, unknown>>,
 ): SettingValues =>
   Object.fromEntries(Object.entries(values).filter(([key]) => !isMachineLocalSetting(scope, key)));
+
+/**
+ * Fork: settings that only shape what one person sees or does in a client. A circle part of
+ * `t3.settings` applies only these keys, so a circle never changes what a machine does.
+ * Every other key that is not machine-local is shared-only (`machineMap.test.ts` lists them).
+ */
+const CIRCLE_SERVER_SETTINGS = [
+  "sidebarTabs",
+  "mobileSidebarTabs",
+  "defaultTheme",
+  "threadCardLayouts",
+  "snoozePresets",
+  "favorites",
+  "mobileComposerCamera",
+  "mobileMessagePins",
+  "mobileNewThreadProject",
+  // Upstream thread tags: which tagged threads a person hides is that person's view.
+  "hiddenThreadTags",
+  "hideTaggedThreads",
+] as const satisfies ReadonlyArray<keyof ServerSettings>;
+
+const CIRCLE_CLIENT_SETTINGS = [
+  "appToggleShortcuts",
+  "appearanceContrast",
+  "backForwardButtons",
+  "backgroundWorkDetails",
+  "boringSidebarEnabled",
+  "boringSidebarMultilineRows",
+  "brandingHidden",
+  "browserAutoShowFloatingPreview",
+  "browserDefaultAppearance",
+  "browserDefaultViewport",
+  "browserDefaultZoomFactor",
+  "browserLinkTarget",
+  "browserRecordingFrameRate",
+  "browserRecordingShowKeyPresses",
+  "browserRecordingShowMousePresses",
+  "browserSearchEngine",
+  "chatWidth",
+  "composerRichTextEnabled",
+  "confirmQuit",
+  "confirmTerminalClose",
+  "confirmThreadArchive",
+  "confirmThreadDelete",
+  "confirmThreadUnpin",
+  "contextWindowMeterEnabled",
+  "currentProjectTerminalOpensThread",
+  "diffColorScheme",
+  "diffFilesCollapsed",
+  "diffIgnoreWhitespace",
+  "diffLayout",
+  "effortDisplay",
+  "environmentIdentificationMode",
+  "favorites",
+  "focusLevelHighlight",
+  "followUpBehavior",
+  "fontFamilyCode",
+  "fontFamilyComposer",
+  "fontFamilySans",
+  "fontFamilyTerminal",
+  "fontSizeCode",
+  "fontSizeInterface",
+  "fontSizePrompt",
+  "fontSizeTerminal",
+  "fontSmoothing",
+  "forkChangelogEnabled",
+  "glassOpacity",
+  "inAppNotificationAttentionStays",
+  "inAppNotificationClosesOnOpen",
+  "inAppNotificationCompletions",
+  "inAppNotificationSeconds",
+  "inAppNotificationsEnabled",
+  "installedAppEnabled",
+  "keyboardFocusLevels",
+  "legacySidebarEnabled",
+  "mathRenderingEnabled",
+  "messagePins",
+  "notificationMode",
+  "panelAnimationDurationMs",
+  "persistComposerContextStrip",
+  "planModeEnabled",
+  "proactivePanelsEnabled",
+  "providerModelPreferences",
+  "pullRequestFilters",
+  "pullRequestLinksOpenInApp",
+  "pullRequestMergeMethodOverrides",
+  "rememberBackForwardHistory",
+  "restartReconnectWarningGrace",
+  "sendShortcut",
+  "settingsFind",
+  "showSkillsInSlashMenu",
+  "sidebarFilters",
+  "sidebarProjectGroupingMode",
+  "sidebarProjectGroupingOverrides",
+  "sidebarProjectSortOrder",
+  "sidebarTabSingleThreadOpens",
+  "sidebarTabsEnabled",
+  "sidebarThreadSortOrder",
+  "sidebarWorkingShelfEnabled",
+  "snapShotAnimations",
+  "snapShotEnabled",
+  "snapShotFlash",
+  "snapShotIncludeAccessibility",
+  "snapShotPlaySound",
+  "snapShotShortcut",
+  "snapShotSound",
+  "terminalAppShortcutsFirst",
+  "terminalThreadFontSizeMax",
+  "terminalThreadFontSizeMin",
+  "threadDetailsItems",
+  "threadDetailsUsageEnabled",
+  "timestampFormat",
+  "tooltipShortcutLimit",
+  "tooltipShortcuts",
+  "wordWrap",
+] as const satisfies ReadonlyArray<keyof ClientSettings>;
+
+const CIRCLE_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>> = {
+  server: new Set(CIRCLE_SERVER_SETTINGS),
+  client: new Set(CIRCLE_CLIENT_SETTINGS),
+};
+
+export const isCircleSetting = (scope: SettingScope, key: string): boolean =>
+  CIRCLE_SETTINGS[scope].has(key);
+
+/** The circle-capable keys of a part; a circle part applies nothing else. */
+export const circleSettingsOnly = (part: ScopedSettingValues): ScopedSettingValues => ({
+  server: Object.fromEntries(
+    Object.entries(part.server).filter(([key]) => isCircleSetting("server", key)),
+  ),
+  client: Object.fromEntries(
+    Object.entries(part.client).filter(([key]) => isCircleSetting("client", key)),
+  ),
+});
+
+/** A kitshn circle that holds a card of this provider on this machine, for the settings picker. */
+export const SettingsCircle = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: Schema.String,
+  /** The map color, such as `#FF5277`; null when kitshn does not send one. */
+  color: Schema.NullOr(Schema.String),
+});
+export type SettingsCircle = typeof SettingsCircle.Type;
 
 /** Who made a change or sent a command (MM-702). */
 export const MapActor = Schema.Union([

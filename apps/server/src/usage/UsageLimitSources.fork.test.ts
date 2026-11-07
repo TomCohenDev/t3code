@@ -1,4 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -50,6 +51,10 @@ it.effect("adds a hub through the settings service without exposing its key in t
     expect(Object.keys((yield* settings.getSettings).usageLimitSources)).toHaveLength(1);
   }).pipe(
     Effect.provide([
+      Layer.succeed(SecretResolver.SecretResolver, {
+        read: (references) => Effect.succeed(references.map(() => undefined)),
+        invalidate: () => Effect.void,
+      }),
       ServerSettings.layerTest(),
       Layer.mock(BackgroundPolicy.BackgroundPolicy)({
         shouldRunScopeWork: () => Effect.succeed(false),

@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { createReadableThreadEnvironmentAtoms } from "@t3tools/client-runtime/state/readableThreadEnvironments";
 import {
   createEnvironmentRpcCommand,
@@ -24,6 +25,34 @@ export const shareMachineMapSettings = createEnvironmentRpcCommand(connectionAto
   tag: WS_METHODS.machineMapShareSettings,
   concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
 });
+
+/** The owner sets a circle part of `t3.settings` with the person picker of T3 Settings. */
+export const setMachineMapCircleSettings = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:machine-map:set-circle-settings",
+  tag: WS_METHODS.machineMapSetCircleSettings,
+  concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+});
+
+const machineMapStates = Atom.family((environmentIdsKey: string) =>
+  Atom.make((get) => {
+    const states = new Map<EnvironmentId, MachineMapClientState>();
+    for (const environmentId of JSON.parse(environmentIdsKey) as EnvironmentId[]) {
+      const state = AsyncResult.getOrElse(
+        get(machineMapState({ environmentId, input: {} })),
+        () => null,
+      );
+      if (state !== null) states.set(environmentId, state);
+    }
+    return states;
+  }).pipe(Atom.withLabel(`environment-data:machine-map:states:${environmentIdsKey}`)),
+);
+
+/** The kitshn client states of several environments, for rows that compare them. */
+export function useMachineMapStates(
+  environmentIds: ReadonlyArray<EnvironmentId>,
+): ReadonlyMap<EnvironmentId, MachineMapClientState> {
+  return useAtomValue(machineMapStates(JSON.stringify(environmentIds)));
+}
 
 export function useMachineMapState(environmentId: EnvironmentId | null): {
   readonly state: MachineMapClientState | null;

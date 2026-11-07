@@ -162,7 +162,7 @@ const setup = (
             ChildProcessSpawner.make((command) =>
               Effect.gen(function* () {
                 const { handle, child } = yield* makeChild(
-                  command._tag === "StandardCommand" ? command.args : [],
+                  command._tag === "StandardCommand" ? command.args.map(String) : [],
                 );
                 yield* Effect.addFinalizer(() => Deferred.succeed(child.stopped, undefined));
                 yield* Queue.offer(children, child);
@@ -474,7 +474,7 @@ it.layer(
         Stream.runHead,
       );
       expect(Option.getOrThrow(refused).detail).toContain(
-        "T3 speaks kitshn protocol 2.1.0 and the kitshn CLI speaks 3.0.0",
+        `T3 speaks kitshn protocol ${KITSHN_PROTOCOL} and the kitshn CLI speaks 3.0.0`,
       );
       yield* Queue.take(otherMajor.binaryCalls);
       yield* TestClock.adjust("5 seconds");

@@ -17,7 +17,6 @@ import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import type { KeybindingCommand } from "@t3tools/contracts";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   /** Fork: the Filter menu, which also sets the project scope. */
   projectScope: ReactNode;
@@ -39,7 +38,6 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   terminalThreadButton,
@@ -75,10 +73,7 @@ export function SidebarThreadHeader({
           command="sidebar.search"
           context={{ sidebarFocus: true }}
           render={
-            <div
-              ref={searchFieldRef}
-              className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70"
-            />
+            <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70" />
           }
         >
           <AppIcon slot="sidebar.search" className="text-(--sidebar-icon-color)" />

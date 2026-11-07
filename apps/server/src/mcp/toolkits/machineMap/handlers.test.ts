@@ -8,6 +8,7 @@ import * as Stream from "effect/Stream";
 import { McpSchema, McpServer } from "effect/ai";
 
 import * as MachineExec from "../../../fork/machineMap/MachineExec.ts";
+import { NO_CIRCLE_PARTS } from "../../../fork/kitshn/kitshnCircles.ts";
 import * as KitshnCli from "../../../fork/kitshn/KitshnCli.ts";
 import * as KitshnConnection from "../../../fork/kitshn/KitshnConnection.ts";
 import { registerAnswer } from "../../../fork/kitshn/KitshnConnection.testkit.ts";
@@ -91,6 +92,7 @@ const toolsWith = (
   const provider = {
     state: Stream.make({
       settings: { shared: { server: { a: 1 }, client: {} }, machine: null },
+      circleParts: NO_CIRCLE_PARTS,
       cardSettings: {},
       reach: [],
       syncedAt: null,
@@ -129,7 +131,7 @@ const toolsWith = (
     }),
   );
   return McpHttpServer.toolkitRegistration(MachineMapToolkit, MachineMapHandlers.layer).pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(threads),
     Layer.provide(Layer.mock(KitshnProvider.KitshnProvider)(provider)),
     // The real rule of the settings service, on the fake daemon connection.
@@ -238,6 +240,14 @@ it.effect("a setting goes into one part of the settings state, keeping its other
       value: "automatic",
     }).pipe(Effect.provide(tools));
     expect(resultText(agent)).toContain("Agents do not change the shared settings");
+    // A circle part holds the settings of people, so it follows the rule of the shared part.
+    const circle = yield* callTool(threadCaller, "machines_set_setting", {
+      part: "circle",
+      scope: "server",
+      key: "sidebarTabs",
+      value: {},
+    }).pipe(Effect.provide(tools));
+    expect(resultText(circle)).toContain("Agents do not change the settings of a circle");
     expect(requests).toEqual([]);
     const set = yield* callTool(ownerCaller, "machines_set_setting", {
       part: "shared",

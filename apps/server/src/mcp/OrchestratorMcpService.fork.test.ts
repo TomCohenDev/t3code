@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -30,7 +31,11 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import {
+  type McpInvocationScope,
+  threadAppLinkFor,
+  threadLinkFor,
+} from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 
 const parentThreadId = ThreadId.make("thread:mcp-terminal-parent");
@@ -98,7 +103,7 @@ const terminalProvider: ServerProvider = {
 };
 
 const layerDependencies = Layer.mergeAll(
-  NodeServices.layer,
+  Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
   Layer.mock(ThreadManagementService.ThreadManagementService)({
     hasReceipt: () => Effect.succeed(false),
     getThreadRecords: () => Effect.succeed(parentProjection),
@@ -215,4 +220,31 @@ describe("OrchestratorMcpService terminal threads and exec", () => {
       assert.equal(error.code, "capability_denied");
     }).pipe(Effect.provide(layerBoundTask)),
   );
+});
+
+describe("MCP thread links", () => {
+  const environmentId = EnvironmentId.make("env:one");
+  const threadId = ThreadId.make("thread:delegated-task:mcp%3A1");
+  const encoded = "env%3Aone/thread%3Adelegated-task%3Amcp%253A1";
+
+  it("gives an outside client the address on the origin it reached and the t3-thread app link", () => {
+    const outside = {
+      environmentId,
+      client: {
+        sessionId: "s",
+        label: "Outside",
+        access: "full-access" as const,
+        webOrigin: "https://box.example.ts.net",
+      },
+    };
+    assert.strictEqual(threadLinkFor(outside, threadId), `https://box.example.ts.net/${encoded}`);
+    assert.strictEqual(threadAppLinkFor(outside, threadId), `t3-thread://v2/${encoded}`);
+  });
+
+  it("keeps the t3-thread link of a client in T3 Code", () => {
+    assert.strictEqual(
+      threadLinkFor({ environmentId, client: undefined }, threadId),
+      "<t3-thread://v2/env:one/thread:delegated-task:mcp%3A1>",
+    );
+  });
 });

@@ -3,7 +3,7 @@ import { ProjectId } from "@t3tools/contracts";
 import { PermissionsAndroid, Platform, View, type Permission } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import * as Dialog from "../../components/ui/Dialog";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
@@ -123,7 +123,7 @@ export function SettingsVoiceRouteScreen() {
       {Platform.OS === "android" ? (
         <>
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title="Voice" onBack={() => navigation.goBack()} />
+          <AppBar embedded title="Voice" onBack={() => navigation.goBack()} />
         </>
       ) : null}
       <ScrollView

@@ -117,7 +117,7 @@ function SettingsContentLayout() {
     location.pathname === "/settings/machines"
       ? environment?.environmentId
       : // Only the scope remounts the page; page params such as `command` keep its state.
-        JSON.stringify([search.project, search.machine, search.checkout]);
+        JSON.stringify([search.project, search.machine, search.checkout, search.circle]);
   const [restoreSignal, setRestoreSignal] = useState(0);
 
   return (
@@ -169,6 +169,7 @@ function SettingsRouteLayout() {
             project: next.project,
             machine: next.machine,
             checkout: next.checkout,
+            circle: next.circle,
           }),
           hash: "",
           resetScroll: false,
