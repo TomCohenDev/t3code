@@ -18,7 +18,7 @@ export function ThreadBackupMachineRow() {
   return (
     <SettingsRow
       {...searchableSetting("thread-backup-machine")}
-      description="The machine map name of a machine that keeps a copy of the transcripts of this machine's threads. While this machine is offline, Continue on another machine reads that copy. The arrow to that machine must allow standard access. Leave empty to keep no copy."
+      description="The kitshn name of a machine that keeps a copy of this machine's thread transcripts, for Continue on another machine while this one is offline. Needs standard access. Empty keeps no copy."
       serverScoped
       settingKeys={["threadBackupMachine"]}
       resetAction={
