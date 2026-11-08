@@ -762,12 +762,14 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     missingFiles: Schema.optionalKey(Schema.Array(Schema.String)),
     fileCount: Schema.optionalKey(Schema.Int),
     fileLimit: Schema.optionalKey(Schema.Int),
+    files: Schema.optionalKey(Schema.Array(Schema.String)),
     cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {
   override get message(): string {
     if (this.reason === "file-limit-exceeded") {
-      return `Windows packaged payload contains ${String(this.fileCount)} files; expected at most ${String(this.fileLimit)}.`;
+      const files = (this.files ?? []).map((file) => `\n  ${file}`).join("");
+      return `Windows packaged payload contains ${String(this.fileCount)} files; expected at most ${String(this.fileLimit)}.${files}`;
     }
     if (this.reason === "unpacked-native-missing") {
       return `Windows server sidecar is missing ${String(this.missingFiles?.length ?? 0)} unpacked native files.`;
@@ -989,6 +991,11 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!**/node_modules/@cursor/sdk-*/**/*",
   "!apps/desktop/prod-resources/cursor-sdk",
   "!apps/desktop/prod-resources/cursor-sdk/**/*",
+  // Packaged apps run the extraResources copy, so ASAR copies only add loose unpacked files.
+  "!apps/desktop/resources/resource-monitor",
+  "!apps/desktop/resources/resource-monitor/**/*",
+  "!apps/desktop/prod-resources/resource-monitor",
+  "!apps/desktop/prod-resources/resource-monitor/**/*",
   // The installed Claude CLI is supplied explicitly; exclude optional bundled executables, retaining SDK JavaScript.
   "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
   "!**/*.map",
@@ -1062,7 +1069,9 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
   ];
 }
 
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
+// Fork: upstream allows 80 from a Linux build. The fork builds on Windows, which adds the server
+// compile cache and the ConPTY files. Lower it again if the fork release moves to a Linux runner.
+export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 100;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
 export const WINDOWS_SERVER_EXTRA_RESOURCES = [
   {
@@ -3183,11 +3192,11 @@ function collectUnpackedAsarFiles(
   return output;
 }
 
-const countPayloadFiles = Effect.fn("desktopArtifact.countPayloadFiles")(function* (root: string) {
+const listPayloadFiles = Effect.fn("desktopArtifact.listPayloadFiles")(function* (root: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const pendingDirectories = [root];
-  let count = 0;
+  const files: string[] = [];
 
   while (pendingDirectories.length > 0) {
     const directory = pendingDirectories.pop();
@@ -3199,12 +3208,12 @@ const countPayloadFiles = Effect.fn("desktopArtifact.countPayloadFiles")(functio
       if (stat.type === "Directory") {
         pendingDirectories.push(entryPath);
       } else if (stat.type === "File") {
-        count += 1;
+        files.push(path.relative(root, entryPath).split(path.sep).join("/"));
       }
     }
   }
 
-  return count;
+  return files.toSorted();
 });
 
 export const verifyWindowsPrimaryFffNativeLoad = Effect.fn(
@@ -3514,13 +3523,15 @@ export const validateWindowsPackagedPayload = Effect.fn(
     }
   }
 
-  const fileCount = yield* countPayloadFiles(packagedAppDir);
+  const payloadFiles = yield* listPayloadFiles(packagedAppDir);
+  const fileCount = payloadFiles.length;
   if (fileCount > fileLimit) {
     return yield* new WindowsPackagedPayloadValidationError({
       reason: "file-limit-exceeded",
       packagedAppDir,
       fileCount,
       fileLimit,
+      files: payloadFiles,
     });
   }
 

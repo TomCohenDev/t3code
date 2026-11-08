@@ -1311,6 +1311,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.instanceOf(error, WindowsPackagedPayloadValidationError);
         assert.equal(error.reason, "file-limit-exceeded");
         assert.isAbove(error.fileCount ?? 0, 2);
+        assert.equal(error.files?.length, error.fileCount);
+        assert.deepStrictEqual(error.files, error.files?.toSorted());
+        assert.isTrue(error.files?.includes("resources/resource-monitor/t3-resource-monitor.exe"));
+        assert.include(error.message, "\n  resources/resource-monitor/t3-resource-monitor.exe");
       }),
     ),
   );
