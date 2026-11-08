@@ -523,7 +523,10 @@ export default defineConfig({
       },
       {
         files: ["apps/web/src/**"],
-        rules: { "t3code/max-settings-description-length": "error" },
+        rules: {
+          "t3code/max-settings-description-length": "error",
+          "t3code/no-shortcut-text-in-tooltip": "error",
+        },
       },
       {
         files: ["apps/*/src/**", "packages/*/src/**"],

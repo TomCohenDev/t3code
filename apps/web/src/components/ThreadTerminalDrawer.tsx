@@ -1941,7 +1941,8 @@ export default function ThreadTerminalDrawer({
             onClick={onNewTerminalAction}
             disabled={!canOperateTerminal}
           >
-            {newTerminalActionLabel}
+            New Terminal
+            <ShortcutHint command="terminal.new" context={TERMINAL_CONTEXT} />
           </Button>
         </div>
       </aside>
