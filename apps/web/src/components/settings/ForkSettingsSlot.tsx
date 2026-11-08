@@ -55,7 +55,6 @@ import { ThreadCardLayoutSettingsRows } from "./ThreadCardLayoutSettings";
 import { ThreadAddressingSettingsRow } from "./ThreadAddressingSettingsRow";
 import { ThreadBackupMachineRow } from "./ThreadBackupMachineRow";
 import { TunnelPairingSettingsRow } from "./TunnelPairingSettingsRow";
-import { VoiceInputSettingsRow } from "./VoiceInputSettings";
 import { WebPushSettingsRow } from "./WebPushSettingsRow";
 import { WorktreePathTemplateRow } from "./WorktreePathTemplateRow";
 import {
@@ -93,7 +92,6 @@ export const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>
   "fork-changelog": ForkChangelogSettingsRow,
   "recover-interrupted-turns": RecoverInterruptedTurnsSettings,
   "background-work-details": BackgroundWorkDetailsSettingsRow,
-  "voice-input-openai-key": VoiceInputSettingsRow,
   "message-pins": MessagePinsSettingsRow,
   "prefer-origin-remote": PreferOriginRemoteSettingsRow,
   "pull-request-watch-roles": PullRequestWatchSettingsRows,

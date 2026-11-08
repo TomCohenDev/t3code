@@ -146,7 +146,6 @@ const FORK_SETTING_GROUPS = [
         linkOnly: true,
       },
       { ids: ["background-work-details"], place: "general-display" },
-      { ids: ["voice-input-openai-key"], place: "general-composer" },
       { ids: ["prefer-origin-remote"], place: "source-control-fork-checkouts" },
       {
         ids: [

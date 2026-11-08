@@ -7,7 +7,6 @@ import {
   type VoiceInputPhase,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
-import type { EnvironmentId } from "@t3tools/contracts";
 
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
@@ -18,8 +17,6 @@ const SILENT_LEVELS: ReadonlyArray<number> = Array<number>(VOICE_WAVEFORM_SAMPLE
 export type VoiceInputTarget = {
   readonly ownerKey: string;
   readonly label?: string;
-  /** The environment that transcribes when this device cannot. */
-  readonly environmentId?: EnvironmentId | null;
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: VoiceInputControllerDependencies["commitDraft"];
   readonly subscribe: () => () => void;
@@ -116,10 +113,6 @@ export class VoiceInputSession {
 
   get label(): string | null {
     return this.target?.label ?? null;
-  }
-
-  get environmentId(): EnvironmentId | null {
-    return this.target?.environmentId ?? null;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {

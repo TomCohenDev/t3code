@@ -34,7 +34,6 @@ import * as ForkUpdates from "./ForkUpdates.ts";
 import { isMachineSubject } from "./machineMap/machineAccess.ts";
 import * as KitshnProvider from "./kitshn/KitshnProvider.ts";
 import * as KitshnSettingsSync from "./kitshn/KitshnSettingsSync.ts";
-import * as VoiceTranscription from "./voiceInput/VoiceTranscription.ts";
 import * as MachinePeers from "./machineMap/MachinePeers.ts";
 import * as PreviewServerGroups from "./PreviewServerGroups.ts";
 import * as ThreadBackups from "./threadBackup/ThreadBackups.ts";
@@ -152,7 +151,6 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
       const environment = yield* ServerEnvironment.ServerEnvironment;
       const webPush = yield* WebPush.WebPush;
       const threadBackups = yield* ThreadBackups.ThreadBackups;
-      const voiceTranscription = yield* VoiceTranscription.VoiceTranscription;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const previewServerGroups = yield* PreviewServerGroups.PreviewServerGroups;
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
@@ -196,7 +194,6 @@ export const layerForkWsRpc = (currentSession: EnvironmentAuth.AuthenticatedSess
           webPush.publicKey.pipe(Effect.map((publicKey) => ({ publicKey }))),
         [FORK_WS_METHODS.webPushSubscribe]: (input) => webPush.subscribe(input).pipe(Effect.as({})),
         [FORK_WS_METHODS.webPushTest]: (input) => webPush.test(input.endpoint),
-        [FORK_WS_METHODS.voiceInputTranscribe]: (input) => voiceTranscription.transcribe(input),
         [FORK_WS_METHODS.forkThreadBackupGet]: (input) => threadBackups.get(input),
         // The scanner polls only while retained, as for `subscribeDiscoveredLocalServers`.
         [FORK_WS_METHODS.forkPreviewSubscribeLocalListeners]: (_input) =>

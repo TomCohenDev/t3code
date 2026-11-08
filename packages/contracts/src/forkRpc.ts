@@ -7,7 +7,6 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import {
   AuthEnvironmentMaintainScope,
-  AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
@@ -50,11 +49,6 @@ import {
   WebPushSubscribeInput,
   WebPushTestResult,
 } from "./webPush.ts";
-import {
-  VoiceTranscribeInput,
-  VoiceTranscribeResult,
-  VoiceTranscriptionRequestError,
-} from "./voiceInput.ts";
 
 export const FORK_WS_METHODS = {
   // Fork changelog (fork feature)
@@ -75,8 +69,6 @@ export const FORK_WS_METHODS = {
   webPushSubscribe: "webPush.subscribe",
   webPushTest: "webPush.test",
 
-  // Fork: environment-backed voice input (voiceInput.ts)
-  voiceInputTranscribe: "voiceInput.transcribe",
   // Fork: preview local server groups (forkPreview.ts)
   forkPreviewSubscribeLocalListeners: "forkPreview.subscribeLocalListeners",
 
@@ -172,12 +164,6 @@ const WsWebPushTestRpc = Rpc.make(FORK_WS_METHODS.webPushTest, {
   error: webPushError,
 });
 
-/** Fork: transcribes a pending file attachment, then deletes it. */
-const WsVoiceInputTranscribeRpc = Rpc.make(FORK_WS_METHODS.voiceInputTranscribe, {
-  payload: VoiceTranscribeInput,
-  success: VoiceTranscribeResult,
-  error: Schema.Union([VoiceTranscriptionRequestError, EnvironmentAuthorizationError]),
-});
 /** Fork: every local listener that the upstream list leaves out, again on each change. */
 const WsForkPreviewSubscribeLocalListenersRpc = Rpc.make(
   FORK_WS_METHODS.forkPreviewSubscribeLocalListeners,
@@ -235,7 +221,6 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsWebPushPublicKeyRpc,
   WsWebPushSubscribeRpc,
   WsWebPushTestRpc,
-  WsVoiceInputTranscribeRpc,
   WsForkPreviewSubscribeLocalListenersRpc,
   WsForkThreadBackupGetRpc,
   WsVcsPrepareDraftWorktreeRpc,
@@ -253,8 +238,6 @@ export const FORK_CLIENT_GUARDED_RPC_SCOPES = {
   // Fork: sets the values of a circle of people on every machine.
   [FORK_WS_METHODS.machineMapSetCircleSettings]: AuthSettingsWriteScope,
   // Fork: the local desktop app reports desktop command results and its waiting update.
-  // Fork: spends the environment's OpenAI key, the grant that uploading attachments needs.
-  [FORK_WS_METHODS.voiceInputTranscribe]: AuthOrchestrationOperateScope,
   // Fork: creates a worktree, as `vcs.createWorktree` does, and runs the project setup script.
   [FORK_WS_METHODS.vcsPrepareDraftWorktree]: AuthSourceControlWriteScope,
   // Fork: takes over a running terminal, as `terminal.open` and `terminal.close` need.

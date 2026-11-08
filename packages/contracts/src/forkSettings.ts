@@ -496,14 +496,6 @@ export const ForkServerSettingsFields = {
    */
   keybindingSync: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: the OpenAI API key that transcribes voice input for every client of this environment.
-   * Empty turns environment voice input off. A secret: `settings.ts` imports this module, so the
-   * key annotation is written here instead of through `secretSetting`.
-   */
-  voiceTranscriptionOpenAiApiKey: TrimmedString.pipe(
-    Schema.withDecodingDefault(Effect.succeed("")),
-  ).annotateKey({ settingsSecret: true }),
-  /**
    * Fork: the preview "Local servers" list also shows local listeners that no T3 terminal owns,
    * in groups: same worktree, same project, then all others. A server setting, because this
    * server reads the process folders and sends the HTTP checks, for every client.
@@ -580,8 +572,6 @@ export const ForkServerSettingsPatchFields = {
   preferOriginRemote: Schema.optionalKey(Schema.Boolean),
   threadAddressing: Schema.optionalKey(Schema.Boolean),
   keybindingSync: Schema.optionalKey(Schema.Boolean),
-  /** An empty value removes the saved key; the redaction marker keeps it. */
-  voiceTranscriptionOpenAiApiKey: Schema.optionalKey(TrimmedString),
   previewLocalServerGroups: Schema.optionalKey(Schema.Boolean),
   mobilePublishedThemes: Schema.optionalKey(Schema.Boolean),
   mobileNewThreadProject: Schema.optionalKey(MobileNewThreadProject),
