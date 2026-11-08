@@ -99,7 +99,6 @@ function Harness() {
           canPin: () => false,
           togglePin: () => {},
           isPinShortcut: () => false,
-          pinShortcutLabel: null,
           openSettings: () => {},
           environmentBadge: null,
         }}
