@@ -1890,7 +1890,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
   const voiceSendDisabledReason =
     sendDisabledReason ?? (speechInput.preparing ? "Preparing voice input" : null);
-  const dictationShortcutLabel = useDictationShortcut({
+  useDictationShortcut({
     keybindings,
     speech: speechInput,
     disabled: dictationDisabled,
@@ -3707,8 +3707,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         <ComposerSpeechRecordingPill
                           state={speechInput.state}
                           progress={null}
-                          finishShortcutLabel={dictationShortcutLabel}
-                          cancelShortcutLabel="Esc"
                           level={speechInput.level}
                           disabled={dictationDisabled}
                           onStart={() => void speechInput.start()}
@@ -3719,7 +3717,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         <ComposerSpeechButton
                           state={speechInput.state}
                           progress={null}
-                          shortcutLabel={dictationShortcutLabel}
                           disabled={dictationDisabled}
                           onStart={() => void speechInput.start()}
                           onCancel={() => speechInput.cancel()}

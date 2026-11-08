@@ -52,7 +52,7 @@ export function useTextFieldSpeech(input: {
       });
     },
   });
-  const shortcutLabel = useDictationShortcut({
+  useDictationShortcut({
     keybindings,
     speech,
     disabled: input.disabled ?? false,
@@ -60,7 +60,7 @@ export function useTextFieldSpeech(input: {
     modelPickerOpen: false,
     targetRef: input.textareaRef,
   });
-  return { ...speech, shortcutLabel };
+  return speech;
 }
 
 export type TextFieldSpeech = ReturnType<typeof useTextFieldSpeech>;
@@ -85,8 +85,6 @@ export function TextFieldSpeechControls({
           state={speech.state}
           progress={null}
           level={speech.level}
-          finishShortcutLabel={speech.shortcutLabel}
-          cancelShortcutLabel="Esc"
           disabled={disabled}
           onStart={() => void speech.start()}
           onStop={() => void speech.stop()}
@@ -97,7 +95,6 @@ export function TextFieldSpeechControls({
           <ComposerSpeechButton
             state={speech.state}
             progress={null}
-            shortcutLabel={speech.shortcutLabel}
             disabled={disabled}
             onStart={() => void speech.start()}
             onCancel={speech.cancel}
