@@ -9,7 +9,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { useRef, useState } from "react";
 
 import { openCommandPalette } from "~/commandPaletteBus";
-import { shortcutLabelForCommand } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
@@ -354,7 +353,6 @@ export function DraftHeroHeadline({
                   <ProjectPinButton
                     name={entry.group.displayName}
                     pinned={entry.group.pinned}
-                    shortcutLabel={shortcutLabelForCommand(keybindings, "thread.pin")}
                     onToggle={() => toggleProjectGroupPin(entry.group)}
                   />
                 ) : null}

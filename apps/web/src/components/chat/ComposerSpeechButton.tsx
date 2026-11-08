@@ -8,6 +8,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { KeyHint, ShortcutHint, ShortcutTrigger } from "../focusLevels/ShortcutHint";
 
 type SpeechPresentation = {
   status: string | null;
@@ -141,11 +142,7 @@ function ComposerSpeechStatus(props: {
   );
 }
 
-function ComposerSpeechCancelButton(props: {
-  state: VoiceInputState;
-  shortcutLabel?: string | null;
-  onCancel(): void;
-}) {
+function ComposerSpeechCancelButton(props: { state: VoiceInputState; onCancel(): void }) {
   if (props.state.phase === "idle") return null;
   const label = props.state.phase === "error" ? "Dismiss voice input error" : "Cancel voice input";
 
@@ -168,7 +165,7 @@ function ComposerSpeechCancelButton(props: {
       />
       <TooltipPopup side="top">
         {label}
-        {props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}
+        <KeyHint label="Esc" />
       </TooltipPopup>
     </Tooltip>
   );
@@ -177,7 +174,6 @@ function ComposerSpeechCancelButton(props: {
 export function ComposerSpeechButton(props: {
   state: VoiceInputState;
   progress: { downloaded: number; total: number } | null;
-  shortcutLabel?: string | null;
   disabled?: boolean;
   onStart(): void;
   onCancel(): void;
@@ -189,7 +185,8 @@ export function ComposerSpeechButton(props: {
 
   return (
     <Tooltip>
-      <TooltipTrigger
+      <ShortcutTrigger
+        command="composer.dictation"
         render={
           <Button
             type="button"
@@ -210,7 +207,7 @@ export function ComposerSpeechButton(props: {
       />
       <TooltipPopup side="top">
         {label}
-        {props.shortcutLabel ? ` (${props.shortcutLabel})` : ""}
+        <ShortcutHint command="composer.dictation" />
       </TooltipPopup>
     </Tooltip>
   );
@@ -219,8 +216,6 @@ export function ComposerSpeechButton(props: {
 export function ComposerSpeechRecordingPill(props: {
   state: VoiceInputState;
   progress: { downloaded: number; total: number } | null;
-  finishShortcutLabel?: string | null;
-  cancelShortcutLabel?: string | null;
   level: number;
   recordingLimitSeconds?: number | undefined;
   onStart(): void;
@@ -236,7 +231,6 @@ export function ComposerSpeechRecordingPill(props: {
         error={props.state.error}
         errorAction={props.state.errorAction}
         disabled={props.disabled ?? false}
-        cancelShortcutLabel={props.cancelShortcutLabel ?? null}
         onRetry={props.onStart}
         onDismiss={props.onCancel}
       />
@@ -250,11 +244,7 @@ export function ComposerSpeechRecordingPill(props: {
 
   return (
     <VoiceInputPill>
-      <ComposerSpeechCancelButton
-        state={props.state}
-        shortcutLabel={props.cancelShortcutLabel ?? null}
-        onCancel={props.onCancel}
-      />
+      <ComposerSpeechCancelButton state={props.state} onCancel={props.onCancel} />
       <ComposerSpeechStatus
         state={props.state}
         progress={props.progress}
@@ -274,7 +264,8 @@ export function ComposerSpeechRecordingPill(props: {
         </Button>
       ) : (
         <Tooltip>
-          <TooltipTrigger
+          <ShortcutTrigger
+            command={presentation.confirmEnabled ? "composer.dictation" : null}
             render={
               <Button
                 type="button"
@@ -291,9 +282,7 @@ export function ComposerSpeechRecordingPill(props: {
           />
           <TooltipPopup side="top">
             {label}
-            {presentation.confirmEnabled && props.finishShortcutLabel
-              ? ` (${props.finishShortcutLabel})`
-              : ""}
+            {presentation.confirmEnabled ? <ShortcutHint command="composer.dictation" /> : null}
           </TooltipPopup>
         </Tooltip>
       )}

@@ -38,6 +38,7 @@ import {
   packWindowsServerAsar,
   preflightWindowsDesktopBuild,
   renderMacPasskeyEntitlements,
+  renderMacSelfSignedEntitlements,
   resolveMacFileExclusions,
   resolveMacWebAuthnEntitlements,
   resolveMacPasskeySigningConfiguration,
@@ -527,6 +528,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
         undefined,
       );
+
+      const selfSigned = yield* createBuildConfig("mac", "dmg", "0.0.33", true, false, undefined, {
+        entitlementsPath: "/tmp/entitlements.mac.plist",
+      });
+      const selfSignedMac = selfSigned.mac as Record<string, unknown>;
+      assert.equal(selfSignedMac.entitlements, "/tmp/entitlements.mac.plist");
+      assert.notProperty(selfSignedMac, "provisioningProfile");
 
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
@@ -1311,6 +1319,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.instanceOf(error, WindowsPackagedPayloadValidationError);
         assert.equal(error.reason, "file-limit-exceeded");
         assert.isAbove(error.fileCount ?? 0, 2);
+        assert.equal(error.files?.length, error.fileCount);
+        assert.deepStrictEqual(error.files, error.files?.toSorted());
+        assert.isTrue(error.files?.includes("resources/resource-monitor/t3-resource-monitor.exe"));
+        assert.include(error.message, "\n  resources/resource-monitor/t3-resource-monitor.exe");
       }),
     ),
   );
@@ -1449,6 +1461,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.match(entitlements, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
     assert.notInclude(entitlements, "keychain-access-groups");
     assert.notInclude(entitlements, "com.apple.developer.web-browser.public-key-credential");
+
+    const selfSigned = renderMacSelfSignedEntitlements();
+    assert.match(selfSigned, /<key>com\.apple\.security\.device\.camera<\/key>\s*<true\/>/u);
+    assert.match(selfSigned, /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/u);
+    assert.notInclude(selfSigned, "com.apple.developer.team-identifier");
+    assert.notInclude(selfSigned, "com.apple.application-identifier");
   });
 
   it("grants in-app browser passkey entitlements only when the provisioning profile does", () => {

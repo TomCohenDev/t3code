@@ -277,7 +277,6 @@ function CommandPaletteResultRow(props: {
           name={props.item.pin.name}
           pinned={props.item.pin.pinned}
           onToggle={props.item.pin.toggle}
-          shortcutLabel={shortcutLabelForCommand(props.keybindings, "thread.pin")}
         />
       ) : null}
       {props.item.timestamp ? (

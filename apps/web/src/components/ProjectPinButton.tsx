@@ -5,7 +5,11 @@ import type { KeyboardEvent } from "react";
 import { resolveShortcutCommand } from "../keybindings";
 
 import { cn } from "~/lib/utils";
+import { ShortcutHint } from "./focusLevels/ShortcutHint";
 import { Button } from "./ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
+const PIN_SHORTCUT_CONTEXT = { modelPickerOpen: false, editableFocus: true };
 
 /** The thread pin shortcut, which pins the highlighted row in a project list. */
 export function isProjectPinShortcut(
@@ -15,7 +19,7 @@ export function isProjectPinShortcut(
   return (
     resolveShortcutCommand(event.nativeEvent, keybindings, {
       platform: navigator.platform,
-      context: { modelPickerOpen: false, editableFocus: true },
+      context: PIN_SHORTCUT_CONTEXT,
     }) === "thread.pin"
   );
 }
@@ -29,7 +33,6 @@ export function ProjectPinButton(props: {
   readonly name: string;
   readonly pinned: boolean;
   readonly onToggle: () => void;
-  readonly shortcutLabel?: string | null;
 }) {
   const action = `${props.pinned ? "Unpin" : "Pin"} ${props.name}`;
   return (
@@ -39,29 +42,38 @@ export function ProjectPinButton(props: {
         !props.pinned && "opacity-0 in-data-highlighted:opacity-100 pointer-coarse:opacity-100",
       )}
     >
-      <Button
-        size="icon-xs"
-        variant="ghost-muted"
-        tabIndex={-1}
-        aria-hidden="true"
-        title={props.shortcutLabel ? `${action} (${props.shortcutLabel})` : action}
-        onPointerDown={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          props.onToggle();
-        }}
-      >
-        {props.pinned ? (
-          <>
-            <PinIcon className="size-3.5 group-hover/pin:hidden" />
-            <PinOffIcon className="hidden size-3.5 group-hover/pin:block" />
-          </>
-        ) : (
-          <PinIcon className="size-3.5" />
-        )}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost-muted"
+              tabIndex={-1}
+              aria-hidden="true"
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                props.onToggle();
+              }}
+            />
+          }
+        >
+          {props.pinned ? (
+            <>
+              <PinIcon className="size-3.5 group-hover/pin:hidden" />
+              <PinOffIcon className="hidden size-3.5 group-hover/pin:block" />
+            </>
+          ) : (
+            <PinIcon className="size-3.5" />
+          )}
+        </TooltipTrigger>
+        <TooltipPopup>
+          {action}
+          <ShortcutHint command="thread.pin" context={PIN_SHORTCUT_CONTEXT} />
+        </TooltipPopup>
+      </Tooltip>
     </span>
   );
 }

@@ -81,7 +81,6 @@ export interface SidebarFilterProjectRows {
   readonly canPin: (group: SidebarProjectSnapshot) => boolean;
   readonly togglePin: (group: SidebarProjectSnapshot) => void;
   readonly isPinShortcut: (event: ReactKeyboardEvent) => boolean;
-  readonly pinShortcutLabel: string | null;
   readonly openSettings: (group: SidebarProjectSnapshot) => void;
   /** Set when projects span machines: the badge names the machines of each project. */
   readonly environmentBadge: Omit<ComponentProps<typeof ProjectEnvironmentBadge>, "group"> | null;
@@ -294,7 +293,6 @@ function SidebarFilterValues(props: {
                 <ProjectPinButton
                   name={option.label}
                   pinned={group.pinned}
-                  shortcutLabel={projectRows.pinShortcutLabel}
                   onToggle={() => projectRows.togglePin(group)}
                 />
               ) : null}

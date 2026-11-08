@@ -3145,7 +3145,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     canPin: canPinProject,
                     togglePin: toggleProjectGroupPin,
                     isPinShortcut: (event) => isProjectPinShortcut(event, keybindings),
-                    pinShortcutLabel: shortcutLabelForCommand(keybindings, "thread.pin"),
                     openSettings: (group) => openProjectSettings(group),
                     environmentBadge: showProjectEnvironments
                       ? { primaryEnvironmentId, machineByEnvironmentId: environmentMachineById }

@@ -2,6 +2,7 @@ import { MICROPHONE_PERMISSION_ERROR } from "@t3tools/client-runtime/voice-input
 import { useNavigate } from "@tanstack/react-router";
 import { RotateCcwIcon, SettingsIcon, XIcon } from "lucide-react";
 
+import { KeyHint } from "../focusLevels/ShortcutHint";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { VoiceInputPill } from "./VoiceInputPill";
@@ -34,7 +35,6 @@ export function VoiceInputErrorPill(props: {
   error: string | null;
   errorAction: "retry" | "settings" | null;
   disabled?: boolean;
-  cancelShortcutLabel?: string | null;
   onRetry(): void;
   onDismiss(): void;
 }) {
@@ -65,7 +65,7 @@ export function VoiceInputErrorPill(props: {
         />
         <TooltipPopup side="top">
           Dismiss voice input error
-          {props.cancelShortcutLabel ? ` (${props.cancelShortcutLabel})` : ""}
+          <KeyHint label="Esc" />
         </TooltipPopup>
       </Tooltip>
       <Tooltip>
