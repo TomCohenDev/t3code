@@ -83,7 +83,6 @@ const FORK_PAGE_ROWS: Record<
   mobileMessagePins: "mobile-message-pins",
   mobileSidebarTabs: "mobile-sidebar-tabs",
   inkwireWhiteFrame: "inkwire-white-frame",
-  voiceTranscriptionOpenAiApiKey: "voice-input-openai-key",
   threadBackupMachine: "thread-backup-machine",
   terminalThreads: "terminal-threads",
   terminalHistoryLines: "terminal-history",
@@ -101,7 +100,6 @@ const KEPT_BY_RESTORE: Partial<Record<ForkSettingKey, string>> = {
   pinnedMessages: "User data, like project scripts.",
   sidebarTabs: "Content that the user built, like keybindings.",
   threadCardLayouts: "Content that the user built, like keybindings.",
-  voiceTranscriptionOpenAiApiKey: "A secret that the user entered, like provider credentials.",
 };
 
 const forkSettingKeys = [

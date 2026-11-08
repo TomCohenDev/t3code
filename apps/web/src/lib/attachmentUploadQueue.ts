@@ -132,9 +132,9 @@ function deletePendingUpload(environmentId: EnvironmentId, attachmentId: string)
   });
 }
 
-export function uploadBytes(input: {
+function uploadBytes(input: {
   readonly url: string;
-  readonly file: Blob;
+  readonly file: File;
   readonly mimeType: string;
   readonly onProgress: (progress: number) => void;
 }): { readonly done: Promise<void>; readonly abort: () => void } {
