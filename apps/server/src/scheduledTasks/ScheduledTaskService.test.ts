@@ -788,6 +788,7 @@ it.effect("checks a task's destination thread only when the destination changes"
       Layer.provide(
         Layer.mergeAll(
           ManagedPolicy.layerTest(),
+          ServerSettings.layerTest(),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadShell: (threadId) =>
