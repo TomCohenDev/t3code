@@ -225,7 +225,7 @@ The `t3.settings` state on kitshn holds a shared part and a part for each machin
 
 - Custom themes (the `themes/` folder, as `sharedThemes`) and `defaultTheme` sync too.
 - Keybindings sync while `keybindingSync` is on (off by default). Settings > Keybindings > "Sync keybindings". The shared value replaces the whole `keybindings.json` of each machine, and the machine keeps the file before it as `keybindings.json.bak`.
-- Web, desktop and mobile apply the client settings of the machine that serves them. A browser leaves out the settings that only the desktop app uses. The mobile app takes only the settings that it has: `followUpBehavior`, `mathRenderingEnabled`, `planModeEnabled`, `sidebarWorkingShelfEnabled` and `sidebarProjectGroupingMode`. A change on the device stays until the synced value changes again.
+- Web, desktop and mobile apply the client settings of the machine that serves them. A browser leaves out the settings that only the desktop app uses. The mobile app takes only the settings that it has: `followUpBehavior`, `mathRenderingEnabled`, `sidebarWorkingShelfEnabled` and `sidebarProjectGroupingMode`. A change on the device stays until the synced value changes again.
 - Agents set one value of their own machine with `machines_set_setting`. Only the owner changes the shared part: in T3 Settings, or with `t3 tool call` from a shell.
 - Paths, secrets and project-keyed maps stay on each machine.
 
@@ -838,7 +838,7 @@ Right-click menus use the app's own menu, also in the desktop app, in place of t
 
 - **Setting:** none. Menus always use the app menu. A menu that opens before the app is ready, or on an error screen, uses a plain web menu.
 - Controls and menu items that a keybinding can run show the key. Right-click one, or press Shift+F10 or the context menu key on it, for **Keybindings…**. In a menu it opens nested, so the menu stays open, and Escape closes only the nested menu. A menu item without a key shows a faint dash. Command palette and cheat sheet rows have the same menu.
-- Messages, code blocks, citation chips, pins and the pins button, queued messages, attachments, check rows, composer banners, the update pill, settings rows, environment rows, connection status dots, the plan card, the context window meter, the thread usage section and the Snoozed and Settled headers have a menu of their own buttons, the items of their "…" menu and copy actions. Selected text, text fields and links keep their own menus. On mobile, a long press on a message bubble, a check row, a usage limit row or the Snoozed and Settled headers opens the same kind of menu.
+- Messages, code blocks, citation chips, pins and the pins button, queued messages, attachments, check rows, composer banners, the update pill, settings rows, environment rows, connection status dots, the plan card, the thread usage section and the Snoozed and Settled headers have a menu of their own buttons, the items of their "…" menu and copy actions. Selected text, text fields and links keep their own menus. On mobile, a long press on a message bubble, a check row, a usage limit row or the Snoozed and Settled headers opens the same kind of menu.
 - **Works on:** web, desktop. The mobile app keeps its native menus.
 - Text fields and pages in the browser panel keep the system menu, with spelling suggestions and Cut, Copy and Paste.
 - **Limits:**
