@@ -2214,7 +2214,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const compactThreadContextStable = useStableCallback(compactThreadContext);
   // The same gates as the "Compact context" button and the "Compact before send" toggle.
   const canCompactContextStable = useStableCallback(
-    () => compactCommandAvailable && canCompactThreadContext(),
+    () => !compactThreadUnavailable && canCompactThreadContext(),
   );
   const isCompactBeforeSendShown = () =>
     props.resumeCompactionTokens !== null &&
