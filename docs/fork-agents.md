@@ -100,6 +100,7 @@ The T3 task "Fork merge" on the Mac, project "t3code fork", starts a run every 2
 
 Start of a run:
 
+0. Call `list_thread_pull_requests`. Every open pull request linked to the thread came from an earlier run of the same thread, also when the fresh session does not remember it. A `fork-sync/` branch is a sync in progress. A `fork-fix/` branch is a release or CI fix. Continue each one, keep it watched, and merge it under the rules below. Never unwatch or drop a linked open pull request. Escalate when you cannot finish it.
 1. Fetch `origin main` and `upstream main`.
 2. If fork main contains upstream main and `scripts/fork-adopted-upstream-prs.json` is empty, answer one line and stop. If the list has entries, `node scripts/fork-adopted-prs.ts sync` finds their new heads, so run steps 3 or 4. When the merge and the sync change nothing, remove the worktree, answer one line and stop. `node scripts/fork-adopted-prs.ts check` reads only local commits, so it does not find new heads.
 3. If the pull request "chore(sync): merge pingdotgg/t3code main" is open, continue it. Do not open a second one. Merge `origin/main` into its branch, then `upstream/main`.
@@ -116,10 +117,12 @@ The merge:
 The pull request:
 
 - Push the branch and open a draft pull request. Write a plain body: what upstream brought, each conflict and its resolution, and the fork fixes. Link the pull request to the thread, and watch it.
-- Fix each check failure. Answer each bot thread.
-- The label `agent-context-increase` needs the owner's yes. Escalate to get it.
+- Fix each check failure. Answer each bot thread. A test that fails in a CI shard is a code failure, also when it passes alone on the Mac. Reproduce it with the shard command that CI runs, then fix the cause at the lowest layer. No quarantine skip, no retry, no timeout change.
+- Infrastructure failures only (a GitHub 504 on a release download, curl exit 22 on that download): rerun the failed jobs, at most three times. When only those jobs still fail and every code job is green on the head, merge, and name the skipped jobs and the reason in one line of the pull request body.
+- The label `agent-context-increase`: when only upstream text grew (the fork share over upstream at the merge base did not grow), add it yourself and write the three deltas and "upstream text only" in the pull request body. When the check already ran red, remove and add the label again for a fresh run. When fork text grew, escalate.
 - Merge when Fork CI is green on the head and `origin/main` is an ancestor of the head. Run `gh pr ready`, then `gh pr merge --merge --admin --match-head-commit <head>`.
 - After the merge, disable each active workflow that is not a `fork-*` workflow or `agent-context-budget.yml`. `checks.py` prints the commands. Remove the worktree with `worktree.py remove`, unwatch the pull request, and send one line to the orchestrator thread that the task prompt names.
+- After the merge, watch the Fork Release run on main once. On a download 504, rerun its failed jobs. On a code failure, run `worktree.py create fix <topic>`, fix it, open a draft pull request, link it and watch it. It is yours until it merges. Its body says "Review: none, merge agent rule", because the merge agent starts no second agent; the orchestrator arranges the review.
 
 Escalation:
 
