@@ -164,7 +164,7 @@ export function buildForkChangelogAgentTask(
 ): ForkChangelogAgentTask {
   const installedIndex = installedReleaseIndex(input);
   const facts = [
-    `The fork is \`${FORK_CHANGELOG_REPOSITORIES.fork}\`. Upstream is \`${FORK_CHANGELOG_REPOSITORIES.upstream}\`. Fork main merges upstream main through the Fork Sync workflow.`,
+    `The fork is \`${FORK_CHANGELOG_REPOSITORIES.fork}\`. Upstream is \`${FORK_CHANGELOG_REPOSITORIES.upstream}\`. The Fork Sync workflow merges upstream main into fork main every 3 hours; a conflict goes to the repair agent, which opens a pull request.`,
     `The installed app version is \`${input.installedVersion}\`.`,
     ...(input.releases === null
       ? []

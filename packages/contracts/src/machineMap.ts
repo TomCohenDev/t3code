@@ -110,6 +110,7 @@ const MACHINE_LOCAL_SERVER_SETTINGS = [
   "cloudSpeechCredentials",
   // Names another machine: a shared value would make that machine back up to itself.
   "threadBackupMachine",
+  "textGenerators",
   // Paths on the file system of this machine.
   "worktreesDirectory",
   "previousWorktreesDirectories",
@@ -119,6 +120,8 @@ const MACHINE_LOCAL_SERVER_SETTINGS = [
   "speechModelUnloadTimeout",
   "addProjectBaseDirectory",
   "worktreePathTemplate",
+  // A checkout cache on the disk of a macOS machine.
+  "fastWorktreeCheckout",
   // Global scripts live on one environment, so their pins do too.
   "pinnedGlobalScriptIds",
   // Keyed by project id. A project id is local to one environment.
@@ -209,7 +212,6 @@ const CIRCLE_CLIENT_SETTINGS = [
   "confirmThreadArchive",
   "confirmThreadDelete",
   "confirmThreadUnpin",
-  "contextWindowMeterEnabled",
   "currentProjectTerminalOpensThread",
   "diffColorScheme",
   "diffFilesCollapsed",
@@ -239,13 +241,11 @@ const CIRCLE_CLIENT_SETTINGS = [
   "inAppNotificationsEnabled",
   "installedAppEnabled",
   "keyboardFocusLevels",
-  "legacySidebarEnabled",
   "mathRenderingEnabled",
   "messagePins",
   "notificationMode",
   "panelAnimationDurationMs",
   "persistComposerContextStrip",
-  "planModeEnabled",
   "proactivePanelsEnabled",
   "providerModelPreferences",
   "pullRequestFilters",
