@@ -103,6 +103,12 @@ export function ShortcutHint(props: {
   return labels.length > 0 ? <ShortcutChips labels={labels} /> : null;
 }
 
+/** Fork: a fixed key without a keybinding command, such as Esc, as a chip after tooltip text. */
+export function KeyHint(props: { label: string }) {
+  const enabled = useClientSettings(selectTooltipShortcuts);
+  return enabled ? <ShortcutChips labels={[props.label]} /> : null;
+}
+
 /**
  * Fork: the keys of a menu item, as chips and as its `aria-keyshortcuts`. An item without a key
  * shows a faint dash, a sign that its item menu can bind one.

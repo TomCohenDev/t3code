@@ -1361,6 +1361,35 @@ export function resolveMacWebAuthnEntitlements(
   };
 }
 
+const MAC_HARDENED_RUNTIME_ENTITLEMENTS = `    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- The hardened runtime denies camera and microphone to the app and every
+         child process, with no prompt, unless the app claims these. Terminals
+         and coding agents inherit the app's TCC identity, so without these a
+         command like ffmpeg or imagesnap gets silent access-denied. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+`;
+
+const MAC_ENTITLEMENTS_PLIST_HEADER = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+`;
+
+/** Self-signed builds have no provisioning profile, so they claim no restricted entitlements. */
+export function renderMacSelfSignedEntitlements(): string {
+  return `${MAC_ENTITLEMENTS_PLIST_HEADER}${MAC_HARDENED_RUNTIME_ENTITLEMENTS}  </dict>
+</plist>
+`;
+}
+
 export function renderMacPasskeyEntitlements(
   configuration: MacPasskeySigningConfiguration,
   webAuthn: MacWebAuthnEntitlements,
@@ -1381,11 +1410,7 @@ export function renderMacPasskeyEntitlements(
     <true/>`
     : "";
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>com.apple.application-identifier</key>
+  return `${MAC_ENTITLEMENTS_PLIST_HEADER}    <key>com.apple.application-identifier</key>
     <string>${escapeXml(`${configuration.teamId}.${configuration.appId}`)}</string>
     <key>com.apple.developer.team-identifier</key>
     <string>${escapeXml(configuration.teamId)}</string>
@@ -1393,21 +1418,7 @@ export function renderMacPasskeyEntitlements(
     <array>
 ${associatedDomains}
     </array>${keychainAccessGroups}${browserPasskeys}
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-    <!-- The hardened runtime denies camera and microphone to the app and every
-         child process, with no prompt, unless the app claims these. Terminals
-         and coding agents inherit the app's TCC identity, so without these a
-         command like ffmpeg or imagesnap gets silent access-denied. -->
-    <key>com.apple.security.device.camera</key>
-    <true/>
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-  </dict>
+${MAC_HARDENED_RUNTIME_ENTITLEMENTS}  </dict>
 </plist>
 `;
 }
@@ -2787,7 +2798,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   macPasskeySigning:
     | {
         readonly entitlementsPath: string;
-        readonly provisioningProfilePath: string;
+        readonly provisioningProfilePath?: string;
       }
     | undefined,
   wslRuntimeBundled = false,
@@ -2883,7 +2894,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       ...(macPasskeySigning
         ? {
             entitlements: macPasskeySigning.entitlementsPath,
-            provisioningProfile: macPasskeySigning.provisioningProfilePath,
+            ...(macPasskeySigning.provisioningProfilePath
+              ? { provisioningProfile: macPasskeySigning.provisioningProfilePath }
+              : {}),
           }
         : {}),
     };
@@ -3837,9 +3850,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         ),
       }
     : undefined;
-  const macEntitlementsPath = macPasskeySigning
-    ? path.join(stageAppDir, "entitlements.mac.plist")
-    : undefined;
+  const macSelfSignedEntitlements =
+    options.platform === "mac" && options.signed && options.macSelfSigned;
+  const macEntitlementsPath =
+    macPasskeySigning || macSelfSignedEntitlements
+      ? path.join(stageAppDir, "entitlements.mac.plist")
+      : undefined;
   let macWebAuthn: MacWebAuthnEntitlements | undefined;
   if (macPasskeySigning && macEntitlementsPath) {
     if (!(yield* fs.exists(macPasskeySigning.provisioningProfilePath))) {
@@ -3858,6 +3874,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       macEntitlementsPath,
       renderMacPasskeyEntitlements(macPasskeySigning, macWebAuthn),
     );
+  }
+  if (macSelfSignedEntitlements && macEntitlementsPath) {
+    yield* Effect.log(
+      "[desktop-artifact] Self-signed macOS build: device entitlements written, passkeys disabled.",
+    );
+    yield* fs.writeFileString(macEntitlementsPath, renderMacSelfSignedEntitlements());
   }
 
   const stageDependencies =
@@ -3900,10 +3922,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
-      macPasskeySigning && macEntitlementsPath
+      macEntitlementsPath
         ? {
             entitlementsPath: macEntitlementsPath,
-            provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
+            ...(macPasskeySigning
+              ? { provisioningProfilePath: macPasskeySigning.provisioningProfilePath }
+              : {}),
           }
         : undefined,
       bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime }),
