@@ -3,7 +3,7 @@ import type { MessageId, ProjectId, ThreadContextRecord } from "@t3tools/contrac
 import { Link } from "@tanstack/react-router";
 import { HashIcon, MessagesSquareIcon } from "lucide-react";
 
-import { forkMessageLinkNavigation } from "./chat/ForkMessageLinkTarget";
+import { forkMessageLinkNavigation } from "./chat/forkMessageLinkNavigation";
 import { useProject, useThreadShell } from "~/state/entities";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { useEnvironmentQuery } from "~/state/query";
