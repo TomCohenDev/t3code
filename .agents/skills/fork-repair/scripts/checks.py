@@ -4,7 +4,7 @@
 # ///
 """Runs the repair checks one after another in the foreground, and reports each step.
 
-Steps: `vp run typecheck`, the migration check against upstream/main, the adopted pull request
+Steps: `vp i --frozen-lockfile`, `vp run typecheck`, the migration check against upstream/main, the adopted pull request
 check, and on a fork-fix/ branch `vp run fork:check`. A fork-sync/ branch skips fork:check:
 on a merge with upstream it checks hundreds of files, and Fork CI checks the pull request.
 A fork-sync/ branch lints the files that differ from upstream/main instead, because a new
@@ -72,6 +72,8 @@ def lint_errors(log_text: str) -> list[str]:
 
 def steps(vp: str, branch: str, fork_files: list[str]) -> list[tuple[str, list[str]]]:
     result = [
+        # A merge that changes pnpm-lock.yaml leaves the install of the worktree stale.
+        ("install", [vp, "i", "--frozen-lockfile"]),
         ("typecheck", [vp, "run", "typecheck"]),
         ("migrations", ["node", "scripts/fork-check-migrations.ts", "upstream/main"]),
         ("adopted PRs", ["node", "scripts/fork-adopted-prs.ts", "check"]),
