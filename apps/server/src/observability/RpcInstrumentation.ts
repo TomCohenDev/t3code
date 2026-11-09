@@ -226,8 +226,6 @@ const RPC_AGGREGATES = {
   [WS_METHODS.forkChangelogListReleases]: "forkChangelog",
   [WS_METHODS.forkChangelogReleaseChanges]: "forkChangelog",
   [WS_METHODS.forkChangelogUpstreamPending]: "forkChangelog",
-  [WS_METHODS.forkChangelogSyncStatus]: "forkChangelog",
-  [WS_METHODS.forkChangelogStartSync]: "forkChangelog",
   [WS_METHODS.machineMapSubscribe]: "machineMap",
   [WS_METHODS.machineMapShareSettings]: "machineMap",
   [WS_METHODS.machineMapSetCircleSettings]: "machineMap",
