@@ -803,6 +803,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
       ? { ...workingLabel, label: "Goal" }
       : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined);
+  const statusDurationStartedAt =
+    status === "working"
+      ? resolveThreadWorkingStartedAt(thread)
+      : status === "waiting"
+        ? (thread.latestRun?.completedAt ?? null)
+        : undefined;
+  const statusDuration =
+    statusLabel !== undefined && statusDurationStartedAt !== undefined ? (
+      <ThreadListV2Duration
+        startedAt={statusDurationStartedAt}
+        leadingSpace={statusLabel.label !== null}
+      />
+    ) : null;
   const recede = shouldRecedeThreadRow({ status, selected });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const rowAccessibilityLabel = `${thread.title}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
@@ -1292,17 +1305,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 )}
               >
                 {statusLabel.label}
-                {status === "working" ? (
-                  <ThreadListV2Duration
-                    startedAt={resolveThreadWorkingStartedAt(thread)}
-                    leadingSpace={statusLabel.label !== null}
-                  />
-                ) : status === "waiting" ? (
-                  <ThreadListV2Duration
-                    startedAt={thread.latestRun?.completedAt ?? null}
-                    leadingSpace={statusLabel.label !== null}
-                  />
-                ) : null}
+                {statusDuration}
               </Text>
             </View>
           ) : (
@@ -1449,6 +1452,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         row={props}
         status={status}
         statusLabel={statusLabel}
+        statusDuration={statusDuration}
         timeLabel={timeLabel}
         selected={selected}
         recede={recede}
