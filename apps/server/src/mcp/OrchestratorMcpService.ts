@@ -850,7 +850,7 @@ function listItemFromShell(
     threadId: shell.id,
     projectId: shell.projectId,
     title: shell.title,
-    link: threadLinkFor(scope, shell.id),
+    link: threadLinkFor(scope, shell.id, shell.title),
     appLink: threadAppLinkFor(scope, shell.id),
     createdBy: shell.createdBy,
     creationSource: shell.creationSource,
@@ -885,7 +885,7 @@ function threadDetail(
     threadId: projection.thread.id,
     projectId: projection.thread.projectId,
     title: projection.thread.title,
-    link: threadLinkFor(scope, projection.thread.id),
+    link: threadLinkFor(scope, projection.thread.id, projection.thread.title),
     appLink: threadAppLinkFor(scope, projection.thread.id),
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
@@ -1724,10 +1724,10 @@ const make = Effect.gen(function* () {
     const result = {
       taskId: task.id,
       childThreadId: task.childThreadId,
-      link: formatThreadLink({
-        environmentId: scope.environmentId,
-        threadId: task.childThreadId,
-      }),
+      link: formatThreadLink(
+        { environmentId: scope.environmentId, threadId: task.childThreadId },
+        childControls.thread.title,
+      ),
       appLink: threadAppLinkFor(scope, task.childThreadId),
       childRunId: childRun?.id ?? null,
       childNodeId: task.id,
@@ -1901,7 +1901,7 @@ const make = Effect.gen(function* () {
         ? {}
         : {
             remoteChild: task.remoteChild,
-            link: formatThreadLink(task.remoteChild),
+            link: formatThreadLink(task.remoteChild, task.remoteChild.title),
             appLink: threadAppLinkFor(task.remoteChild, task.remoteChild.threadId),
           }),
       childRunId: null,
@@ -3153,7 +3153,10 @@ const make = Effect.gen(function* () {
                 );
               return {
                 threadId,
-                link: formatThreadLink({ environmentId: scope.environmentId, threadId }),
+                link: formatThreadLink(
+                  { environmentId: scope.environmentId, threadId },
+                  projection.thread.title,
+                ),
                 appLink: threadAppLinkFor(scope, threadId),
                 runId: run?.id ?? null,
                 status: run?.status ?? "idle",
@@ -3372,7 +3375,7 @@ const make = Effect.gen(function* () {
         );
       return {
         threadId: input.threadId,
-        link: threadLinkFor(scope, input.threadId),
+        link: threadLinkFor(scope, input.threadId, target.thread.title),
         appLink: threadAppLinkFor(scope, input.threadId, messageId),
         messageId,
         runId: result.run.id,
