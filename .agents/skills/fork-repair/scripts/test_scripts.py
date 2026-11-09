@@ -127,6 +127,7 @@ def test_sync_branches_lint_fork_files_and_fix_branches_run_fork_check():
     fix = [name for name, _ in checks.steps("vp", "fork-fix/x", ["a.ts"])]
     assert sync[-3:] == ["format", "lint", "knip"] and "fork:check" not in sync
     assert fix[-1] == "fork:check" and "lint" not in fix and "format" not in fix
+    assert sync[0] == fix[0] == "install"
 
 
 def test_active_upstream_workflows_skips_fork_kept_disabled_and_dynamic_ones():
