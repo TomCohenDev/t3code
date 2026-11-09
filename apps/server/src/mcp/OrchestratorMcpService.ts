@@ -1750,7 +1750,11 @@ const make = Effect.gen(function* () {
       task.completionDelivery?.state !== "acknowledged" &&
       task.completionDelivery?.state !== "disposed"
     ) {
-      const observingRun = ThreadManagementService.latestActiveRun(parentProjection);
+      const observingRun = ThreadManagementService.latestActiveRun({
+        runs: parentProjection.runs.filter(
+          (run) => run.providerInstanceId === scope.thread.providerInstanceId,
+        ),
+      });
       const acknowledgementRequestKey = yield* requestKey(undefined);
       yield* threadManagement
         .dispatch({
@@ -1762,10 +1766,7 @@ const make = Effect.gen(function* () {
           }),
           parentThreadId: scope.thread.threadId,
           taskId,
-          observedByRunId:
-            observingRun?.providerInstanceId === scope.thread.providerInstanceId
-              ? observingRun.id
-              : null,
+          observedByRunId: observingRun?.id ?? null,
         })
         .pipe(
           Effect.mapError((error) =>
@@ -1845,7 +1846,11 @@ const make = Effect.gen(function* () {
             ),
           ),
         );
-      const observingRun = ThreadManagementService.latestActiveRun(parentProjection);
+      const observingRun = ThreadManagementService.latestActiveRun({
+        runs: parentProjection.runs.filter(
+          (run) => run.providerInstanceId === scope.thread.providerInstanceId,
+        ),
+      });
       yield* threadManagement
         .dispatch({
           type: "delegated_task.completion-delivery.acknowledge",
@@ -1856,10 +1861,7 @@ const make = Effect.gen(function* () {
           }),
           parentThreadId: scope.thread.threadId,
           taskId: task.id,
-          observedByRunId:
-            observingRun?.providerInstanceId === scope.thread.providerInstanceId
-              ? observingRun.id
-              : null,
+          observedByRunId: observingRun?.id ?? null,
         })
         .pipe(
           Effect.mapError((error) =>
@@ -2359,6 +2361,7 @@ const make = Effect.gen(function* () {
             turnItemId,
             label: input.label,
             reason: input.reason,
+            ...(input.url === undefined ? {} : { url: input.url }),
             ...(input.placeholder === undefined ? {} : { placeholder: input.placeholder }),
             ...(input.delivery === "file" ? { delivery: "file" as const } : {}),
             secretStatus,
