@@ -30,6 +30,7 @@ import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts"
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
+import { makeForkBrowserCapture } from "./ForkBrowserCapture.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
 
@@ -617,6 +618,10 @@ describe("PreviewManager", () => {
                 setShown: () => {},
                 humanStartedDownload: () => true,
                 placeDownload: () => true,
+                forkCapture: makeForkBrowserCapture(
+                  () => {},
+                  () => undefined,
+                ),
               }),
               Layer.mock(PreviewPasskeys.PreviewPasskeys)({
                 bridgeEnabled: false,
