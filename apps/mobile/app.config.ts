@@ -357,7 +357,6 @@ const config: ExpoConfig = {
   plugins: [
     "./plugins/fork-central-build-cache.cjs",
     "expo-asset",
-    "react-native-pdf-jsi",
     [
       "expo-font",
       {
