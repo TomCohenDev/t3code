@@ -78,7 +78,7 @@ jobs:
           if ! git merge --no-edit -m "chore(sync): merge ${UPSTREAM_REPOSITORY} main" upstream/main > "$RUNNER_TEMP/merge.log" 2>&1; then
             if resolve_readme; then
               echo "::notice title=README.md conflict resolved::Kept the fork section above the first --- line and took the upstream README below it."
-              git log --oneline HEAD^1..HEAD^2 | head -50
+              git log --oneline --max-count=50 HEAD^1..HEAD^2
               exit 0
             fi
             cat "$RUNNER_TEMP/merge.log"
@@ -88,7 +88,7 @@ jobs:
             exit 1
           fi
           echo "Upstream commits merged:"
-          git log --oneline HEAD^1..HEAD^2 | head -50
+          git log --oneline --max-count=50 HEAD^1..HEAD^2
 
       # The adopted pull request script needs only Node, so a sync without changes installs nothing.
       - uses: actions/setup-node@v7
