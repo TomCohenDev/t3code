@@ -172,7 +172,7 @@ import { setReviewSelectedSectionId } from "../review/reviewState";
 // Fork: read aloud, next to copy and fork.
 import { ReadAloudButton } from "../read-aloud/ReadAloudButton";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
-import { useBarInset } from "../../components/ui/useBarInset";
+import { useBarInset, useContentTopInset } from "../../components/ui/useBarInset";
 import { parseReviewCommentMessageSegments } from "../review/reviewCommentSelection";
 import {
   ReviewCommentCard,
@@ -340,7 +340,6 @@ export interface ThreadFeedProps {
   readonly keyboardOffset: number;
   readonly sendingWithKeyboard?: boolean;
   readonly fitShortFeedToViewport?: boolean;
-  readonly contentTopInset?: number;
   readonly contentBottomInset?: number;
   readonly historyControls?: ThreadFeedHistoryControls;
   readonly contentMaxWidth?: number;
@@ -2802,10 +2801,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const markdownContentWidth = Math.max(0, contentWidth - ASSISTANT_ROW_HORIZONTAL_PADDING * 2);
   const reviewCommentBubbleWidth = Math.min(Math.max(280, contentWidth * 0.85), contentWidth);
   const barInset = useBarInset();
-  const topContentInset = props.contentTopInset ?? barInset;
+  const columnTopInset = useContentTopInset();
   const bottomContentInset = props.contentBottomInset ?? 18;
   const usesNativeAutomaticInsets =
     props.usesAutomaticContentInsets === true && Platform.OS === "ios";
+  // Without the native contentInset, a list-header spacer clears the bar the column lays content under.
+  const topContentInset = usesNativeAutomaticInsets ? 0 : columnTopInset;
   const anchorTopInset = usesNativeAutomaticInsets ? barInset : topContentInset;
 
   const theme = useUniwindTheme();
@@ -3254,7 +3255,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     if (state) onIsAtEndChange?.(state.isAtEnd);
   };
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    reportHeaderMaterialVisibility(event.nativeEvent.contentOffset.y + anchorTopInset > 6);
+    reportHeaderMaterialVisibility(
+      event.nativeEvent.contentOffset.y + (usesNativeAutomaticInsets ? barInset : 0) > 6,
+    );
     handleMetricsChange();
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the list's end state to report it to the parent
