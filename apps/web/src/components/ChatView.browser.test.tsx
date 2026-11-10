@@ -87,7 +87,8 @@ it("opens the thread actions menu for an older settled thread the shell leaves o
 
   await page.getByRole("button", { name: `Thread actions for ${thread.title}` }).click();
   // Without a bound the poll runs to the test deadline and reports a bare timeout.
+  // Fork: menu items end with their shortcut keys, so match the label as a prefix.
   await expect
-    .element(page.getByRole("menuitem", { name: "Rename thread" }), { timeout: 5_000 })
+    .element(page.getByRole("menuitem", { name: /^Rename thread/ }), { timeout: 5_000 })
     .toBeVisible();
 });
