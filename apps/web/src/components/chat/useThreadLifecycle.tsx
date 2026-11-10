@@ -71,7 +71,7 @@ import {
   runStopNowItem,
 } from "./ThreadActivityBanners";
 import { useForceStopThread } from "./useForceStopThread";
-import { withBackgroundWorkDetails } from "./BackgroundWorkDetails";
+import { withBackgroundWorkDetails } from "./BackgroundWorkPopover";
 import { useAtomValue } from "@effect/atom-react";
 import type { RunStopPresentation } from "@t3tools/client-runtime/state/thread-execution";
 import { Atom } from "effect/reactivity";
@@ -600,6 +600,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   const backgroundWorkNow = activeThread
     ? withBackgroundWorkDetails(
         backgroundWorkNowItem({
+          environmentId,
           threadId: activeThread.id,
           tasks: activeBackgroundTasks,
           turnItems,
