@@ -129,7 +129,7 @@ export function AssistantCitationChip({
       </ContextChipLabel>
     </Link>
   );
-  const goToSource = () => void navigate(assistantCitationNavigation(citation));
+  const goToSource = () => void navigate(assistantCitationNavigation(citation, sourceThread));
   const copyQuote = {
     label: "Copy quote",
     icon: "copy",
