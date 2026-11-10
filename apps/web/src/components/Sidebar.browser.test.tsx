@@ -61,6 +61,7 @@ describe("sidebar header new thread", () => {
       activeDraftThread: null,
       activeThread: null,
       defaultProjectRef: currentProjectRef,
+      defaultProjectFallbackReady: true,
       handleNewThread: startThread,
       // Fork: the hook also starts terminal threads.
       handleNewTerminalThread: vi.fn(),

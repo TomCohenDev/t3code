@@ -1,6 +1,6 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
-import { BackgroundWorkIcon, BackgroundWorkText } from "./BackgroundWorkDetails";
+import { BackgroundWorkIcon, BackgroundWorkText } from "./BackgroundWorkPopover";
 import { backgroundWorkFromNotification } from "./BackgroundWorkDetails.logic";
 import {
   getQuestionAnswerPreview,
