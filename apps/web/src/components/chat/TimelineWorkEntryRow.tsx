@@ -70,6 +70,7 @@ import {
   workEntryIconName,
   THINKING_PREVIEW_PLUGINS,
   THOUGHT_PREVIEW_PLUGINS,
+  THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
 } from "./TimelineWorkEntryRow.logic";
 
 export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
@@ -478,7 +479,10 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               {isReasoning && !expanded ? (
                 <ChatMarkdown
                   inline
-                  text={workEntry.detail ?? previewText}
+                  text={(workEntry.detail ?? previewText).slice(
+                    0,
+                    THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
+                  )}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
                   extraRemarkPlugins={

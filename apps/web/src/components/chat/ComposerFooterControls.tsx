@@ -205,6 +205,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   } | null;
   isRunning: boolean;
   canInterrupt: boolean;
+  runId: string | null;
   followUpBehavior: "queue" | "steer";
   canSteer: boolean;
   alternateShortcutContext: ComponentProps<
@@ -234,6 +235,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         pendingAction={props.pendingAction}
         isRunning={props.isRunning}
         canInterrupt={props.canInterrupt}
+        runId={props.runId}
         followUpBehavior={props.followUpBehavior}
         canSteer={props.canSteer}
         alternateShortcutContext={props.alternateShortcutContext}
