@@ -1224,6 +1224,7 @@ interface ActiveCodexTurnContext {
   readonly runningCompactionItemIds: Set<string>;
   // Modern approval requests omit paths; keep the kinds without retaining patch bodies.
   readonly fileChangeKindsByItem: Map<string, CodexFileChangeKinds>;
+  readonly messagePhases: Map<string, "commentary" | "partial_answer" | "final_answer">;
   readonly itemPositions: Map<
     string,
     { readonly ordinal: number; readonly startedAt: DateTime.Utc }
@@ -1492,6 +1493,9 @@ const decodeCodexChildThread = Schema.decodeUnknownEffect(
   }),
 );
 
+// Without a deadline the spawner waits indefinitely for a process that ignores SIGTERM.
+const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds";
+
 export const makeCodexAppServerSpawnCommand = Effect.fn(
   "CodexAdapterV2.makeCodexAppServerSpawnCommand",
 )(function* (input: {
@@ -1519,6 +1523,7 @@ export const makeCodexAppServerSpawnCommand = Effect.fn(
     ...(input.env === undefined ? {} : { env: input.env }),
     ...(input.extendEnv === undefined ? {} : { extendEnv: input.extendEnv }),
     shell: spawnCommand.shell,
+    forceKillAfter: CODEX_APP_SERVER_FORCE_KILL_AFTER,
   });
 });
 
@@ -2215,6 +2220,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             startedAt: input.startedAt,
             itemPositions: new Map(),
             fileChangeKindsByItem: new Map(),
+            messagePhases: new Map(),
             runningCompactionItemIds: new Set(),
           };
           const nativeThreadId = input.turnInput.providerThread.nativeThreadRef?.nativeId;
@@ -2821,6 +2827,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               startedAt: turn.startedAt,
               itemPositions: new Map(),
               fileChangeKindsByItem: new Map(),
+              messagePhases: new Map(),
               runningCompactionItemIds: new Set(),
             };
             beginTurnTokenUsage(activeContext);
@@ -3498,6 +3505,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             completedAt,
             updatedAt,
             type: "assistant_message",
+            ...(context.messagePhases.has(item.id)
+              ? { phase: context.messagePhases.get(item.id) }
+              : {}),
             messageId,
             text: item.text,
             streaming: !completed,
@@ -5062,6 +5072,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "agentMessage") {
+              if (payload.item.phase != null)
+                context.messagePhases.set(payload.item.id, payload.item.phase);
               if (payload.item.phase == null || payload.item.phase === "final_answer") {
                 yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
                   const updated = new Map(current);
@@ -5450,6 +5462,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.phase != null)
+              context.messagePhases.set(payload.item.id, payload.item.phase);
             const finalAnswer = payload.item.phase == null || payload.item.phase === "final_answer";
             if (finalAnswer) {
               yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
@@ -6921,6 +6935,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             startedAt: now,
             itemPositions: new Map(),
             fileChangeKindsByItem: new Map(),
+            messagePhases: new Map(),
             runningCompactionItemIds: new Set(),
           };
           const providerTurn = {

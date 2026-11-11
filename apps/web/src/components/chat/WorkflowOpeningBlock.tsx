@@ -27,7 +27,7 @@ import { Button } from "../ui/button";
 import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
 import { AgentElapsed } from "./AgentElapsed";
 import { findRevealRef } from "./markdownFindContext";
-import { shouldCollapseUserMessage } from "./MessagesTimeline.logic";
+import { useTallEnoughToFold } from "./useTallEnoughToFold";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { EnvironmentSubagentAvatar } from "./V2LifecycleRow";
 
@@ -217,7 +217,7 @@ function WorkflowMemberRow(props: {
 function WorkflowScript(props: { readonly script: string }) {
   const [expanded, setExpanded] = useState(false);
   const revealRef = findRevealRef(() => setExpanded(true));
-  const canFold = shouldCollapseUserMessage(props.script);
+  const { ref: contentRef, tallEnough: canFold } = useTallEnoughToFold();
   const folded = canFold && !expanded;
   return (
     <div>
@@ -232,7 +232,9 @@ function WorkflowScript(props: { readonly script: string }) {
             : undefined
         }
       >
-        <ChatMarkdown text={scriptMarkdown(props.script)} cwd={undefined} />
+        <div ref={contentRef}>
+          <ChatMarkdown text={scriptMarkdown(props.script)} cwd={undefined} />
+        </div>
       </div>
       {canFold ? (
         <div className="-ms-1">

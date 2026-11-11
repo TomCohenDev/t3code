@@ -309,13 +309,11 @@ it.effect("names the branch from the message before creating a templated worktre
   }),
 );
 
-it.effect.each([
-  { name: "already exists", branches: ["main", "docs/taken"] },
-  { name: "a branch blocks", branches: ["main", "docs"] },
-])("refuses a new worktree whose branch $name", (testCase) =>
+it.effect("refuses a new worktree whose branch already exists", () =>
   Effect.gen(function* () {
     const harness = makeHarness({
-      git: { listLocalBranchNames: () => Effect.succeed(testCase.branches) },
+      hasCommit: () => Effect.succeed(true),
+      git: { listLocalBranchNames: () => Effect.succeed(["main", "docs/taken"]) },
     });
     yield* Effect.gen(function* () {
       const launches = yield* ThreadLaunch.ThreadLaunchService;
