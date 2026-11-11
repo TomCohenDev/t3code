@@ -149,6 +149,7 @@ describe("sidebar render isolation", () => {
       },
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
+      handleNewTerminalThread: vi.fn(),
       routeDraftId: null,
       routeThreadRef,
     });
