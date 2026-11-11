@@ -103,6 +103,7 @@ describe("RightPanelTabs", () => {
           onAddPullRequest={noop}
           onAddPullRequests={noop}
           onAddDevice={noop}
+          onAddMachines={noop}
           browserAvailable={false}
           terminalAvailable
           diffAvailable={false}
@@ -110,6 +111,7 @@ describe("RightPanelTabs", () => {
           pullRequestAvailable={false}
           pullRequestsAvailable={false}
           deviceAvailable={false}
+          machinesAvailable={false}
         >
           {null}
         </RightPanelTabs>
