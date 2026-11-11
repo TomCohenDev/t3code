@@ -24,6 +24,7 @@ const ITEMS = [
     ],
   },
   { id: "delete", label: "Delete", destructive: true, separatorBefore: true },
+  { id: "snooze:tomorrow", label: "Tomorrow", detail: "Thu 9:00 AM" },
 ];
 
 const BINDABLE_ITEMS = [
@@ -170,6 +171,9 @@ describe("ForkContextMenuHost", () => {
 
     await expect.element(page.getByRole("menu")).toBeVisible();
     await expect.element(page.getByText("Thread")).toBeVisible();
+    await expect
+      .element(page.getByRole("menuitem", { name: "Tomorrow, Thu 9:00 AM" }))
+      .toBeVisible();
     // Base UI keeps disabled items reachable, as ARIA menus allow.
     await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
 
