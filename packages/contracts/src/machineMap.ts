@@ -250,6 +250,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "pullRequestMergeMethodOverrides",
   "rememberBackForwardHistory",
   "restartReconnectWarningGrace",
+  "screenReaderAnnouncements",
   "sendShortcut",
   "settingsFind",
   "showSkillsInSlashMenu",

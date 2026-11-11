@@ -215,10 +215,17 @@ function MenuEntry({
         variant={item.destructive === true ? "destructive" : "default"}
         onClick={() => onPick(item.id)}
         {...keyProps}
+        // The comma gives screen readers a pause between label and detail.
+        {...(item.detail ? { "aria-label": `${item.label}, ${item.detail}` } : {})}
       >
         <ItemIcon name={item.icon} />
         {item.label}
-        {shortcut.hint ? <span className="ms-auto ps-3">{shortcut.hint}</span> : null}
+        {item.detail ? (
+          <span className="ms-auto ps-3 text-muted-foreground text-xs">{item.detail}</span>
+        ) : null}
+        {shortcut.hint ? (
+          <span className={item.detail ? "ps-3" : "ms-auto ps-3"}>{shortcut.hint}</span>
+        ) : null}
       </MenuItem>
     );
   })();
