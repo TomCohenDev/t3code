@@ -3816,7 +3816,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           Layer.mergeAll(
             NodeServices.layer,
             NodeCrypto.layer,
+            ServerSettings.layerTest(),
             Layer.mock(PullRequestService.PullRequestService)({
+              withSharedProjectReads: (effect) => effect,
               watchFingerprint: () => Effect.succeed(null),
               detail: () =>
                 Effect.succeed({
