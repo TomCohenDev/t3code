@@ -352,6 +352,13 @@ const asSession = (providerSessionId: string) => ({
   ...scope,
   thread: { ...testThread, providerSessionId },
 });
+// Fork: the desktop acknowledges each capture lease once its native surface is placed.
+const desktopCapture: ReturnType<typeof makeForkBrowserCapture> = makeForkBrowserCapture(
+  (command) =>
+    Effect.sync(() => {
+      if (command.active) desktopCapture.report({ ...command, type: "captureReady" });
+    }),
+);
 const dependencies = Layer.mergeAll(
   Broker.layer,
   Manager.layer,
@@ -365,7 +372,7 @@ const dependencies = Layer.mergeAll(
   }),
   Layer.succeed(DesktopChannel.DesktopBrowserChannel, {
     available: true,
-    capture: makeForkBrowserCapture(() => Effect.void),
+    capture: desktopCapture,
     presentationChanged: Stream.empty,
     awaitAttached: (key, timeout) =>
       !desktopAttachesLate || desktopRenders(key.tabId)
