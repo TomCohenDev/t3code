@@ -13,7 +13,7 @@ import {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 
 import { previewRuntimeTabId } from "../../browser/previewRuntimeTabId";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
@@ -247,7 +247,6 @@ export function useThreadRightPanel(input: {
     terminalLabelsById: activeTerminalLabelsById,
   });
   // A terminal thread has no turn diffs, so nothing opens the diff on the user's behalf.
-  const explicitDiffOpenRef = useRef<ScopedThreadRef | null>(null);
   const actions = useRightPanelActions({
     activeThreadRef,
     activeProject,
@@ -271,7 +270,6 @@ export function useThreadRightPanel(input: {
     pullRequestsSurfaceAvailable,
     gitCwd: input.gitCwd,
     activeProjectCwd: activeProject?.workspaceRoot ?? null,
-    explicitDiffOpenRef,
     onDiffPanelOpen,
     closeRightPanelSurface,
   });
