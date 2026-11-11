@@ -4058,8 +4058,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           const detailReads = yield* Queue.unbounded<void>();
           const host = Layer.mergeAll(
             NodeServices.layer,
+            ServerSettings.layerTest(),
             NodeCrypto.layer,
             Layer.mock(PullRequestService.PullRequestService)({
+              withSharedProjectReads: (effect) => effect,
               detail: () =>
                 Queue.offer(detailReads, undefined).pipe(
                   Effect.as({
