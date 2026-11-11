@@ -62,11 +62,8 @@ import { settleAndAdvance } from "../settleAndAdvance";
 import { useProject, useQuietThreadShell } from "../state/entities";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
-import {
-  primaryServerAvailableEditorsAtom,
-  primaryServerKeybindingsAtom,
-  serverEnvironment,
-} from "../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../state/server";
+import { hostEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
 import { useKnownTerminalSessions } from "../state/terminalSessions";
 import { terminalEnvironment } from "../state/terminal";
@@ -179,7 +176,7 @@ export function ForkTerminalThreadScreen(props: { readonly threadRef: ScopedThre
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const backgroundThread = use(BackgroundThreadContext);
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(threadRef.environmentId));
-  const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const availableEditors = serverConfig?.availableEditors ?? [];
   const handleNewThread = useNewThreadHandler();
   const terminalThreadsEnabled = useTerminalThreadsEnabled(threadRef.environmentId);
   const drawer = useTerminalThreadDrawer(threadRef);
@@ -431,6 +428,7 @@ export function ForkTerminalThreadScreen(props: { readonly threadRef: ScopedThre
           }
           gitCwd={workspace.gitCwd}
           isGitRepo={workspace.isGitRepo}
+          workspaceMutationId={workspace.mutationId}
           // A terminal thread has started, so its environment and workspace are fixed.
           envLocked
           availableEnvironments={workspace.environments}
@@ -633,11 +631,13 @@ function useTerminalThreadWorkspace(
   );
   const environments = useLogicalProjectEnvironments(project, false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const hostEnvironmentId = useAtomValue(hostEnvironmentIdAtom);
   const remoteOpenState = useRemoteOpenState(environmentId);
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName: project?.title,
     activeThreadEnvironmentId: environmentId,
     primaryEnvironmentId,
+    hostEnvironmentId,
     remoteOpenMode: remoteOpenState.mode,
   });
   return {

@@ -34,7 +34,10 @@ import {
 } from "./pullRequestList.logic";
 import type { PullRequestExpectedHost } from "./PullRequestListFilters";
 import type { PullRequestListPreferences, PullRequestListSort } from "./pullRequestListPreferences";
-import { assignProjectsToEnvironments } from "./pullRequestProjectAssignment.logic";
+import {
+  pullRequestProjectQueries,
+  type PullRequestHostAvailability,
+} from "./pullRequestProjectAssignment.logic";
 import { parsePullRequestQueryWithOwners } from "./pullRequestOwnerFilter.logic";
 import * as ForkOwners from "./usePullRequestOwnerFilter";
 import { pullRequestFilterProjects } from "@t3tools/client-runtime/pull-request-project-filter";
@@ -57,6 +60,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 /** Which servers and projects the page reads, from the URL and what this client knows. */
 export function usePullRequestScope(
   search: PullRequestsSearch,
+  hostAvailability: PullRequestHostAvailability,
   owners: Pick<
     Parameters<typeof ForkOwners.resolvePullRequestOwnerFilter>[0],
     "enabled" | "typedOwners" | "sentOwners"
@@ -127,32 +131,22 @@ export function usePullRequestScope(
     scopedProjectId,
     projectsKnown,
   );
-  const environmentQueries = ((): ReadonlyArray<{
+  const queriesFor = (
+    availability?: PullRequestHostAvailability,
+  ): ReadonlyArray<{
     readonly environmentId: EnvironmentId;
     readonly projectIds?: ReadonlyArray<ProjectId>;
   }> => {
     const plain = queryEnvironmentIds.map((environmentId) => ({ environmentId }));
     if (!projectsKnown || scopedProjectId !== undefined) return plain;
     // Fork: only the projects of the selected owners are assigned, so a server without them is not
-    // read. The totals below still count every project, so a server whose projects all match is
-    // asked without ids. Limit: the listing contract takes at most 100 ids, so a server with more
-    // matching projects fails its read. Revisit if one server holds that many projects of an owner.
-    const assignment = assignProjectsToEnvironments(
-      listProjects,
-      queryEnvironmentIds,
-      queryEnvironmentIds[0],
-    );
-    const totals = new Map<EnvironmentId, number>();
-    for (const project of projects) {
-      totals.set(project.environmentId, (totals.get(project.environmentId) ?? 0) + 1);
-    }
-    return queryEnvironmentIds.flatMap((environmentId) => {
-      const projectIds = assignment.get(environmentId);
-      if (projectIds === undefined) return [];
-      if (projectIds.length === (totals.get(environmentId) ?? 0)) return [{ environmentId }];
-      return [{ environmentId, projectIds }];
-    });
-  })();
+    // read. The totals still count every project, so a server whose projects all match is asked
+    // without ids.
+    return pullRequestProjectQueries(listProjects, queryEnvironmentIds, availability, projects);
+  };
+  const environmentQueries = queriesFor(hostAvailability);
+  // What the page reads once a refresh forgets host reads; refresh must refetch these too.
+  const preferredEnvironmentQueries = queriesFor();
   const assignmentKey = environmentQueries
     .map(({ environmentId, projectIds }) => `${environmentId}#${projectIds?.join("+") ?? "*"}`)
     .join("|");
@@ -202,6 +196,7 @@ export function usePullRequestScope(
     selectedProject,
     queryEnvironmentIds,
     environmentQueries,
+    preferredEnvironmentQueries,
     assignmentKey,
     linkedSelection,
     expectedHosts,
