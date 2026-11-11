@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
+import {
+  normalizeDesktopUpdateReleaseNotes,
+  releaseNotesOfOfferedVersion,
+} from "./releaseNotes.ts";
 
 describe("normalizeDesktopUpdateReleaseNotes", () => {
   it("leaves collapsed screenshot blocks out of the changes", () => {
@@ -48,5 +51,18 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
     expect(result.releaseNotes[0]?.items[0]).toBe(
       '⚠️ Breaking changes: #295. Read "Breaking changes" at the top before you update.',
     );
+  });
+});
+
+describe("releaseNotesOfOfferedVersion", () => {
+  // The Stable feed reads the notes of the GitHub latest release, the fork daily release.
+  // docs/fork/operations.md "Daily release" gives its title.
+  it("keeps the notes of a fork daily release, whose title names the version", () => {
+    const info = {
+      version: "0.1.9-nightly.20261111.4400000",
+      releaseNotes: "Daily release of fork main.",
+      releaseName: "T3 Code Fork 2026-11-11 v0.1.9-nightly.20261111.4400000 (d4d0e3928ea6)",
+    };
+    expect(releaseNotesOfOfferedVersion(info)).toBe(info.releaseNotes);
   });
 });

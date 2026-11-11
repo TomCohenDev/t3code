@@ -1,4 +1,11 @@
-import { memo, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useState,
+  type MouseEventHandler,
+  type PointerEventHandler,
+  type ReactNode,
+} from "react";
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -37,6 +44,7 @@ interface ComposerPrimaryActionsProps {
   pendingAction: PendingActionState | null;
   isRunning: boolean;
   canInterrupt: boolean;
+  runId?: string | null;
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
   alternateShortcutContext?: React.ComponentProps<typeof ShortcutHint>["context"];
@@ -77,6 +85,8 @@ const formatPendingPrimaryActionLabel = (input: {
   return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
 };
 
+const STOP_PENDING_MAX_MS = 10_000;
+
 // The toggle shows only while its key works, so its chip names the key.
 const COMPACT_BEFORE_SEND_SHOWN = { compactBeforeSendShown: true };
 
@@ -94,6 +104,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   pendingAction,
   isRunning,
   canInterrupt,
+  runId = null,
   followUpBehavior = "steer",
   canSteer = true,
   alternateShortcutContext,
@@ -114,6 +125,26 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   keepFullHistory = false,
   onToggleKeepFullHistory,
 }: ComposerPrimaryActionsProps) {
+  const [stopPhase, setStopPhase] = useState<"pending" | "timedOut" | "landed" | null>(null);
+  const [stopRunId, setStopRunId] = useState(runId);
+  if (runId !== null && stopRunId !== runId) {
+    setStopRunId(runId);
+    setStopPhase(null);
+  } else if (canOperateThread) {
+    // Losing permission also clears canInterrupt; it does not acknowledge the stop.
+    if ((stopPhase === "pending" || stopPhase === "timedOut") && !canInterrupt)
+      setStopPhase("landed");
+    else if (stopPhase === "landed" && canInterrupt) setStopPhase(null);
+  }
+  const isStopDisabled = stopPhase === "pending" || stopPhase === "landed";
+  const stopLabel =
+    stopPhase === "landed" ? "Stopped" : stopPhase === "pending" ? "Stopping" : "Stop generation";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timer that re-enables Stop if the interrupt never settles
+  useEffect(() => {
+    if (stopPhase !== "pending") return;
+    const timeout = setTimeout(() => setStopPhase("timedOut"), STOP_PENDING_MAX_MS);
+    return () => clearTimeout(timeout);
+  }, [stopPhase]);
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
     : undefined;
@@ -140,15 +171,17 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <button
             type="button"
             className={cn(
-              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
+              "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none disabled:cursor-default disabled:opacity-64 disabled:hover:bg-destructive/90 [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
             )}
             {...pointerFocusProps}
-            disabled={!canOperateThread}
+            disabled={!canOperateThread || isStopDisabled}
             onClick={() => {
-              if (canOperateThread) onInterrupt();
+              if (!canOperateThread || isStopDisabled) return;
+              setStopPhase("pending");
+              onInterrupt();
             }}
-            aria-label="Stop generation"
+            aria-label={stopLabel}
           />
         }
       >
@@ -157,16 +190,23 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         </svg>
       </ShortcutTrigger>
       <TooltipPopup>
-        Interrupt
+        {stopPhase === "pending" ? "Stopping…" : stopPhase === "landed" ? "Stopped" : "Interrupt"}
         <ShortcutHint command="thread.stop" />
       </TooltipPopup>
     </Tooltip>
   );
 
+  // Keep the clicked target at the right edge even if typing changes the primary action.
+  const withStopButton = (action: ReactNode) => (
+    <>
+      {action}
+      {stopPhase === null ? null : renderStopGenerationButton(false)}
+    </>
+  );
+
   if (pendingAction) {
     return (
       <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
-        {canInterrupt ? renderStopGenerationButton(true) : null}
         {pendingAction.questionIndex > 0 ? (
           compact ? (
             <Button
@@ -214,11 +254,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             questionIndex: pendingAction.questionIndex,
           })}
         </button>
+        {canInterrupt || stopPhase !== null ? renderStopGenerationButton(true) : null}
       </div>
     );
   }
 
-  if (canInterrupt && !hasSendableContent && !isEditingQueuedMessage) {
+  if (
+    (canInterrupt || stopPhase === "pending" || stopPhase === "timedOut") &&
+    !hasSendableContent &&
+    !isEditingQueuedMessage
+  ) {
     return (
       <>
         {children}
@@ -343,15 +388,15 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </Tooltip>
   );
   if (compactTokens === null) {
-    return (
+    return withStopButton(
       <>
         {children}
         {submit}
-      </>
+      </>,
     );
   }
 
-  return (
+  return withStopButton(
     <div data-chat-composer-compact-send="true" className="flex items-center gap-2">
       <Tooltip>
         <ShortcutTrigger
@@ -392,6 +437,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       </Tooltip>
       {children}
       {submit}
-    </div>
+    </div>,
   );
 });

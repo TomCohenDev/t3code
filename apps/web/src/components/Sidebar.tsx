@@ -31,7 +31,10 @@ import {
 import { SortableContext } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
+import {
+  asLaunchingThread,
+  createInboxReturnTracker,
+} from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   nextShownOrder,
@@ -243,7 +246,12 @@ import {
   sidebarThreadFilterValue,
 } from "./filters/sidebarFilters.logic";
 import { TooltipProvider } from "./ui/tooltip";
-import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
+import {
+  composerDraftHasUserContent,
+  DraftId,
+  useComposerDraftStore,
+  usePromotingDraftThreadKeys,
+} from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
   SidebarSearchResultRow,
@@ -1149,6 +1157,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ),
         );
   const threads = useQuietThreadShells();
+  const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
+  const listedThreads =
+    promotingDraftThreadKeys.length === 0
+      ? threads
+      : threads.map((thread) =>
+          promotingDraftThreadKeys.includes(threadShellKey(thread))
+            ? asLaunchingThread(thread)
+            : thread,
+        );
   const routeRowThreadKey =
     routeThreadRef === null
       ? null
@@ -1396,7 +1413,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       projects,
       searching: isSearchingThreads,
     },
-    threads,
+    threads: listedThreads,
     delegatedUnderParent,
     routeRowThreadKey,
     folderGroups: boringSidebarEnabled
@@ -2411,7 +2428,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     children: [
                       ...snoozePresets.map((preset) => ({
                         id: `snooze:${preset.id}`,
-                        label: `${preset.label} (${preset.whenLabel})`,
+                        label: preset.label,
+                        detail: preset.whenLabel,
                         disabled: !canOperateThreads(selectedThreads),
                       })),
                       {
