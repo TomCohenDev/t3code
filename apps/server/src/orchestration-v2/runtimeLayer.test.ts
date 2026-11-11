@@ -4725,7 +4725,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         modelSelection,
         dispatchMode: { type: "start_immediately" },
       });
-      const wakeMessageId = MessageId.make(`${threadId}-wake`);
+      const wakeMessageId = MessageId.make(`${pullRequestWakeMessagePrefix(key)}${threadId}`);
       const recordedWatch = { ...watch, headSha: "abc123", wakes: 1 };
       yield* orchestrator.dispatch({
         type: "thread.pull-request-watch.sync",
@@ -4850,7 +4850,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           watch: null,
           endedWatch: recordedWatch,
           wake: {
-            messageId: MessageId.make(`${threadId}-exhausted`),
+            messageId: MessageId.make(`${pullRequestWakeMessagePrefix(key)}${threadId}-exhausted`),
             text: "New comments, stopped watching",
             notification: {
               source: { kind: "monitor" },
@@ -4949,7 +4949,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           },
           stack: null,
         });
-        const wakeMessageId = MessageId.make(`${threadId}-wake`);
+        const wakeMessageId = MessageId.make(`${pullRequestWakeMessagePrefix(key)}${threadId}`);
         yield* orchestrator.dispatch({
           type: "thread.pull-request-watch.sync",
           commandId: CommandId.make(`${threadId}-wake`),

@@ -3575,8 +3575,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       yield* dispatchThreadMutation(command, events, effects);
-      // An ended watch drops its queued wakes; only its own last wake, if any, still runs.
-      if (command.watch === null) yield* cancelQueuedPullRequestWakes(command, queued.runs, events);
+      // A silent end drops the queued wakes. An end with a final notice keeps them; promotion
+      // drops them only when the pull request merged or closed (isStalePullRequestWatchWake).
+      if (command.watch === null && command.wake === undefined) {
+        yield* cancelQueuedPullRequestWakes(command, queued.runs, events);
+      }
       if (command.wake === undefined) return;
       // An idle thread dispatches immediately, bypassing queued-wake validation.
       if (
