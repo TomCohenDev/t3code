@@ -1245,15 +1245,14 @@ export default function ChatView(props: ChatViewProps) {
         worktreePath: activeThread?.worktreePath ?? null,
       })
     : null;
-  // Fork: the terminal is no model; a draft switches to it with its own toggle.
-  const providerStatuses = withoutTerminalProvider(
-    resolveProvidersForCwd(
-      (providerEnvironmentId === undefined
-        ? undefined
-        : providersByEnvironment.get(providerEnvironmentId)) ?? EMPTY_PROVIDERS,
-      gitCwd,
-    ),
+  const environmentProviderStatuses = resolveProvidersForCwd(
+    (providerEnvironmentId === undefined
+      ? undefined
+      : providersByEnvironment.get(providerEnvironmentId)) ?? EMPTY_PROVIDERS,
+    gitCwd,
   );
+  // Fork: the terminal is no model; a draft switches to it with its own toggle.
+  const providerStatuses = withoutTerminalProvider(environmentProviderStatuses);
   const selectedProviderByThreadId = composerActiveProvider ?? null;
   const threadProvider =
     activeThread?.modelSelection.instanceId ??

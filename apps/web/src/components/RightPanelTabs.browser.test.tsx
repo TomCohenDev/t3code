@@ -181,6 +181,7 @@ function panel(activeSurface: RightPanelSurface) {
     onAddPullRequest: noop,
     onAddPullRequests: noop,
     onAddDevice: noop,
+    onAddMachines: noop,
     browserAvailable: true,
     terminalAvailable: true,
     diffAvailable: true,
@@ -188,6 +189,7 @@ function panel(activeSurface: RightPanelSurface) {
     pullRequestAvailable: true,
     pullRequestsAvailable: true,
     deviceAvailable: true,
+    machinesAvailable: false,
     children: (
       <div data-testid="surface-content">
         {/* Stands in for ServerBrowserSurface, whose page canvas handles thumb buttons itself. */}
