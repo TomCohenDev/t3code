@@ -20,12 +20,10 @@ import {
 } from "./pullRequestOwnerFilter.logic";
 
 /** Owners are read like labels, then lowercased to match `repositoryOwnerOf`. */
-export function pullRequestSearchOwners(labels: {
-  readonly labels?: ReadonlyArray<string>;
-}): Partial<Pick<PullRequestListPreferences, "owners">> {
-  const owners = labels.labels
-    ?.map((owner) => owner.toLowerCase())
-    .slice(0, MAX_PULL_REQUEST_LIST_OWNERS);
+export function pullRequestSearchOwners(
+  labels: ReadonlyArray<string> | undefined,
+): Partial<Pick<PullRequestListPreferences, "owners">> {
+  const owners = labels?.map((owner) => owner.toLowerCase()).slice(0, MAX_PULL_REQUEST_LIST_OWNERS);
   return owners === undefined ? {} : { owners };
 }
 

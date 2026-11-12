@@ -106,6 +106,8 @@ const MACHINE_LOCAL_SERVER_SETTINGS = [
   // Secrets: a machine reports them redacted, so a shared value would erase them.
   "providerInstances",
   "sourceControlHosts",
+  // Which of this machine's source control hosts the project pickers offer.
+  "offeredSourceControlProviders",
   "usageLimitSources",
   "cloudSpeechCredentials",
   // Names another machine: a shared value would make that machine back up to itself.
@@ -256,6 +258,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "rememberBackForwardHistory",
   "restartReconnectWarningGrace",
   "screenReaderAnnouncements",
+  "screenReaderWindowTitle",
   "sendShortcut",
   "settingsFind",
   "showSkillsInSlashMenu",

@@ -25,6 +25,8 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       yield* git(cwd, ["init"]);
       yield* git(cwd, ["remote", "add", "origin", "git@github.com:julius/t3code-fork.git"]);
       yield* git(cwd, ["remote", "add", "upstream", "git@github.com:T3Tools/t3code.git"]);
+      // The explicit setting outranks the remote that `gh repo set-default` picked.
+      yield* git(cwd, ["config", "remote.upstream.gh-resolved", "base"]);
 
       let preferOrigin = true;
       const resolver = yield* RepositoryIdentityResolver.make({

@@ -40,6 +40,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import {
+  combinePullRequestWatchWakes,
   evaluatePullRequestWatch,
   PULL_REQUEST_WATCH_NO_CHECKS_MS,
   pullRequestWakeMessagePrefix,
@@ -103,6 +104,22 @@ interface LastRead {
 interface ReadPlan {
   readonly detail: boolean;
   readonly activity: boolean;
+}
+
+interface Wake {
+  readonly text: string;
+  readonly notification: OrchestrationV2Notification;
+  readonly includesRemarks?: boolean;
+}
+
+/** A wake a pass holds back so each thread gets one for everything the pass found. */
+interface HeldWake {
+  readonly groupKey: string;
+  readonly target: WatchTarget;
+  readonly next: ThreadPullRequestWatch | null;
+  readonly endedWatch?: ThreadPullRequestWatch;
+  readonly wake: Wake;
+  readonly reason?: WatchEndReason;
 }
 
 const watchKey = ({ thread, watch }: WatchTarget) => `${thread.id} ${watch.startedAt}`;
@@ -292,11 +309,7 @@ export const make = Effect.gen(function* () {
   const record = Effect.fn("PullRequestWatchReactor.record")(function* (
     target: WatchTarget,
     next: ThreadPullRequestWatch | null,
-    wake?: {
-      readonly text: string;
-      readonly notification: OrchestrationV2Notification;
-      readonly includesRemarks?: boolean;
-    },
+    wake?: Wake,
     endedWatch?: ThreadPullRequestWatch,
   ) {
     const uuid = yield* random.uuidV4();
@@ -426,18 +439,103 @@ export const make = Effect.gen(function* () {
       ),
   );
 
-  const closed = (target: WatchTarget) =>
-    record(target, null, {
-      text: `Pull request #${target.link.number} (${target.link.url}) was closed, so T3 Code stopped watching it. Call watch_pull_request if it reopens.`,
-      notification: {
-        source: { kind: "monitor" },
-        outcome: "updated",
-        summary: `#${target.link.number}: closed, stopped watching`,
-      },
-    }).pipe(
-      Effect.tap(() => woke(target)),
-      Effect.tap(() => ended(target, "closed")),
+  /** Wakes the current pass found, sent by `sendHeld` once every read of the pass is done. */
+  let held: Array<HeldWake> = [];
+  const hold = (wake: HeldWake) => Effect.sync(() => void held.push(wake));
+
+  const sendOne = (item: HeldWake) =>
+    record(item.target, item.next, item.wake, item.endedWatch).pipe(
+      Effect.tap(() => woke(item.target)),
+      Effect.tap(() => (item.reason === undefined ? Effect.void : ended(item.target, item.reason))),
+      Effect.catchCause((cause) => {
+        lastReads.delete(item.groupKey);
+        const fields = { threadId: item.target.thread.id, pullRequest: item.groupKey };
+        // Fork: a held wake is expected while the thread works; the next sweep reads again.
+        return isWakeHeld(cause)
+          ? Effect.logDebug("pull request watch wake held behind a queued wake", fields)
+          : logFailure("pull request watch update failed", fields)(cause);
+      }),
     );
+
+  const sendTogether = Effect.fn("PullRequestWatchReactor.sendTogether")(function* (
+    items: readonly [HeldWake, ...ReadonlyArray<HeldWake>],
+  ) {
+    const [first, ...rest] = items;
+    const uuid = yield* random.uuidV4();
+    yield* engine.dispatch({
+      type: "thread.pull-request-watch.sync",
+      commandId: CommandId.make(`server:pr-watch:${first.target.thread.id}:${uuid}`),
+      threadId: first.target.thread.id,
+      ...identityOf(first.target.link),
+      startedAt: first.target.watch.startedAt,
+      watch: first.next,
+      ...(first.endedWatch === undefined ? {} : { endedWatch: first.endedWatch }),
+      others: rest.map((item) => ({
+        ...identityOf(item.target.link),
+        startedAt: item.target.watch.startedAt,
+        watch: item.next,
+        ...(item.endedWatch === undefined ? {} : { endedWatch: item.endedWatch }),
+        ...(item.wake.includesRemarks === true ? { includesRemarks: true } : {}),
+      })),
+      wake: {
+        ...combinePullRequestWatchWakes([first.wake, ...rest.map((item) => item.wake)]),
+        ...(first.wake.includesRemarks === true ? { includesRemarks: true } : {}),
+        sections: items.map(({ wake }) => ({
+          text: wake.text,
+          outcome: wake.notification.outcome,
+          summary: wake.notification.summary,
+        })),
+        messageId: MessageId.make(`message:pr-watch:${uuid}`),
+      },
+    });
+    yield* Effect.forEach(
+      items,
+      (item) =>
+        woke(item.target).pipe(
+          Effect.andThen(item.reason === undefined ? Effect.void : ended(item.target, item.reason)),
+        ),
+      { discard: true },
+    );
+  });
+
+  const sendHeld = Effect.suspend(() => {
+    const byThread = new Map<string, Array<HeldWake>>();
+    for (const item of held) {
+      byThread.set(item.target.thread.id, [...(byThread.get(item.target.thread.id) ?? []), item]);
+    }
+    held = [];
+    return Effect.forEach(
+      byThread.values(),
+      ([first, ...rest]) =>
+        rest.length === 0
+          ? sendOne(first!)
+          : // A watch that ended or moved during the pass fails the whole command; each then
+            // goes on its own, as the orchestrator decides for it alone.
+            sendTogether([first!, ...rest]).pipe(
+              Effect.catchCauseIf(
+                (cause) => !Cause.hasInterruptsOnly(cause),
+                () => Effect.forEach([first!, ...rest], sendOne, { discard: true }),
+              ),
+            ),
+      { discard: true },
+    );
+  });
+
+  const closed = (groupKey: string, target: WatchTarget) =>
+    hold({
+      groupKey,
+      target,
+      next: null,
+      wake: {
+        text: `Pull request #${target.link.number} (${target.link.url}) was closed, so T3 Code stopped watching it. Call watch_pull_request if it reopens.`,
+        notification: {
+          source: { kind: "monitor" },
+          outcome: "updated",
+          summary: `#${target.link.number}: closed, stopped watching`,
+        },
+      },
+      reason: "closed",
+    });
 
   const endsWithoutRead = ({ thread, link }: WatchTarget): WatchEndReason | undefined =>
     link.snapshot?.state === "merged"
@@ -564,7 +662,7 @@ export const make = Effect.gen(function* () {
       lastReads.delete(group.key);
       return yield* eachTarget(group, (target) =>
         detail.state === "closed"
-          ? closed(target)
+          ? closed(group.key, target)
           : record(target, null).pipe(Effect.tap(() => ended(target, "merged"))),
       );
     }
@@ -607,13 +705,17 @@ export const make = Effect.gen(function* () {
           includesRemarks: report.changes.some((change) => change.kind === "remarks"),
         };
         // An ending watch keeps what this pass saw, so watching again starts from it.
-        return (
+        return hold(
           report.exhausted
-            ? record(target, null, wake, report.next)
-            : record(target, report.next, wake)
-        ).pipe(
-          Effect.tap(() => woke(target)),
-          Effect.tap(() => (report.exhausted ? ended(target, "comment-limit") : Effect.void)),
+            ? {
+                groupKey: group.key,
+                target,
+                next: null,
+                endedWatch: report.next,
+                wake,
+                reason: "comment-limit",
+              }
+            : { groupKey: group.key, target, next: report.next, wake },
         );
       }
       return watchesEqual(report.next, target.watch) ? Effect.void : record(target, report.next);
@@ -624,6 +726,7 @@ export const make = Effect.gen(function* () {
   // The sweep and change reads each name their own span.
   const pass = Effect.fnUntraced(
     function* (changed: string | undefined) {
+      held = [];
       const threads = yield* projections.getThreadsWithPullRequests();
       const targets = threads.flatMap((thread) =>
         visibleThreadPullRequests(thread.pullRequests ?? []).flatMap((link) =>
@@ -722,6 +825,7 @@ export const make = Effect.gen(function* () {
           ),
         { concurrency: "unbounded", discard: true },
       );
+      yield* sendHeld;
     },
     // Fork: the fingerprint reads run in parallel, so they share one project listing per pass.
     pullRequests.withSharedProjectReads,
