@@ -415,6 +415,8 @@ export function ForkTerminalThreadScreen(props: { readonly threadRef: ScopedThre
           projectId={thread.projectId}
           worktreePath={thread.worktreePath}
           isServerThread
+          // No composer: pull request rows offer no "in this thread" handoff.
+          composerDraftTarget={undefined}
           activeProjectName={project.title}
           keybindings={keybindings}
           availableEditors={availableEditors}

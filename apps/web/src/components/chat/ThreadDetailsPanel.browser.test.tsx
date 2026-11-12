@@ -169,6 +169,8 @@ function Panel({ fixture }: { fixture: ReturnType<typeof setup> }) {
         onStartFromOriginChange={noop}
         onComposerFocusRequest={noop}
         onRunProjectScript={noop}
+        globalScripts={[]}
+        onRunGlobalScript={noop}
         onAddProjectScript={scriptResult}
         onUpdateProjectScript={scriptResult}
         onDeleteProjectScript={scriptResult}
