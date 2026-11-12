@@ -424,6 +424,7 @@ it.effect("a fixed-time slot missed while the server was off shows on the task",
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
+      ServerSettings.layerTest(),
     );
     const withServer = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
@@ -506,6 +507,7 @@ it.effect(
         }),
         Layer.mock(ThreadManagementService.ThreadManagementService)({}),
         Layer.mock(SecretRequests.SecretRequests)({}),
+        ServerSettings.layerTest(),
       );
       const withServer = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         effect.pipe(

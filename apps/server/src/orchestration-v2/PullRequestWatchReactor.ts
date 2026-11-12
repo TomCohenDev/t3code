@@ -485,10 +485,7 @@ export const make = Effect.gen(function* () {
           outcome: wake.notification.outcome,
           summary: wake.notification.summary,
         })),
-        // Fork: the ID names the first pull request, so its queued wakes are found by prefix.
-        messageId: MessageId.make(
-          `${pullRequestWakeMessagePrefix(normalizeThreadPullRequestKey(identityOf(first.target.link)))}${uuid}`,
-        ),
+        messageId: MessageId.make(`message:pr-watch:${uuid}`),
       },
     });
     yield* Effect.forEach(

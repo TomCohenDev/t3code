@@ -26,7 +26,11 @@ describe("DesktopUpdates", () => {
 
         yield* TestClock.adjust(Duration.seconds(30));
         assert.isFalse(yield* Ref.get(desktopState.quitting));
-        assert.deepEqual(harness.installSteps, ["quitAndInstall", "startBackend"]);
+        assert.deepEqual(harness.installSteps, [
+          "closeSshTunnels",
+          "quitAndInstall",
+          "startBackend",
+        ]);
         assert.isNotNull((yield* updates.getState).message);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));

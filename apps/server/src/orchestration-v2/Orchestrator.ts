@@ -3763,13 +3763,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: "The pull request watch ended or its thread settled while it was read.",
         });
       }
-      // Fork: a wake for several pull requests carries the first one's ID prefix.
-      // Limit: its queued wake is found only through that first pull request.
-      // Revisit if agents report repeated wakes for the other pull requests.
+      // Fork: only a wake for one pull request names it in its ID. A wake for several has no
+      // prefix, so holds and silent ends skip it; promotion trims or drops it instead.
       const queued = yield* Effect.forEach(entries, ({ key }) =>
         queuedPullRequestWakes(command, key),
       );
-      if (wake !== undefined && !wake.messageId.startsWith(queued[0]!.prefix)) {
+      if (
+        wake !== undefined &&
+        entries.length === 1 &&
+        !wake.messageId.startsWith(queued[0]!.prefix)
+      ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,

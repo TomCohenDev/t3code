@@ -4270,8 +4270,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         }
         const host = Layer.mergeAll(
           NodeServices.layer,
+          ServerSettings.layerTest(),
           NodeCrypto.layer,
           Layer.mock(PullRequestService.PullRequestService)({
+            withSharedProjectReads: (effect) => effect,
             detail: (input) =>
               Effect.succeed({
                 ...watchedPullRequestDetail({
@@ -4308,7 +4310,20 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         );
         assert.deepEqual(stamps, [numbers]);
         for (const number of numbers) assert.include(wakes[0]!.text, `#${number}`);
-        if (!busy) return;
+        // Fork: later tests sweep every watched thread, and a failed run holds this thread's queue.
+        const unwatch = (stopped: ReadonlyArray<number>) =>
+          Effect.forEach(stopped, (number) =>
+            orchestrator.dispatch({
+              type: "thread.pull-request.watch",
+              commandId: CommandId.make(`pr-watch-pass-end-${busy}-${number}`),
+              threadId,
+              host: "github.com",
+              repository: "pingdotgg/t3code",
+              number,
+              watching: false,
+            }),
+          );
+        if (!busy) return yield* unwatch(numbers);
 
         // A pull request unwatched while the wake waited leaves it; the others still start.
         yield* orchestrator.dispatch({
@@ -4336,6 +4351,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           after.runs.find((run) => run.userMessageId === woken.id)?.status,
           "cancelled",
         );
+        yield* unwatch([13, 14]);
       }),
   );
 

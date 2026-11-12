@@ -232,6 +232,7 @@ describe("sidebar thread rename", () => {
         },
         defaultProjectFallbackReady: true,
         handleNewThread: vi.fn().mockResolvedValue(null),
+        handleNewTerminalThread: vi.fn().mockResolvedValue(null),
         routeDraftId: null,
         routeThreadRef,
       });

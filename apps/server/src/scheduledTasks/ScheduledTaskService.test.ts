@@ -480,6 +480,7 @@ it.effect.each([
           }),
           NodeCrypto.layer,
           Scheduler.layer,
+          ServerSettings.layerTest(),
         ),
       ),
     );
