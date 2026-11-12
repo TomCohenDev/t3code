@@ -213,6 +213,7 @@ it.effect("keeps one queued occurrence of a recurring task while its bound threa
                 ),
               ),
       }),
+      ServerSettings.layerTest(),
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
