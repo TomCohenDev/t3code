@@ -310,6 +310,7 @@ describe("sidebar settled pagination", () => {
       },
       defaultProjectFallbackReady: true,
       handleNewThread: vi.fn().mockResolvedValue(null),
+      handleNewTerminalThread: vi.fn().mockResolvedValue(null),
       routeDraftId: null,
       routeThreadRef: { environmentId: activeProject.environmentId, threadId: threads[0]!.id },
     });
