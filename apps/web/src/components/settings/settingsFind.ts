@@ -34,7 +34,7 @@ export function settingsFindMatch(
   const pageItems = items.filter((item) => item.to === pathname);
   return {
     pageAnchors: new Set(pageItems.map(anchorOf)),
-    matched: new Set(searchSettings(query, pageItems, { matchPageLabel: false }).map(anchorOf)),
+    matched: new Set(searchSettings(query, pageItems, undefined, { matchPageLabel: false }).map(anchorOf)),
   };
 }
 

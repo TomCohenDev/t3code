@@ -73,7 +73,7 @@ import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 import { deriveProviderInstanceConfigMap } from "../provider/ProviderInstanceRegistryHydration.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { increment, terminalSessionsTotal } from "../observability/Metrics.ts";
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+import { expandHomeVariable } from "@t3tools/provider-core/server/pathExpansion";
 import {
   KITSHN_ATTEST_ENV,
   THREAD_CREDENTIAL_AUTHORIZATION_ENV,
@@ -1478,8 +1478,11 @@ function createTerminalSpawnEnv(
         platform === "win32"
           ? Object.keys(spawnEnv).find((candidate) => candidate.toLowerCase() === key.toLowerCase())
           : undefined;
-      spawnEnv[existingKey ?? key] =
-        key === "CODEX_HOME" || key === "CLAUDE_CONFIG_DIR" ? expandHomePath(value, home) : value;
+      spawnEnv[existingKey ?? key] = expandHomeVariable(
+        platform === "win32" ? key.toUpperCase() : key,
+        value,
+        home,
+      );
     }
   }
   if (!spawnEnv.COLORTERM && runtimeEnv?.COLORTERM === undefined) {
