@@ -289,7 +289,7 @@ function makeLocalCommandHarness(input: {
   readonly writeFailure?: unknown;
   readonly failReadsAfterRunning?: boolean;
   readonly previousTurn?: {
-    readonly runStatus: "failed" | "completed";
+    readonly runStatus: "failed" | "interrupted" | "completed";
     readonly turnStatus: "running" | "completed" | "interrupted";
     readonly differentThread?: boolean;
     readonly liveSession?: boolean;
@@ -714,8 +714,7 @@ function makeLocalCommandHarness(input: {
     };
   }
   let providerBusy =
-    input.previousTurn?.runStatus === "failed" &&
-    input.previousTurn.turnStatus === "running" &&
+    input.previousTurn?.turnStatus === "running" &&
     !input.previousTurn.differentThread &&
     input.previousTurn.liveSession !== false;
   const interruptTurn = vi.fn((request: ProviderAdapter.ProviderAdapterV2InterruptInput) =>
@@ -1258,26 +1257,29 @@ effectIt.effect(
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
-effectIt.effect("recovers an abandoned failed turn before continuing its native conversation", () =>
-  Effect.gen(function* () {
-    const harness = makeLocalCommandHarness({
-      text: "Continue",
-      previousTurn: { runStatus: "failed", turnStatus: "running" },
-    });
+// An interrupted run keeps a running turn when its start reached the provider after Stop read the run.
+effectIt.effect.each(["failed", "interrupted"] as const)(
+  "recovers an abandoned %s turn before continuing its native conversation",
+  (runStatus) =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "Continue",
+        previousTurn: { runStatus, turnStatus: "running" },
+      });
 
-    yield* harness.start;
+      yield* harness.start;
 
-    expect(harness.interruptTurn).toHaveBeenCalledOnce();
-    expect(harness.projection().runs.at(-1)?.status).toBe("running");
-    expect(harness.projection().providerTurns[0]).toMatchObject({
-      status: "interrupted",
-      completedAt: expect.anything(),
-    });
-    expect(harness.startRootRun).toHaveBeenCalledOnce();
-    expect(harness.startRootRun.mock.calls[0]?.[0].providerThread.nativeThreadRef?.nativeId).toBe(
-      "existing-native-conversation",
-    );
-  }),
+      expect(harness.interruptTurn).toHaveBeenCalledOnce();
+      expect(harness.projection().runs.at(-1)?.status).toBe("running");
+      expect(harness.projection().providerTurns[0]).toMatchObject({
+        status: "interrupted",
+        completedAt: expect.anything(),
+      });
+      expect(harness.startRootRun).toHaveBeenCalledOnce();
+      expect(harness.startRootRun.mock.calls[0]?.[0].providerThread.nativeThreadRef?.nativeId).toBe(
+        "existing-native-conversation",
+      );
+    }),
 );
 
 effectIt.effect.each([
