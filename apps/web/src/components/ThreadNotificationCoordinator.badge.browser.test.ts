@@ -66,17 +66,23 @@ vi.mock(import("../state/threads"), async (original) => {
     },
   };
 });
-vi.mock(import("../hooks/useSettings"), async (original) => ({
-  ...(await original()),
-  subscribeClientSettings: ((listener: () => void) => {
-    state.settingsListeners.add(listener);
-    return () => state.settingsListeners.delete(listener);
-  }) as never,
-  getClientSettings: (() => ({
-    notificationMode: state.mode,
-    inAppNotificationsEnabled: state.inApp,
-  })) as never,
-}));
+vi.mock(import("../hooks/useSettings"), async (original) => {
+  // Fork: in-app toasts read the fork in-app notification settings, so start from the defaults.
+  const { DEFAULT_CLIENT_SETTINGS } = await import("@t3tools/contracts");
+  return {
+    ...(await original()),
+    subscribeClientSettings: ((listener: () => void) => {
+      state.settingsListeners.add(listener);
+      return () => state.settingsListeners.delete(listener);
+    }) as never,
+    getClientSettings: (() => ({
+      ...DEFAULT_CLIENT_SETTINGS,
+      inAppNotificationClosesOnOpen: true,
+      notificationMode: state.mode,
+      inAppNotificationsEnabled: state.inApp,
+    })) as never,
+  };
+});
 vi.mock(import("../threadNotifications"), async (original) => ({
   ...(await original()),
   playNotificationSound: state.sound,

@@ -18,7 +18,7 @@ import {
   ShieldQuestionIcon,
 } from "lucide-react";
 
-import { addThreadToast } from "../forkInAppNotifications";
+import { addThreadToast, closeThreadToasts } from "../forkInAppNotifications";
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
 import { showInstalledAppNotification } from "../installedApp";
 import { isWindowsPlatform } from "../lib/utils";
@@ -114,8 +114,9 @@ export function startThreadNotifications(
   const closeOpenedThreadToasts = () => {
     const { environmentId, threadId } = activeThread();
     if (environmentId === undefined || threadId === undefined) return;
-    const opened = threadKey({ environmentId, threadId });
-    closeToasts((key) => key === opened);
+    // Fork: `closeThreadToasts` applies `inAppNotificationClosesOnOpen`.
+    if (!closeThreadToasts(environmentId, threadId)) return;
+    openToasts.delete(threadKey({ environmentId, threadId }));
   };
   // A notification shown before the tag filter turned on must not stay on screen. While hiding,
   // one whose thread left the live list (archived) cannot be judged, so it closes too.
