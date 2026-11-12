@@ -75,32 +75,33 @@ export function TextFieldSpeechControls({
   return (
     <>
       {speech.preview ? (
-        <p role="status" className="w-full text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="order-first max-h-24 w-full overflow-y-auto rounded-lg border border-border/60 bg-muted/30 px-2.5 py-1.5 text-sm break-words whitespace-pre-wrap"
+        >
           {speech.preview.committed}
-          <span className="opacity-70">{speech.preview.tentative}</span>
+          <span className="text-muted-foreground">{speech.preview.tentative}</span>
         </p>
       ) : null}
-      <div className="flex min-w-0 items-center gap-1">
-        <ComposerSpeechRecordingPill
+      <ComposerSpeechRecordingPill
+        size="compact"
+        state={speech.state}
+        progress={null}
+        level={speech.level}
+        disabled={disabled}
+        onStart={() => void speech.start()}
+        onStop={() => void speech.stop()}
+        onCancel={speech.cancel}
+        onSkipPostProcessing={speech.skipPostProcessing}
+      />
+      {speech.available ? (
+        <ComposerSpeechButton
           state={speech.state}
-          progress={null}
-          level={speech.level}
+          size="compact"
           disabled={disabled}
           onStart={() => void speech.start()}
-          onStop={() => void speech.stop()}
-          onCancel={speech.cancel}
-          onSkipPostProcessing={speech.skipPostProcessing}
         />
-        {speech.available ? (
-          <ComposerSpeechButton
-            state={speech.state}
-            progress={null}
-            disabled={disabled}
-            onStart={() => void speech.start()}
-            onCancel={speech.cancel}
-          />
-        ) : null}
-      </div>
+      ) : null}
       <VoiceInputSetup
         environmentId={speech.transcriptionEnvironmentId}
         open={speech.setup.open}

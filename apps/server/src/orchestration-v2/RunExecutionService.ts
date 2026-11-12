@@ -1569,6 +1569,37 @@ export const layer: Layer.Layer<
           }
           yield* scheduleIdleFlush;
         });
+        // Stop reads the projection, so a start that reaches the provider before its turn is
+        // stored ends the run "before provider start" and leaves the provider running.
+        let rootTurnStartChecked = false;
+        const stopTurnOfStoppedRun = Effect.fn("RunExecutionService.stopTurnOfStoppedRun")(
+          function* (event: ProviderAdapter.ProviderAdapterV2Event) {
+            if (
+              rootTurnStartChecked ||
+              input.shouldStartProviderTurn === undefined ||
+              event.type !== "provider_turn.updated" ||
+              event.providerTurn.runAttemptId !== input.attempt.id ||
+              event.providerTurn.providerThreadId !== input.providerThread.id ||
+              isTerminalProviderTurnStatus(event.providerTurn.status)
+            ) {
+              return;
+            }
+            rootTurnStartChecked = true;
+            if (yield* input.shouldStartProviderTurn()) return;
+            yield* input.session.interruptTurn({
+              providerThread: yield* Ref.get(latestProviderThread),
+              providerTurnId: event.providerTurn.id,
+            });
+          },
+          Effect.catchCauseIf(
+            (cause) => !Cause.hasInterruptsOnly(cause),
+            (cause) =>
+              Effect.logWarning("orchestration V2 failed to stop the turn of a stopped run", {
+                runId: input.run.id,
+                cause,
+              }),
+          ),
+        );
         const ingestEvent = Effect.fnUntraced(function* ({
           event,
           accepted,
@@ -1591,6 +1622,7 @@ export const layer: Layer.Layer<
           );
           if (deliveredEvent) {
             storedEventCount = yield* ingestDelivered(event, deliveredEvent);
+            yield* stopTurnOfStoppedRun(event);
           } else if (
             event.type === "turn_item.updated" &&
             (event.turnItem.type === "assistant_message" || event.turnItem.type === "reasoning") &&
@@ -1861,7 +1893,10 @@ export const layer: Layer.Layer<
                 threadId: input.run.threadId,
                 providerThreadId: input.providerThread.id,
                 runId: input.run.id,
-                cause: "This provider does not support context compaction.",
+                cause: new ProviderAdapter.ProviderCompactionUnsupportedError({
+                  driver: input.session.driver,
+                  providerThreadId: input.providerThread.id,
+                }),
               }),
             ))
           : input.session.startTurn(turnInput);

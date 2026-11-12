@@ -1,9 +1,11 @@
 import "vite-plus/test/config";
-import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
+import * as NodeOS from "node:os";
+
 import { defaultInclude, defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { viteCacheDir as forkViteCacheDir } from "../../scripts/lib/fork-build-cache.cjs";
 
 const repoEnv = loadRepoEnv();
 const domTests = ["src/preview/PickPreload.test.ts"];
@@ -12,6 +14,13 @@ const domTests = ["src/preview/PickPreload.test.ts"];
 const isMainProcessExternal = (id: string) =>
   id === "electron" || id.startsWith("electron/") || isDesktopRuntimeExternalDependency(id);
 const shouldLaunchElectronAfterPack = process.env.T3CODE_DESKTOP_DEV === "1";
+// tsdown runs onSuccess through a shell. dash forks instead of exec'ing the last command, which
+// would leave an `sh` between `vp pack` and the supervisor and hide `vp pack` dying from it.
+const devElectronCommand =
+  // oxlint-disable-next-line t3code/no-global-process-runtime -- Build config has no Effect runtime.
+  NodeOS.platform() === "win32"
+    ? "node scripts/dev-electron.mjs"
+    : "exec node scripts/dev-electron.mjs";
 const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
@@ -73,7 +82,7 @@ export default defineConfig({
         neverBundle: isMainProcessExternal,
         onlyBundle: false,
       },
-      ...(shouldLaunchElectronAfterPack ? { onSuccess: "node scripts/dev-electron.mjs" } : {}),
+      ...(shouldLaunchElectronAfterPack ? { onSuccess: devElectronCommand } : {}),
     },
     {
       format: "cjs",

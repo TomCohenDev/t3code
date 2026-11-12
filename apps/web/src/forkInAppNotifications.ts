@@ -37,9 +37,15 @@ export function addThreadToast(
   return toastId;
 }
 
-/** Fork: with `inAppNotificationClosesOnOpen` on, closes the in-app notifications of a thread. */
-export function closeThreadToasts(environmentId: EnvironmentId, threadId: ThreadId): void {
-  if (!getClientSettings().inAppNotificationClosesOnOpen) return;
-  const ids = openToasts.get(threadNotificationTag(environmentId, threadId));
+/**
+ * Fork: with `inAppNotificationClosesOnOpen` on, closes the in-app notifications of a thread once,
+ * also when several route listeners ask. Returns whether the setting is on.
+ */
+export function closeThreadToasts(environmentId: EnvironmentId, threadId: ThreadId): boolean {
+  if (!getClientSettings().inAppNotificationClosesOnOpen) return false;
+  const key = threadNotificationTag(environmentId, threadId);
+  const ids = openToasts.get(key);
+  openToasts.delete(key);
   for (const toastId of ids ?? []) toastManager.close(toastId);
+  return true;
 }

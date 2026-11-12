@@ -33,7 +33,7 @@ import * as GitManager from "./GitManager.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
-import { isNotGitRepositoryMessage } from "../fork/gitNotARepository.ts";
+import { isNonRepositoryGitStderr } from "../vcs/GitVcsDriverCore.ts";
 
 export class GitWorkflowService extends Context.Service<
   GitWorkflowService,
@@ -290,7 +290,7 @@ export const make = Effect.gen(function* () {
           timeoutMs: 5_000,
         })
         .pipe(
-          Effect.map((result) => result.exitCode !== 0 && isNotGitRepositoryMessage(result.stderr)),
+          Effect.map((result) => result.exitCode !== 0 && isNonRepositoryGitStderr(result.stderr)),
         );
     }),
     repositoryRoot: Effect.fn("GitWorkflowService.repositoryRoot")(function (cwd) {

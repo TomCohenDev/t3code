@@ -203,7 +203,10 @@ const makeLayer = (input: {
               })),
             } as never),
         }),
-        Layer.mock(ServiceLauncherClient.ServiceLauncherClient)({ managed: false }),
+        Layer.mock(ServiceLauncherClient.ServiceLauncherClient)({
+          managed: false,
+          protocol: undefined,
+        }),
         // No git checkout in this test: the build falls back to the release.
         Layer.mock(ProcessRunner.ProcessRunner)({
           run: () => Effect.succeed({ code: 128, stdout: "" } as never),

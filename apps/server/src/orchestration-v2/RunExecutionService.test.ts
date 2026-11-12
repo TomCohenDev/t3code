@@ -2936,6 +2936,20 @@ it.effect("records a provider's input rejection at turn start in the terminal er
   }),
 );
 
+it.effect("tells the user why /compact failed on a provider without compaction", () =>
+  Effect.gen(function* () {
+    const { written } = yield* captureRootRunTermination({
+      key: "start-failure:compact-unsupported",
+      shouldFinalizeRun: () => Effect.succeed(true),
+      events: () => Stream.never,
+      afterStart: (closed) => Deferred.succeed(closed, undefined),
+      messageText: "/compact",
+    });
+    const error = written.find((item) => item.type === "error");
+    assert.include(error?.failure.message ?? "", "does not support /compact");
+  }),
+);
+
 it.effect.each(["failure", "defect", "interrupt-failure", "ownership-lost"] as const)(
   "stops the live provider and background work before settling an ingestion %s",
   (failureMode) =>
@@ -3331,6 +3345,67 @@ it.effect("does not start a turn whose run settled during the app context read",
   }),
 );
 
+it.effect.each([
+  { stoppedDuringStart: true, interrupts: 1 },
+  { stoppedDuringStart: false, interrupts: 0 },
+] as const)(
+  "interrupts the provider turn only when Stop ended its run while the provider started it: %j",
+  ({ stoppedDuringStart, interrupts: expectedInterrupts }) =>
+    Effect.gen(function* () {
+      const key = `stopped-during-start:${stoppedDuringStart}`;
+      const ids = backgroundScenarioIds(key);
+      const now = yield* DateTime.now;
+      const current = yield* Ref.make(true);
+      const started = yield* Deferred.make<void>();
+      const interrupts = yield* Ref.make<
+        ReadonlyArray<ProviderAdapter.ProviderAdapterV2InterruptInput>
+      >([]);
+      const { finalEvents } = yield* captureRootRunTermination({
+        key,
+        shouldStartProviderTurn: () => Ref.get(current),
+        shouldFinalizeRun: () => Ref.get(current),
+        startTurn: () =>
+          (stoppedDuringStart ? Ref.set(current, false) : Effect.void).pipe(
+            Effect.andThen(Deferred.succeed(started, undefined)),
+          ),
+        events: () =>
+          Stream.unwrap(
+            Deferred.await(started).pipe(
+              Effect.as(
+                Stream.make(
+                  {
+                    type: "provider_turn.updated" as const,
+                    driver,
+                    providerTurn: {
+                      id: ids.rootProviderTurnId,
+                      providerThreadId: ids.providerThreadId,
+                      nodeId: ids.rootNodeId,
+                      runAttemptId: ids.attemptId,
+                      nativeTurnRef: null,
+                      ordinal: 1,
+                      status: "running" as const,
+                      startedAt: now,
+                      completedAt: null,
+                    },
+                  },
+                  rootTerminalEvent(ids, stoppedDuringStart ? "interrupted" : "completed"),
+                ),
+              ),
+            ),
+          ),
+        interruptTurn: (input) => Ref.update(interrupts, (calls) => [...calls, input]),
+      });
+      const calls = yield* Ref.get(interrupts);
+      assert.equal(calls.length, expectedInterrupts);
+      if (stoppedDuringStart) {
+        assert.equal(calls[0]?.providerTurnId, ids.rootProviderTurnId);
+        assert.equal(calls[0]?.providerThread.id, ids.providerThreadId);
+        // Stop already settled the run.
+        assert.isFalse(finalEvents.some((event) => event.type === "run.updated"));
+      }
+    }),
+);
+
 it.effect("keeps completed runs completed when pull request refresh fails", () =>
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
@@ -3360,6 +3435,7 @@ function captureRootRunTermination(input: {
   >;
   readonly startTurn?: ProviderAdapter.ProviderAdapterV2SessionRuntime["startTurn"];
   readonly interruptTurn?: ProviderAdapter.ProviderAdapterV2SessionRuntime["interruptTurn"];
+  readonly messageText?: string;
   readonly initialProviderTurnId?: ProviderTurnId | null;
   readonly onStartFailure?: (
     error: RunExecutionService.RunExecutionServiceV2Error,
@@ -3471,6 +3547,7 @@ function captureRootRunTermination(input: {
         appThread: rootAppThread(ids.threadId),
         providerSessionId: ProviderSessionId.make(`session:${input.key}`),
         session: {
+          driver,
           events: Stream.empty,
           subscribeEvents: Effect.succeed({
             events:
@@ -3550,7 +3627,7 @@ function captureRootRunTermination(input: {
           : { hasWorkspaceMoved: input.hasWorkspaceMoved }),
         message: {
           messageId: MessageId.make(`message:${input.key}`),
-          text: "interrupt projection",
+          text: input.messageText ?? "interrupt projection",
           attachments: [],
           createdBy: "user",
           creationSource: "web",

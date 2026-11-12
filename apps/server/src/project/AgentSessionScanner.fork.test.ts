@@ -15,6 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
@@ -58,6 +59,9 @@ const runRecentThreads = (input: ScannerTestInput) =>
             }),
             ServerConfig.layerTest(input.claudeHomePath, { prefix: "t3code-scanner-config-" }),
             Layer.mock(ProjectStore.ProjectStoreV2)({ listShells: () => Effect.succeed([]) }),
+            Layer.mock(ProviderSessionRuntime.ProviderSessionRuntimeRepository)({
+              list: () => Effect.succeed([]),
+            }),
           ),
         ),
       ),
