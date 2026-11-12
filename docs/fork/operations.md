@@ -125,7 +125,7 @@ A failed Fork Sync, Fork Release or Fork CI run on main runs its `notify_agent` 
 - The script posts the run to `T3_AGENT_WEBHOOK_URL`, the webhook task "Fork repair" on the VPS T3 server (vienna), project "t3code fork".
 - The script retries once a minute for 15 minutes, so a server restart of the VPS does not lose the call. Each auto-update of the VPS restarts its server for about 20 seconds.
 - A manual run with `notify_agent=false` does not post. A failure right after a failure of the same workflow does not post either, when the first notify job succeeded and the first failure started less than 90 minutes before.
-- The repair agent ignores a cancelled run.
+- The repair agent ignores a cancelled run. A job that GitHub never gave a runner, or that hit its timeout, ends cancelled inside a failed run. That run does post, and the agent reruns its failed jobs.
 - How the agent works, and how to stop it: [Repair agent](../fork-agents.md#repair-agent). Its repair steps use the scripts of the [fork-repair skill](../../.agents/skills/fork-repair/SKILL.md).
 
 ## Change the fork

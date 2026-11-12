@@ -529,7 +529,9 @@ jobs:
   notify_agent:
     name: Notify repair agent
     needs: [prepare, desktop, mac_manifest, checksums]
-    if: failure() && github.event.inputs.notify_agent != 'false'
+    # A job GitHub never gave a runner, or one past timeout-minutes, ends 'cancelled' and the
+    # run 'failure', which failure() misses. !cancelled() still skips runs a person cancelled.
+    if: ${{ !cancelled() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) && github.event.inputs.notify_agent != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
