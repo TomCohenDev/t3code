@@ -8,13 +8,11 @@ import {
   ForkWsRpcGroup,
   MachineMapRequestError,
   OrchestrationV2ThreadLaunchError,
-  type OrchestrationV2ThreadLaunchInput,
   type ServerConfig,
   ServerSettingsError,
   type ServerSettings as ServerSettingsValue,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
-import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -230,35 +228,6 @@ export const trustedBrowserOriginsConfig = (configured: ReadonlyArray<string> | 
       return origins.length === 0 ? {} : { trustedBrowserOrigins: origins };
     }),
   );
-
-/**
- * A launch is accepted before its worktree exists, so a branch that cannot be created is refused
- * while the client can still act.
- */
-export const checkLaunchWorktreeBranch = (
-  threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"],
-  input: OrchestrationV2ThreadLaunchInput,
-) =>
-  input.workspaceStrategy.type === "worktree" &&
-  input.workspaceStrategy.branch !== undefined &&
-  !isTemporaryWorktreeBranch(input.workspaceStrategy.branch)
-    ? threadLaunch
-        .checkWorktreeBase({
-          projectId: input.projectId,
-          workspaceStrategy: input.workspaceStrategy,
-        })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new OrchestrationV2ThreadLaunchError({
-                commandId: input.commandId,
-                projectId: input.projectId,
-                message: cause.message,
-                cause,
-              }),
-          ),
-        )
-    : Effect.void;
 
 /**
  * K-721: a socket that a kitshn visitor opened closes when its level no longer covers the session:
