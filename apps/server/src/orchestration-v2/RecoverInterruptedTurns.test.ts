@@ -100,8 +100,11 @@ const dispatchedTexts = (
                       (message.runId !== null && filter.messageRunIds.includes(message.runId))),
                 ),
               }) as never,
-            recoverDelegatedTask: (_threadId, sourceRunId) =>
-              Effect.sync(() => options.recovered?.push(sourceRunId)),
+            recoverDelegatedTask: (_threadId, recovery) =>
+              Effect.sync(() => {
+                if (recovery?.sourceRunId !== undefined)
+                  options.recovered?.push(recovery.sourceRunId);
+              }),
             dispatch: (command) =>
               options.instanceDisabled
                 ? Effect.fail(

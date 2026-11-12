@@ -233,6 +233,7 @@ interface MessagesTimelineProps {
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor | null,
   ) => boolean;
+  onReplyToResponse?: TimelineRowSharedState["onReplyToResponse"];
   isWorking: boolean;
   runlessWorkActive?: boolean;
   activeTurnStartedAt?: string | null;
@@ -347,6 +348,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   forkMessageLink = null,
   citationHistory = CITED_HISTORY_LOADING,
   onCiteAssistantText,
+  onReplyToResponse,
   isWorking,
   runlessWorkActive = false,
   activeTurnStartedAt = null,
@@ -1107,6 +1109,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     canOperateThread,
     onRespondToApproval,
     citationRequest: readyCitationRequest,
+    onReplyToResponse,
     listRef,
     timestampFormat,
     routeThreadKey,
