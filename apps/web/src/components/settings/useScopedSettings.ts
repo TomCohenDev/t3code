@@ -117,7 +117,7 @@ function useRunScopedPlan() {
 }
 
 export function useUpdateScopedSettings() {
-  const { scope, environments } = useSettingsScope();
+  const { scope, environments, deviceOnly } = useSettingsScope();
   const run = useRunScopedPlan();
   const shareToMachineMap = useShareToMachineMap();
   const writeCircle = useWriteSelectedCircle();
@@ -131,7 +131,7 @@ export function useUpdateScopedSettings() {
       options?.onFailed?.();
       return;
     }
-    const plan = planScopedSettingsPatch(scope, environments, patch);
+    const plan = planScopedSettingsPatch(scope, environments, patch, { deviceOnly });
     run(plan, {
       ...(options?.onFailed === undefined ? {} : { onFailed: options.onFailed }),
       // Fork: MM-411. A change for all environments also becomes the shared value of the map.

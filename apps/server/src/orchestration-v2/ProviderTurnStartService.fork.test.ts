@@ -203,7 +203,7 @@ it("does not open a provider or start a turn when setup fails, and preserves its
   expect(harness.createWorktree).not.toHaveBeenCalled();
 });
 
-// The second case fails in upstream code that settles nothing: a projection read after preparation.
+// The last case fails in a projection read after preparation.
 it.each([
   {
     prepare: true,
@@ -221,7 +221,7 @@ it.each([
   },
   {
     prepare: false,
-    title: "Provider turn failed to start",
+    title: "Couldn't read thread state",
     message: "simulated inherited-background projection failure",
     code: null,
   },

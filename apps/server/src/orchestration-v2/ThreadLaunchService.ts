@@ -24,6 +24,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -48,6 +49,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
+import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import type * as Orchestrator from "./Orchestrator.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -302,7 +304,13 @@ const make = Effect.gen(function* () {
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const eventSink = yield* EventSink.EventSinkV2;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  // A project-folder launch that names no branch records the folder's checkout, as the composer does.
+  const launchBranch = (strategy: ThreadLaunchWorkspaceStrategy, workspaceRoot: string) =>
+    strategy.type === "root" && strategy.branch === undefined
+      ? git.currentBranch(workspaceRoot).pipe(Effect.orElseSucceed(() => null))
+      : Effect.succeed(strategy.branch ?? null);
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
@@ -317,6 +325,46 @@ const make = Effect.gen(function* () {
         ...(threadId === undefined ? {} : { threadId }),
         cause,
       });
+
+  const recordBranchRenameFailure = Effect.fn("ThreadLaunchService.recordBranchRenameFailure")(
+    function* (threadId: ThreadId, runId: RunId, branch: string, cause: Cause.Cause<unknown>) {
+      const error = Cause.squash(cause);
+      const now = yield* DateTime.now;
+      yield* eventSink.write({
+        events: [
+          {
+            id: yield* ids.allocate.event({ threadId }),
+            type: "turn-item.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: {
+              id: ids.derive.runSignalTurnItem({ runId, signal: "branch-rename" }),
+              threadId,
+              runId,
+              nodeId: null,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              // EventSink allocates the real position, after the run's existing items.
+              ordinal: 0,
+              status: "completed",
+              title: "Branch not renamed",
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+              type: "system_notice",
+              message: `Could not rename the worktree branch, so it stays ${branch}. ${error instanceof Error ? error.message : String(error)}`,
+            },
+          },
+        ],
+      });
+    },
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not record the branch rename failure", { cause }),
+    ),
+  );
 
   const readReceipt = (input: ThreadLaunchInput, commandId: CommandId) =>
     receipts
@@ -551,7 +599,7 @@ const make = Effect.gen(function* () {
         const uuid = yield* randomUuidV4;
         branch = buildTemporaryWorktreeBranchName(() => uuid.replaceAll("-", ""));
       } else {
-        branch = requestedBranch ?? null;
+        branch = yield* launchBranch(input.workspaceStrategy, project.workspaceRoot);
       }
       // Fork: a worktree path template names the folder after the branch, so
       // the branch gets its final name before the folder exists.
@@ -766,7 +814,13 @@ const make = Effect.gen(function* () {
               threadId,
               oldBranch,
               cause,
-            }),
+            }).pipe(
+              Effect.andThen(
+                runId === null || Cause.hasInterruptsOnly(cause)
+                  ? Effect.void
+                  : recordBranchRenameFailure(threadId, runId, oldBranch, cause),
+              ),
+            ),
           ),
           Effect.forkIn(preparationScope),
         );
@@ -852,6 +906,8 @@ const make = Effect.gen(function* () {
       } else {
         yield* setupTracker.stageStatus(threadId, "setup-script", "skipped");
       }
+      // The agent must start on the branch name the thread will show.
+      if (branchRename !== null) yield* Fiber.join(branchRename);
       yield* setupTracker.markUncancellable(threadId);
       // Fork: the shell of a draft starts where the agent of a thread would.
       if (draft) {
@@ -1140,7 +1196,7 @@ const make = Effect.gen(function* () {
                 },
               )
             : input.workspaceStrategy;
-        const initialBranch = workspaceStrategy.branch ?? null;
+        const initialBranch = yield* launchBranch(workspaceStrategy, project.workspaceRoot);
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;
         const claimDispatch =
