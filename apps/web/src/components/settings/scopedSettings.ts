@@ -232,14 +232,23 @@ export function planScopedSettingsPatch(
   scope: ResolvedSettingsScope,
   environments: readonly ScopedSettingsEnvironment[],
   patch: ScopedSettingsPatch,
+  options?: { readonly deviceOnly?: boolean },
 ) {
-  const { clientPatch, serverPatch } = splitScopedSettingsPatch(patch);
+  const isProjectScope = scope.kind === "project" || scope.kind === "checkout";
+  const refusesClientKeys = isProjectScope && options?.deviceOnly !== true;
+  const split = splitScopedSettingsPatch(patch);
+  const clientKeys = Object.keys(split.clientPatch);
+  const serverPatch = split.serverPatch;
   const serverKeys = Object.keys(serverPatch);
   const { connectedEnvironments } = selectScopedSettingsEnvironments(scope, environments, null);
-  const isProjectScope = scope.kind === "project" || scope.kind === "checkout";
+  // Client settings are stored per device, so a project has nowhere to keep an override.
   const unscopableKeys = isProjectScope
-    ? serverKeys.filter((key) => !isProjectScopedSettingKey(key))
+    ? [
+        ...(refusesClientKeys ? clientKeys : []),
+        ...serverKeys.filter((key) => !isProjectScopedSettingKey(key)),
+      ]
     : [];
+  const clientPatch = refusesClientKeys ? ({} as ClientSettingsPatch) : split.clientPatch;
   const serverWrites: ScopedServerWrite[] =
     serverKeys.length === 0
       ? []
