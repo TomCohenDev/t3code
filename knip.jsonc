@@ -14,6 +14,7 @@
         // kitshn reads the recipe (K-802).
         "kitshn.config.ts",
         ".github/scripts/thread-transfer-report.cjs",
+        ".github/scripts/pr-limits.cjs",
       ],
       "vite": { "entry": [".github/**/*.test.cjs"] },
       "vitest": { "entry": [".github/**/*.test.cjs"] },
