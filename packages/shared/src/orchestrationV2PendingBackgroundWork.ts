@@ -278,7 +278,7 @@ export function derivePendingBackgroundWork(input: {
       const description = rawDescription?.trim();
       byTaskId.set(task.taskId, {
         ...named,
-        ...(task.kind === "subagent"
+        ...(task.kind === "subagent" || task.kind === "command"
           ? { providerInstanceId: providerThread.providerInstanceId }
           : {}),
         ...(description === undefined || description.length === 0 ? {} : { description }),

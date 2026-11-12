@@ -121,7 +121,10 @@ export const assertTargetWithinLimits = (
     Effect.asVoid,
   );
 
-/** Background subagents retain credentials until provider exit; archived threads and other instances cannot act. */
+/**
+ * Background subagents, and commands the agent awaits with `t3_background_wait`, keep credentials
+ * until they end or the provider exits; archived threads and other instances cannot act.
+ */
 export const isLiveCallerShell = (
   shell: Pick<
     OrchestrationV2ThreadShell,
@@ -134,11 +137,13 @@ export const isLiveCallerShell = (
   shell.providerInstanceId === providerInstanceId &&
   (shell.activeRunId !== null ||
     (shell.pendingBackgroundTasks?.some(
-      (task) => task.kind === "subagent" && task.providerInstanceId === providerInstanceId,
+      (task) =>
+        (task.kind === "subagent" || (task.kind === "command" && task.awaited === true)) &&
+        task.providerInstanceId === providerInstanceId,
     ) ??
       false));
 
-/** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
+/** Thread callers need a live run, its background subagent or its awaited command in an unarchived thread. OAuth clients rely on their session and ceiling. */
 export function assertLiveCaller({ caller, scope }: Caller) {
   if (caller === undefined) return Effect.void;
   return isLiveCallerShell(caller, scope.thread?.providerInstanceId)

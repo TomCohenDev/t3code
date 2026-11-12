@@ -564,9 +564,10 @@ results use the latest assistant content from the final work turn.
   `plan`. It may not escalate from `plan` to `default`.
 - Thread tools take any thread in the environment as a target. For a thread
   caller, list and search cover one project: its own unless `projectId` is given.
-- A tool that changes another thread needs the calling thread's live run, and
-  the target's runtime and interaction modes may not be broader than the
-  caller's. This is the same privilege ceiling as child creation.
+- A tool that changes another thread needs the calling thread's live run, a
+  background subagent of that run, or a command that the run awaits with
+  `t3_background_wait`. The target's runtime and interaction modes may not be
+  broader than the caller's. This is the same privilege ceiling as child creation.
 - Provider instances must be enabled, installed, available, authenticated, and
   backed by a V2 adapter.
 - A requested model must be advertised by the selected provider when the

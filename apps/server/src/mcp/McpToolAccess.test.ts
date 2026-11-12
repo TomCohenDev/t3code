@@ -31,11 +31,30 @@ const backgroundThreadId = ThreadId.make("thread:background");
 const oldProviderThreadId = ThreadId.make("thread:old-provider-background");
 const archivedThreadId = ThreadId.make("thread:archived-background");
 const unknownOwnerThreadId = ThreadId.make("thread:unknown-background-owner");
+const awaitedCommandThreadId = ThreadId.make("thread:awaited-command");
+const unawaitedCommandThreadId = ThreadId.make("thread:unawaited-command");
+const oldProviderCommandThreadId = ThreadId.make("thread:old-provider-awaited-command");
 
 const backgroundShell = (threadId: ThreadId, providerInstanceId: ProviderInstanceId) => ({
   ...liveThreadShell(threadId, { activeRunId: null }),
   pendingBackgroundTasks: [
     { taskId: "task:background", kind: "subagent" as const, providerInstanceId },
+  ],
+});
+
+const commandShell = (
+  threadId: ThreadId,
+  providerInstanceId: ProviderInstanceId,
+  awaited: boolean,
+) => ({
+  ...liveThreadShell(threadId, { activeRunId: null }),
+  pendingBackgroundTasks: [
+    {
+      taskId: "task:command",
+      kind: "command" as const,
+      providerInstanceId,
+      ...(awaited ? { awaited: true as const } : {}),
+    },
   ],
 });
 
@@ -62,6 +81,18 @@ const shells = new Map([
       ...liveThreadShell(unknownOwnerThreadId, { activeRunId: null }),
       pendingBackgroundTasks: [{ taskId: "task:unknown", kind: "subagent" as const }],
     },
+  ],
+  [
+    awaitedCommandThreadId,
+    commandShell(awaitedCommandThreadId, ProviderInstanceId.make("codex"), true),
+  ],
+  [
+    unawaitedCommandThreadId,
+    commandShell(unawaitedCommandThreadId, ProviderInstanceId.make("codex"), false),
+  ],
+  [
+    oldProviderCommandThreadId,
+    commandShell(oldProviderCommandThreadId, ProviderInstanceId.make("claude"), true),
   ],
 ]);
 
@@ -225,6 +256,9 @@ const background = threadCaller(backgroundThreadId);
 const oldProviderBackground = threadCaller(oldProviderThreadId);
 const archivedBackground = threadCaller(archivedThreadId);
 const unknownOwnerBackground = threadCaller(unknownOwnerThreadId);
+const awaitedCommand = threadCaller(awaitedCommandThreadId);
+const unawaitedCommand = threadCaller(unawaitedCommandThreadId);
+const oldProviderAwaitedCommand = threadCaller(oldProviderCommandThreadId);
 const mismatchedProvider = {
   ...background,
   thread: { ...background.thread!, providerInstanceId: ProviderInstanceId.make("claude") },
@@ -262,6 +296,9 @@ it.effect.each([
   ["acts_as_caller", mismatchedProvider, {}, "parent_not_active"],
   ["acts_as_caller", archivedBackground, {}, "parent_not_active"],
   ["acts_as_caller", unknownOwnerBackground, {}, "parent_not_active"],
+  ["acts_as_caller", awaitedCommand, {}, "ran"],
+  ["acts_as_caller", unawaitedCommand, {}, "parent_not_active"],
+  ["acts_as_caller", oldProviderAwaitedCommand, {}, "parent_not_active"],
   ["acts_as_caller", fullAccessClient, {}, "thread_credential_required"],
 
   ["writes", supervised, {}, "ran"],
