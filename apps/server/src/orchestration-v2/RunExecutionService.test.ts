@@ -3345,6 +3345,67 @@ it.effect("does not start a turn whose run settled during the app context read",
   }),
 );
 
+it.effect.each([
+  { stoppedDuringStart: true, interrupts: 1 },
+  { stoppedDuringStart: false, interrupts: 0 },
+] as const)(
+  "interrupts the provider turn only when Stop ended its run while the provider started it: %j",
+  ({ stoppedDuringStart, interrupts: expectedInterrupts }) =>
+    Effect.gen(function* () {
+      const key = `stopped-during-start:${stoppedDuringStart}`;
+      const ids = backgroundScenarioIds(key);
+      const now = yield* DateTime.now;
+      const current = yield* Ref.make(true);
+      const started = yield* Deferred.make<void>();
+      const interrupts = yield* Ref.make<
+        ReadonlyArray<ProviderAdapter.ProviderAdapterV2InterruptInput>
+      >([]);
+      const { finalEvents } = yield* captureRootRunTermination({
+        key,
+        shouldStartProviderTurn: () => Ref.get(current),
+        shouldFinalizeRun: () => Ref.get(current),
+        startTurn: () =>
+          (stoppedDuringStart ? Ref.set(current, false) : Effect.void).pipe(
+            Effect.andThen(Deferred.succeed(started, undefined)),
+          ),
+        events: () =>
+          Stream.unwrap(
+            Deferred.await(started).pipe(
+              Effect.as(
+                Stream.make(
+                  {
+                    type: "provider_turn.updated" as const,
+                    driver,
+                    providerTurn: {
+                      id: ids.rootProviderTurnId,
+                      providerThreadId: ids.providerThreadId,
+                      nodeId: ids.rootNodeId,
+                      runAttemptId: ids.attemptId,
+                      nativeTurnRef: null,
+                      ordinal: 1,
+                      status: "running" as const,
+                      startedAt: now,
+                      completedAt: null,
+                    },
+                  },
+                  rootTerminalEvent(ids, stoppedDuringStart ? "interrupted" : "completed"),
+                ),
+              ),
+            ),
+          ),
+        interruptTurn: (input) => Ref.update(interrupts, (calls) => [...calls, input]),
+      });
+      const calls = yield* Ref.get(interrupts);
+      assert.equal(calls.length, expectedInterrupts);
+      if (stoppedDuringStart) {
+        assert.equal(calls[0]?.providerTurnId, ids.rootProviderTurnId);
+        assert.equal(calls[0]?.providerThread.id, ids.providerThreadId);
+        // Stop already settled the run.
+        assert.isFalse(finalEvents.some((event) => event.type === "run.updated"));
+      }
+    }),
+);
+
 it.effect("keeps completed runs completed when pull request refresh fails", () =>
   Effect.gen(function* () {
     const { observed } = yield* captureRootRunTermination({
