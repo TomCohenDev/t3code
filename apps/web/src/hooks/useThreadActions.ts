@@ -38,6 +38,7 @@ import { THREAD_ARCHIVE_BLOCK_REASON } from "../components/threadActionMenu.logi
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
+import { announce } from "../lib/announce";
 import { readLocalApi } from "../localApi";
 import {
   readEnvironmentServerConfigLoaded,
@@ -750,7 +751,7 @@ export function useThreadActions() {
     });
   };
 
-  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+  const sendPin = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -773,6 +774,12 @@ export function useThreadActions() {
         ...(orderKey !== undefined ? { orderKey } : {}),
       },
     });
+  };
+
+  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+    const result = await sendPin(target, opts);
+    if (result._tag === "Success") announce("Pinned 1 thread");
+    return result;
   };
 
   const unpinThread = async (target: ScopedThreadRef) => {
@@ -970,10 +977,7 @@ export function useThreadActions() {
           case "unsnooze":
             return unsnoozeThread(target);
           case "pin":
-            return pinThread(
-              target,
-              step.orderKey === undefined ? {} : { orderKey: step.orderKey },
-            );
+            return sendPin(target, step.orderKey === undefined ? {} : { orderKey: step.orderKey });
           case "snooze":
             return snoozeThreadMutation({
               environmentId: target.environmentId,

@@ -78,7 +78,10 @@ const desktopHold = Effect.gen(function* () {
             Layer.provide(NodeServices.layer),
           ),
           // Not the background service, so no headless update check runs.
-          Layer.mock(ServiceLauncherClient.ServiceLauncherClient)({ managed: false }),
+          Layer.mock(ServiceLauncherClient.ServiceLauncherClient)({
+            managed: false,
+            protocol: undefined,
+          }),
           Layer.mock(ServerSelfUpdate.ServerSelfUpdate)({}),
           Layer.mock(ThreadManagement.ThreadManagementService)({
             getShellSnapshot: () =>
