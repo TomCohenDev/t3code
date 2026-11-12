@@ -1435,6 +1435,10 @@ const runForkWithFailingNativeSource = (forkFailures: number) => {
     const providerThreadId = ProviderThreadId.make("fork-missing-native-thread");
     const sourceRunId = RunId.make("fork-missing-source-run");
     const userMessageId = MessageId.make("fork-missing-source-message");
+    // The fork refuses a Claude fork point without a native cursor, so the source turn records one.
+    const attemptId = RunAttemptId.make("fork-missing-source-attempt");
+    const providerTurnId = ProviderTurnId.make("fork-missing-source-turn");
+    const rootNodeId = NodeId.make("fork-missing-source-root");
 
     yield* orchestrator.dispatch({
       type: "thread.create",
@@ -1490,7 +1494,7 @@ const runForkWithFailingNativeSource = (forkFailures: number) => {
             providerThreadId,
             userMessageId,
             rootNodeId: null,
-            activeAttemptId: null,
+            activeAttemptId: attemptId,
             status: "completed",
             queuePosition: null,
             requestedAt: now,
@@ -1498,6 +1502,43 @@ const runForkWithFailingNativeSource = (forkFailures: number) => {
             completedAt: now,
             checkpointId: null,
             contextHandoffId: null,
+          },
+        },
+        {
+          id: EventId.make("fork-missing-source-attempt"),
+          type: "run-attempt.created",
+          threadId: sourceThreadId,
+          runId: sourceRunId,
+          occurredAt: now,
+          payload: {
+            id: attemptId,
+            runId: sourceRunId,
+            attemptOrdinal: 1,
+            rootNodeId,
+            providerInstanceId: instanceId,
+            providerThreadId,
+            providerTurnId,
+            reason: "initial",
+            status: "completed",
+            startedAt: now,
+            completedAt: now,
+          },
+        },
+        {
+          id: EventId.make("fork-missing-source-turn"),
+          type: "provider-turn.updated",
+          threadId: sourceThreadId,
+          occurredAt: now,
+          payload: {
+            id: providerTurnId,
+            providerThreadId,
+            nodeId: rootNodeId,
+            runAttemptId: attemptId,
+            nativeTurnRef: { driver, nativeId: "native-source-cursor", strength: "strong" },
+            ordinal: 1,
+            status: "completed",
+            startedAt: now,
+            completedAt: now,
           },
         },
         {
