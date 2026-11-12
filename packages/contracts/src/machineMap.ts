@@ -238,6 +238,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "inAppNotificationsEnabled",
   "installedAppEnabled",
   "keyboardFocusLevels",
+  "language",
   "mathRenderingEnabled",
   "messagePins",
   "notificationMode",
