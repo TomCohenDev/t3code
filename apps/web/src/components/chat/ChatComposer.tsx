@@ -2424,6 +2424,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <ComposerControlsBar
       forkLeadingControl={forkLeadingControl}
       environmentId={environmentId}
+      workspaceCwd={gitCwd}
       routeKind={routeKind}
       routeThreadRef={routeThreadRef}
       draftId={draftId}
