@@ -148,8 +148,9 @@ const MACHINE_LOCAL_CLIENT_SETTINGS = [
   // Browser profiles point to data folders on this machine.
   "browserProfiles",
   "browserDefaultProfileId",
-  // A microphone of this machine.
+  // Microphones of this machine.
   "voiceMicrophone",
+  "voiceMicrophones",
 ] as const satisfies ReadonlyArray<keyof ClientSettings>;
 
 const MACHINE_LOCAL_SETTINGS: Readonly<Record<SettingScope, ReadonlySet<string>>> = {
