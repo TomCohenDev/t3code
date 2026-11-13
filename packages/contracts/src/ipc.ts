@@ -1287,6 +1287,7 @@ export interface DesktopPreviewBridge extends ForkBrowserCaptureBridge {
   goBack: (tabId: string) => Promise<void>;
   goForward: (tabId: string) => Promise<void>;
   refresh: (tabId: string) => Promise<void>;
+  stopLoading: (tabId: string) => Promise<void>;
   zoomIn: (tabId: string) => Promise<void>;
   zoomOut: (tabId: string) => Promise<void>;
   resetZoom: (tabId: string) => Promise<void>;

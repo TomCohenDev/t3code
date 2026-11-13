@@ -1039,8 +1039,10 @@ const make = Effect.gen(function* () {
         !(yield* isT3CreatedWorktree(fs, path, realPath))
       )
         return "outside the managed worktree folder";
-      if ((yield* fs.stat(path.join(worktreePath, ".git"))).type !== "File")
-        return "not a linked worktree";
+      const gitLink = yield* fs
+        .stat(path.join(worktreePath, ".git"))
+        .pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.undefined));
+      if (gitLink?.type !== "File") return "not a linked worktree";
       return null;
     });
     const deletedRows = yield* sql<{ payload_json: string; workspaceRoot: string }>`
