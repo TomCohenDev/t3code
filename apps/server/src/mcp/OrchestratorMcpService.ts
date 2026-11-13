@@ -153,10 +153,10 @@ const TASK_WAKE_EVENTS = [
   { thread: "child", eventType: "runtime-request.updated" },
 ] as const;
 const SECRET_REQUEST_POLL_INTERVAL_MS = 500;
-const DEFAULT_THREAD_LIST_LIMIT = 50;
-const DEFAULT_THREAD_READ_LIMIT = 50;
+const DEFAULT_THREAD_LIST_LIMIT = 10;
+const DEFAULT_THREAD_READ_LIMIT = 10;
 const DEFAULT_THREAD_RUN_LIMIT = 10;
-const DEFAULT_THREAD_ITEM_MAX_CHARS = 20_000;
+const DEFAULT_THREAD_ITEM_MAX_CHARS = 500;
 
 interface ResolvedTarget {
   readonly modelSelection: ModelSelection;
@@ -683,6 +683,7 @@ function pageIncludesTerminalTaskResult(input: {
     "thread" | "runs" | "contextTransfers" | "messages" | "turnItems" | "providerTurns"
   >;
   readonly maxChars: number;
+  readonly textOffset: number;
 }): boolean {
   const transfer = taskResultTransfer(input.parentThreadId, input.target, input.task);
   if (transfer === undefined) return false;
@@ -705,7 +706,11 @@ function pageIncludesTerminalTaskResult(input: {
     if (!matchesResult) return false;
 
     const text = turnItemText(row.item);
-    return text !== null && text.length <= textPageEnd(text, 0, input.maxChars);
+    return (
+      text !== null &&
+      (input.textOffset === 0 || input.textOffset < text.length) &&
+      text.length <= textPageEnd(text, input.textOffset, input.maxChars)
+    );
   });
 }
 
@@ -848,6 +853,24 @@ function threadSnooze(
   };
 }
 
+// Provider-internal links (parentTaskId, providerInstanceId) stay out of agent results.
+function threadBackgroundWork(
+  thread: Pick<OrchestrationV2ThreadShell, "blockedOnThreadWait" | "pendingBackgroundTasks">,
+): Required<Pick<OrchestratorMcpThreadListItem, "blockedOnThreadWait" | "pendingBackgroundTasks">> {
+  return {
+    blockedOnThreadWait: thread.blockedOnThreadWait === true,
+    pendingBackgroundTasks: (thread.pendingBackgroundTasks ?? []).map((task) => ({
+      taskId: task.taskId,
+      kind: task.kind,
+      ...(task.description === undefined ? {} : { description: task.description }),
+      ...(task.awaited === undefined ? {} : { awaited: task.awaited }),
+      ...(task.kind === "subagent" && task.childThreadId !== undefined
+        ? { childThreadId: task.childThreadId }
+        : {}),
+    })),
+  };
+}
+
 function threadPullRequests(
   links: OrchestrationV2ThreadShell["pullRequests"],
   includeLinks = true,
@@ -902,6 +925,7 @@ function listItemFromShell(
     ...threadPullRequests(shell.pullRequests),
     ...threadSettlement(shell),
     ...threadSnooze(shell, nowMs),
+    ...threadBackgroundWork(shell),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
     itemCount: shell.visibleItemCount,
@@ -945,6 +969,13 @@ function threadDetail(
             requestId: projection.thread.titleRegeneration.requestId,
             startedAt: DateTime.formatIso(projection.thread.titleRegeneration.startedAt),
           },
+    lastTitleRegeneration:
+      projection.thread.lastTitleRegeneration == null
+        ? null
+        : {
+            ...projection.thread.lastTitleRegeneration,
+            completedAt: DateTime.formatIso(projection.thread.lastTitleRegeneration.completedAt),
+          },
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     parentThreadId: projection.thread.lineage.parentThreadId,
@@ -957,6 +988,7 @@ function threadDetail(
     archived: projection.thread.archivedAt !== null,
     ...threadSettlement(projection.thread),
     ...threadSnooze(shell, nowMs),
+    ...threadBackgroundWork(shell),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
     updatedAt: DateTime.formatIso(projection.thread.updatedAt),
   };
@@ -3234,12 +3266,7 @@ const make = Effect.gen(function* () {
               target,
               returnedRunIds,
             );
-      if (
-        parent !== undefined &&
-        scope.thread !== undefined &&
-        tasks.length > 0 &&
-        (input.textOffset ?? 0) === 0
-      ) {
+      if (parent !== undefined && scope.thread !== undefined && tasks.length > 0) {
         for (const task of tasks) {
           const transfer = taskResultTransfer(parent.thread.id, target, task);
           const resultRunId = transfer?.sourcePoint.runId ?? delegatedTaskRun(target, task)?.id;
@@ -3259,6 +3286,7 @@ const make = Effect.gen(function* () {
               task,
               target: { ...target, ...resultRecords },
               maxChars,
+              textOffset: input.itemId === undefined ? 0 : (input.textOffset ?? 0),
             })
           ) {
             yield* readTask(

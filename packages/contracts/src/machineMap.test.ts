@@ -47,6 +47,7 @@ const SHARED_ONLY_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>
     "globalScripts",
     "guestSharingEnabled",
     "idleCompaction",
+    "keepAwakeWhileAgentsWork",
     "keybindingSync",
     "linkedEnvironmentsEnabled",
     "mobilePublishedThemes",

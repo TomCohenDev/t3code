@@ -39,7 +39,8 @@ describe("derivePendingBackgroundWork", () => {
     ]);
   });
 
-  it("takes a roster subagent's instance from its owning provider thread", () => {
+  // MCP access checks this instance before a background subagent or awaited command keeps it.
+  it("takes a roster subagent's and command's instance from its owning provider thread", () => {
     const owner = ProviderInstanceId.make("claude-owner");
     const tasks = derivePendingBackgroundWork({
       latestRun: { id: "run-1" as never, ordinal: 1, status: "completed" },
@@ -53,12 +54,16 @@ describe("derivePendingBackgroundWork", () => {
               kind: "subagent",
               providerInstanceId: ProviderInstanceId.make("other"),
             },
+            { taskId: "tests", kind: "command", awaited: true },
           ],
         },
       ],
       turnItems: [],
     });
-    expect(tasks).toEqual([{ taskId: "roster-item", kind: "subagent", providerInstanceId: owner }]);
+    expect(tasks).toEqual([
+      { taskId: "roster-item", kind: "subagent", providerInstanceId: owner },
+      { taskId: "tests", kind: "command", awaited: true, providerInstanceId: owner },
+    ]);
   });
 
   it("returns empty while the latest run is not settled", () => {

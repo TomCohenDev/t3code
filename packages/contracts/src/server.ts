@@ -85,6 +85,9 @@ export const ServerProviderModel = Schema.Struct({
   isLegacy: Schema.optional(Schema.Boolean),
   /** Fork: why the model cannot run on this server, such as a custom shell without its executable. */
   unavailableReason: Schema.optionalKey(TrimmedNonEmptyString),
+  // False when the provider can run this model in sessions but not for
+  // application text generation. Absent means supported.
+  supportsTextGeneration: Schema.optional(Schema.Boolean),
   capabilities: Schema.NullOr(ModelCapabilities),
 });
 export type ServerProviderModel = typeof ServerProviderModel.Type;
