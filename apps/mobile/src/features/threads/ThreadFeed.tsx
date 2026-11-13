@@ -1761,6 +1761,7 @@ function renderFeedEntry(
           <AssistantMarkdownContent
             markdown={entry.text}
             environmentId={props.environmentId}
+            threadId={props.threadId}
             markdownStyles={markdownStyles.assistant}
             linkHandlers={props.markdownLinkHandlers}
             onUseArtifactTemplate={props.onUseArtifactTemplate}
