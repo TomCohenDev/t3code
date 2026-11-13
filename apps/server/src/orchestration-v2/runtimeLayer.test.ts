@@ -5220,6 +5220,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         NodeCrypto.layer,
         ServerSettings.layerTest(),
         Layer.mock(PullRequestService.PullRequestService)({
+          withSharedProjectReads: (effect) => effect,
           watchFingerprint: () =>
             Effect.succeed({ status: removal?.id ?? "green", remarks: "none" }),
           invalidate: () => Effect.void,
@@ -5273,6 +5274,17 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           ?.mergeQueueRemovalId,
         "second",
       );
+      // Fork: the layer is shared, so an open watch on #7 would join the next tests' reads.
+      yield* orchestrator.dispatch({
+        type: "thread.pull-request.watch",
+        commandId: CommandId.make("queue-removal-end"),
+        threadId,
+        host: "github.com",
+        repository: "pingdotgg/t3code",
+        number: 7,
+        watching: false,
+        link: { url: "https://github.com/pingdotgg/t3code/pull/7", source: "agent" },
+      });
     }),
   );
 

@@ -433,6 +433,7 @@ it.effect("prepares a draft worktree from origin and starts its setup script", (
         [
           ["fetch", "done"],
           ["checkout", "done"],
+          ["submodules", "skipped"],
           ["setup-script", "running"],
         ],
       );

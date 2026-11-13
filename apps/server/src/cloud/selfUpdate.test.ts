@@ -196,6 +196,8 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       const { selfUpdate, order, baseDir } = yield* makeHarness({
         httpClient: releaseHttpClient([], []).pipe(
           HttpClient.transform((response, request) => {
+            // Fork: the fork release lookup is not a download.
+            if (request.url.startsWith("https://api.github.com/")) return response;
             if (!failDownload || request.url.endsWith("/SHA256SUMS") !== (asset === "checksums"))
               return response;
             Deferred.doneUnsafe(downloadFailed, Effect.void);
