@@ -4448,8 +4448,10 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         } | null = null;
         const host = Layer.mergeAll(
           NodeServices.layer,
+          ServerSettings.layerTest(),
           NodeCrypto.layer,
           Layer.mock(PullRequestService.PullRequestService)({
+            withSharedProjectReads: (effect) => effect,
             detail: (input) =>
               Effect.gen(function* () {
                 if (gate !== null) {
