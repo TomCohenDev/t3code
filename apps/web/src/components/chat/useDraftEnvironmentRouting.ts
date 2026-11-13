@@ -168,7 +168,9 @@ export function useDraftEnvironmentRouting(input: DraftEnvironmentRoutingInput) 
           ...loadBalancingSendWarning({
             pending: false,
             threadContexts: referencedThreadContexts,
-            candidateEnvironmentIds: loadBalancingCandidates,
+            candidateReadableEnvironmentIds: loadBalancingCandidates.map(
+              readableThreadEnvironmentIds,
+            ),
           }),
         });
         return false;
