@@ -82,6 +82,7 @@ import {
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import * as KitshnHandlers from "./toolkits/kitshn/handlers.ts";
 import * as MachineMapHandlers from "./toolkits/machineMap/handlers.ts";
+import * as MessageHandlers from "./toolkits/message/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { McpToolkits, type McpToolkitName } from "./toolkits/registry.ts";
 import { requestUrl } from "../requestUrl.ts";
@@ -1244,6 +1245,8 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 
 export const layerThreadToolkit = toolkitRegistration(McpToolkits.thread, ThreadHandlers.layer);
 
+const layerMessageToolkit = toolkitRegistration(McpToolkits.message, MessageHandlers.layer);
+
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   McpToolkits.worktree,
   WorktreeHandlers.layer,
@@ -1332,6 +1335,7 @@ const toolkitRegistrations = {
   device: layerDeviceToolkit,
   pullRequests: layerPullRequestsToolkit,
   html: layerHtmlToolkit,
+  message: layerMessageToolkit,
   usageSources: registerUsageSource(toolkitRegistration),
   // Fork: machine map tools.
   machineMap: toolkitRegistration(McpToolkits.machineMap, MachineMapHandlers.layer),
