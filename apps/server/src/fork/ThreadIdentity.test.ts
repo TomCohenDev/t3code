@@ -57,6 +57,7 @@ const layerRegistry = Layer.effect(
 const project: ProjectStore.ProjectRow = {
   projectId,
   title: "Kitshn",
+  hasCustomTitle: false,
   workspaceRoot: "/workspace/kitshn",
   faviconPath: null,
   projectIcon: null,
