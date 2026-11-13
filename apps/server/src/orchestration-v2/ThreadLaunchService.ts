@@ -638,6 +638,8 @@ const make = Effect.gen(function* () {
           : null;
       const temporaryBranch = branch;
       if (branchForPathTemplate !== null) branch = branchForPathTemplate;
+      // Fork: a branch named for the path template is final, so it is not renamed again.
+      const temporaryGeneratedBranch = generatedTemporaryBranch && branchForPathTemplate === null;
       let worktreePath =
         input.workspaceStrategy.type === "existing_worktree"
           ? input.workspaceStrategy.worktreePath
@@ -681,7 +683,7 @@ const make = Effect.gen(function* () {
           }
         }
         if (shouldFetch) yield* setupTracker.stageStatus(threadId, "fetch", "done");
-        if (branch !== null && (generatedTemporaryBranch || isTemporaryWorktreeBranch(branch))) {
+        if (branch !== null && (temporaryGeneratedBranch || isTemporaryWorktreeBranch(branch))) {
           const parts = branch.split("/");
           for (let depth = 1; depth < parts.length; depth++) {
             if (
@@ -692,7 +694,7 @@ const make = Effect.gen(function* () {
                 })
                 .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)))
             ) {
-              branch = generatedTemporaryBranch
+              branch = temporaryGeneratedBranch
                 ? branch.replaceAll("/", "-")
                 : flattenTemporaryWorktreeBranchName(branch);
               break;
@@ -801,7 +803,7 @@ const make = Effect.gen(function* () {
         worktreePath !== null &&
         branch !== null &&
         initialMessage !== undefined &&
-        (generatedTemporaryBranch || isTemporaryWorktreeBranch(branch))
+        (temporaryGeneratedBranch || isTemporaryWorktreeBranch(branch))
       ) {
         const oldBranch = branch;
         const worktreeCwd = worktreePath;
