@@ -406,6 +406,8 @@ it.effect("prepares a draft worktree from origin and starts its setup script", (
       () => Effect.succeed({ commitSha: "remote-main-sha", remoteRefName: "origin/main" }),
     );
     const harness = makeHarness({
+      // A local main exists, so only the worktree creation fetches the remote base.
+      hasCommit: ({ refName }) => Effect.succeed(refName === "main"),
       git: { fetchWorktreeBaseCommit: fetchBase },
       runSetup: () => draftSetupStarted(true, Effect.never),
     });
