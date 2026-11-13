@@ -367,7 +367,7 @@ patchedDependencies:
   '@cursor/sdk@1.2.0': 57f502128bf6accd976963b126e227c86a45d815a53a8dc450461beae3bed4a4
   '@effect/vitest@4.1.2': 299510b71c36537a832a67e9d160a5f112a5f326a29e95c41cb45fc8234e47c7
   '@expo/ui@58.0.27': 9f2547678939f4ec78fe45163b6455aad63d3c80353d7e0cc783f6a61a7ccc2f
-  '@ff-labs/fff-node@0.11.0': a71dc3a5544fc47afacf0fe9da04dccec3018e625a76c96087ebfdf35e293768
+  '@ff-labs/fff-node@0.11.0': 3be7107340e5f388114da259637828cd47f2b32eb8ae572440715c4e38cffe6e
   '@legendapp/list@3.7.2': 3c68607b8bb7a531873bcbe0b197d163ef1fdb4d4cf52a4ddf9d2b3804671658
   '@muse-code/sdk@1.4.6': 7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101
   '@pierre/diffs@1.7.0-beta.3': 4a64f63a0def94c5add9d86d70560d26d6857e1f5150133862e42e1fd77bc4e8
@@ -724,7 +724,7 @@ importers:
         version: 58.0.22(patch_hash=321a86e1471e34c53f1f2937fbb4304ea3f7b7a78ad9e4d35febc2b9e73e9688)(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3)
       expo-speech:
         specifier: ~58.0.3
-        version: 58.0.3(expo@58.0.23)
+        version: 58.0.4(expo@58.0.23)
       expo-splash-screen:
         specifier: ~58.0.13
         version: 58.0.13(expo@58.0.23)(supports-color@8.1.1)(typescript@6.0.3)
@@ -869,7 +869,7 @@ importers:
         version: 4.1.2(bufferutil@4.1.0)(effect@4.1.3)(utf-8-validate@6.0.6)
       '@ff-labs/fff-node':
         specifier: 0.11.0
-        version: 0.11.0(patch_hash=a71dc3a5544fc47afacf0fe9da04dccec3018e625a76c96087ebfdf35e293768)
+        version: 0.11.0(patch_hash=3be7107340e5f388114da259637828cd47f2b32eb8ae572440715c4e38cffe6e)
       '@kitshn/local':
         specifier: 'catalog:'
         version: https://github.com/Yarden-zamir/kitshn/releases/download/edge-9369e2611739/kitshn-local.tgz(effect@4.1.3)
@@ -9429,8 +9429,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-speech@58.0.3:
-    resolution: {integrity: sha512-jdMTqWL6ciDM8aVJe2/l2g6GTVaK7i/zBOVUhTq+l0Y+DOCz3Nh4HqNrMwmIKzXrlsxRv3ejmjSQPlX1lfOTOA==}
+  expo-speech@58.0.4:
+    resolution: {integrity: sha512-AOwi6VkWfLh4OVUlK1bpvMqTgXHVMqcb+sqBu+mHfiCp4DZpsdDC7JGJEterXz7jdF9qPFwqwrtIarA2EaDHuQ==}
     peerDependencies:
       expo: '*'
 
@@ -15193,7 +15193,7 @@ snapshots:
   '@ff-labs/fff-bin-win32-x64@0.11.0':
     optional: true
 
-  '@ff-labs/fff-node@0.11.0(patch_hash=a71dc3a5544fc47afacf0fe9da04dccec3018e625a76c96087ebfdf35e293768)':
+  '@ff-labs/fff-node@0.11.0(patch_hash=3be7107340e5f388114da259637828cd47f2b32eb8ae572440715c4e38cffe6e)':
     dependencies:
       ffi-rs: 1.3.2
     optionalDependencies:
@@ -19551,7 +19551,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-speech@58.0.3(expo@58.0.23):
+  expo-speech@58.0.4(expo@58.0.23):
     dependencies:
       expo: 58.0.23(d226faf1ca90e630d8c56a2108dee32d)
 
