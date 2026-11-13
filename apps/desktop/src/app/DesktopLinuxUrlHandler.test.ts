@@ -221,7 +221,7 @@ describe("DesktopLinuxUrlHandler", () => {
       const previousEntry = DesktopLinuxUrlHandler.renderUrlHandlerDesktopEntry({
         displayName: "T3 Code (Beta)",
         execTarget: previous,
-        scheme: "t3code",
+        schemes: ["t3code", "t3-thread"],
       });
       assert.equal(
         DesktopLinuxUrlHandler.replacedVersionedAppImagePath({
