@@ -240,6 +240,7 @@ export function HomeRouteScreen() {
           selectedEnvironmentId={selectedEnvironmentId}
           selectedProjectKey={selectedProjectKey}
           threads={threads}
+          visible={visible}
         />
         <UpdateReadyBadge />
         <ThreadUndoNotice visible={visible} />

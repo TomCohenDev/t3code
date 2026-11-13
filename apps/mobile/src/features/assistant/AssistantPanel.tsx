@@ -254,10 +254,12 @@ async function prepareAssistantMessage(input: {
       uri.startsWith("content:") && native ? native.copyToCache(uri) : Promise.resolve(uri),
     ),
   );
-  const attachments: DraftComposerAttachment[] =
+  const images =
     imageFiles.length > 0
-      ? [...(await convertPastedImagesToAttachments({ uris: imageFiles, existingCount: 0 }))]
-      : [];
+      ? await convertPastedImagesToAttachments({ uris: imageFiles, existingCount: 0 })
+      : { attachments: [], error: null };
+  if (images.error) throw new Error(images.error);
+  const attachments: DraftComposerAttachment[] = [...images.attachments];
   attachments.push(...input.files);
   const text = input.text.trim();
   if (!input.screenText) return { text, attachments };

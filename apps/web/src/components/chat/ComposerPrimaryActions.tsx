@@ -87,6 +87,8 @@ const formatPendingPrimaryActionLabel = (input: {
 };
 
 const STOP_PENDING_MAX_MS = 10_000;
+// The action that takes Stop's place ignores clicks this long, so repeat Stop clicks can't resume.
+const STOP_LANDED_CLICK_GUARD_MS = 500;
 
 // The toggle shows only while its key works, so its chip names the key.
 const COMPACT_BEFORE_SEND_SHOWN = { compactBeforeSendShown: true };
@@ -117,11 +119,16 @@ function useStopPhase(input: {
       setStopPhase("landed");
     else if (stopPhase === "landed" && canInterrupt) setStopPhase(null);
   }
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timer that re-enables Stop if the interrupt never settles
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- timers that re-enable an unsettled Stop and end the landed click guard
   useEffect(() => {
-    if (stopPhase !== "pending") return;
-    const timeout = setTimeout(() => setStopPhase("timedOut"), STOP_PENDING_MAX_MS);
-    return () => clearTimeout(timeout);
+    if (stopPhase === "pending") {
+      const timeout = setTimeout(() => setStopPhase("timedOut"), STOP_PENDING_MAX_MS);
+      return () => clearTimeout(timeout);
+    }
+    if (stopPhase === "landed") {
+      const timeout = setTimeout(() => setStopPhase(null), STOP_LANDED_CLICK_GUARD_MS);
+      return () => clearTimeout(timeout);
+    }
   }, [stopPhase]);
   return [stopPhase, setStopPhase] as const;
 }
@@ -141,7 +148,7 @@ function StopGenerationButton({
   onStopRequested: () => void;
   onInterrupt: () => void;
 }) {
-  const isStopDisabled = stopPhase === "pending" || stopPhase === "landed";
+  const isStopDisabled = stopPhase === "pending";
   return (
     <Tooltip>
       <ShortcutTrigger
@@ -160,13 +167,7 @@ function StopGenerationButton({
               onStopRequested();
               onInterrupt();
             }}
-            aria-label={
-              stopPhase === "landed"
-                ? "Stopped"
-                : stopPhase === "pending"
-                  ? "Stopping"
-                  : "Stop generation"
-            }
+            aria-label={stopPhase === "pending" ? "Stopping" : "Stop generation"}
           />
         }
       >
@@ -175,7 +176,7 @@ function StopGenerationButton({
         </svg>
       </ShortcutTrigger>
       <TooltipPopup>
-        {stopPhase === "pending" ? "Stopping…" : stopPhase === "landed" ? "Stopped" : "Interrupt"}
+        {stopPhase === "pending" ? "Stopping…" : "Interrupt"}
         <ShortcutHint command="thread.stop" />
       </TooltipPopup>
     </Tooltip>
@@ -290,7 +291,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const withStopButton = (action: ReactNode) => (
     <>
       {action}
-      {stopPhase === null ? null : renderStopGenerationButton(false)}
+      {stopPhase === "pending" || stopPhase === "timedOut"
+        ? renderStopGenerationButton(false)
+        : null}
     </>
   );
 
@@ -326,6 +329,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           type="submit"
           className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
           {...pointerFocusProps}
+          onClick={(event) => {
+            if (stopPhase === "landed") event.preventDefault();
+          }}
           disabled={
             !canOperateThread ||
             isEnvironmentUnavailable ||
@@ -344,7 +350,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             questionIndex: pendingAction.questionIndex,
           })}
         </button>
-        {canInterrupt || stopPhase !== null ? renderStopGenerationButton(true) : null}
+        {canInterrupt || stopPhase === "pending" || stopPhase === "timedOut"
+          ? renderStopGenerationButton(true)
+          : null}
       </div>
     );
   }
@@ -426,7 +434,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           : "bg-message-action text-message-action-foreground enabled:shadow-message-action/24 hover:bg-message-action-hover disabled:bg-foreground/12 disabled:text-muted-foreground",
       )}
       {...pointerFocusProps}
-      onClick={showResume ? onResume : onSubmitMessage}
+      onClick={(event) => {
+        if (stopPhase === "landed") {
+          event.preventDefault();
+          return;
+        }
+        if (showResume) onResume?.();
+        else onSubmitMessage?.(event);
+      }}
       disabled={
         isSendBusy ||
         isSendDisabled ||

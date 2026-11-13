@@ -59,8 +59,7 @@ import {
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
-import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
-import { isTerminalUrl } from "../terminal-links";
+import { isTerminalUrl, resolveTerminalLinkTarget } from "../terminal-links";
 import {
   isDiffToggleShortcut,
   isTerminalClearShortcut,
@@ -71,6 +70,7 @@ import {
   isTerminalToggleShortcut,
   isTerminalAppShortcut,
   resolveShortcutCommand,
+  isThreadNavigationShortcut,
   terminalDeleteShortcutData,
   terminalNavigationShortcutData,
 } from "../keybindings";
@@ -99,6 +99,7 @@ import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
 import { getTerminalFocusOwner, isTerminalThreadShellKey } from "../lib/terminalFocus";
 import { useActiveThemeFonts } from "../hooks/useEnvironmentTheme";
 import { observeResize } from "../lib/observeResize";
+import { threadShortcutContext } from "./Sidebar.logic";
 import {
   compileTerminalKeyMappings,
   findTerminalKeyMapping,
@@ -555,7 +556,7 @@ function TerminalSessionViewport({
     linkPath !== null && canOpenHostEditor && canReadFilesystem
       ? getFileMetadataQueryAtom(
           environmentId,
-          resolvePathLinkTarget(linkPath, cwd),
+          resolveTerminalLinkTarget(linkPath, cwd),
           cwd,
           metadataThreadRef,
         )
@@ -576,7 +577,7 @@ function TerminalSessionViewport({
       return false;
     const query = getFileMetadataQueryAtom(
       environmentId,
-      resolvePathLinkTarget(text, cwd),
+      resolveTerminalLinkTarget(text, cwd),
       cwd,
       metadataThreadRef,
     );
@@ -615,6 +616,7 @@ function TerminalSessionViewport({
     );
     return mapping?.data ?? null;
   });
+  const readThreadShortcutContext = useEffectEvent(() => threadShortcutContext(threadRef));
   const handleSessionExited = useEffectEvent(() => {
     if (hasTerminalWriteAccess()) onSessionExited();
   });
@@ -1033,7 +1035,11 @@ function TerminalSessionViewport({
           isTerminalSplitShortcut(event, currentKeybindings, options) ||
           isTerminalSplitVerticalShortcut(event, currentKeybindings, options) ||
           isTerminalNewShortcut(event, currentKeybindings, options) ||
-          isDiffToggleShortcut(event, currentKeybindings, options)
+          isDiffToggleShortcut(event, currentKeybindings, options) ||
+          // Match Sidebar's context, or a key it will reject skips the shell.
+          isThreadNavigationShortcut(event, currentKeybindings, {
+            context: { ...readThreadShortcutContext(), terminalFocus: true },
+          })
         ) {
           return false;
         }
@@ -1099,7 +1105,7 @@ function TerminalSessionViewport({
           );
           return;
         }
-        const target = resolvePathLinkTarget(text, cwd);
+        const target = resolveTerminalLinkTarget(text, cwd);
         void (async () => {
           const result = await openTerminalPath(target);
           if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
