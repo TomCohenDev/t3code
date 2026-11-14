@@ -143,7 +143,7 @@ const WorkflowStopTool = Tool.make("t3_workflow_stop", {
 
 const BackgroundWaitTool = Tool.make("t3_background_wait", {
   description:
-    "Keep this thread Working and a command's T3 tool access while background work runs. Pass its task ID once started. Not for dev servers, watchers. `waiting=false` clears. Does not stop it. Claude only.",
+    "Keep this thread Working and a command's T3 tool access while background work runs. Pass its task ID once started. Not for dev servers, watchers. `waiting=false` clears. Does not stop it. Claude/OpenCode only.",
   parameters: Schema.Struct({
     taskIds: Schema.Array(TrimmedNonEmptyString).check(
       Schema.isMinLength(1),

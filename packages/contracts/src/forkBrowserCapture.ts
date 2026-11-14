@@ -33,14 +33,8 @@ export interface ForkBrowserCaptureBridge {
   };
 }
 
-export const ForkSnapshotStage = Schema.Literals([
-  "rendering placement",
-  "metrics",
-  "password fields",
-  "page text",
-  "screenshot",
-  "accessibility tree",
-]);
+// Upstream `pendingStages` covers the server capture stages. Only the native placement is fork.
+export const ForkSnapshotStage = Schema.Literals(["rendering placement"]);
 export type ForkSnapshotStage = typeof ForkSnapshotStage.Type;
 export const ForkSnapshotTimeout = Schema.Struct({
   timeoutMs: Schema.Int.check(Schema.isGreaterThan(0)),
