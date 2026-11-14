@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import { persistClientSettingsPatch, useMergedSettings } from "../../hooks/useSettings";
+import { readEnvironment } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { toastManager } from "../ui/toast";
@@ -23,7 +24,7 @@ import { useShareToMachineMap } from "../../machineMap/shareSettings";
 import { useSelectedCircleSettings, useWriteSelectedCircle } from "../../machineMap/circleSettings";
 import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
 import {
-  persistScopedSettingsPatch,
+  createScopedSettingsWriter,
   planProjectOverridesClear,
   planScopedSettingsClear,
   planScopedSettingsPatch,
@@ -32,6 +33,10 @@ import {
   type ProjectOverrideEntry,
   type ScopedSettingsPatch,
 } from "./scopedSettings";
+
+const writeScopedSettings = createScopedSettingsWriter(
+  (environmentId) => readEnvironment(environmentId)?.serverConfig?.settings ?? null,
+);
 
 export function useScopedSettings<T = UnifiedSettings>(
   selector?: (settings: UnifiedSettings) => T,
@@ -59,15 +64,20 @@ export function useScopedSettingSource(keys: readonly (keyof ServerSettings)[]) 
 function useRunScopedPlan() {
   const persistServer = useAtomCommand(serverEnvironment.updateSettings, { reportFailure: false });
   return (
-    plan: ReturnType<typeof planScopedSettingsPatch>,
+    environments: Parameters<typeof writeScopedSettings>[0],
+    planner: Parameters<typeof writeScopedSettings>[1],
     options?: {
       readonly onFailed?: () => void;
-      // Fork: MM-411. Runs after the save with the environments that saved it.
-      readonly onSaved?: (saved: readonly { readonly environmentId: EnvironmentId }[]) => void;
+      // Fork: MM-411. Runs after the save with the first plan and the environments that saved it.
+      readonly onSaved?: (
+        plan: ReturnType<typeof planScopedSettingsPatch>,
+        saved: readonly { readonly environmentId: EnvironmentId }[],
+      ) => void;
     },
   ) => {
     const onFailed = options?.onFailed;
     const onSaved = options?.onSaved;
+    const plan = planner(environments);
     if (plan.unavailableReason) {
       toastManager.add({
         type: "warning",
@@ -77,8 +87,9 @@ function useRunScopedPlan() {
       onFailed?.();
       return;
     }
-    void persistScopedSettingsPatch(
-      plan,
+    void writeScopedSettings(
+      environments,
+      planner,
       async (request) => {
         const missing = requiredScopesForServerSettingsPatch(request.input.patch).find(
           (scope) => !readEnvironmentScope(request.environmentId, scope),
@@ -96,7 +107,7 @@ function useRunScopedPlan() {
       },
       persistClientSettingsPatch,
     ).then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
-      onSaved?.(savedEnvironments);
+      onSaved?.(plan, savedEnvironments);
       if (failedEnvironments.length === 0) return;
       onFailed?.();
       toastManager.add({
@@ -131,11 +142,10 @@ export function useUpdateScopedSettings() {
       options?.onFailed?.();
       return;
     }
-    const plan = planScopedSettingsPatch(scope, environments, patch, { deviceOnly });
-    run(plan, {
+    run(environments, (current) => planScopedSettingsPatch(scope, current, patch, { deviceOnly }), {
       ...(options?.onFailed === undefined ? {} : { onFailed: options.onFailed }),
       // Fork: MM-411. A change for all environments also becomes the shared value of the map.
-      ...(scope.kind === "all" ? { onSaved: (saved) => shareToMachineMap(plan, saved) } : {}),
+      ...(scope.kind === "all" ? { onSaved: shareToMachineMap } : {}),
     });
   };
 }
@@ -145,7 +155,7 @@ export function useClearScopedSettings() {
   const run = useRunScopedPlan();
   return (keys: readonly ProjectScopedServerSettingKey[]) => {
     if (context === null) return;
-    run(planScopedSettingsClear(context.scope, context.environments, keys));
+    run(context.environments, (current) => planScopedSettingsClear(context.scope, current, keys));
   };
 }
 
@@ -157,7 +167,7 @@ export function useClearProjectOverrides() {
     keys: readonly ProjectScopedServerSettingKey[],
   ) => {
     if (context === null) return;
-    run(planProjectOverridesClear(context.environments, entries, keys));
+    run(context.environments, (current) => planProjectOverridesClear(current, entries, keys));
   };
 }
 

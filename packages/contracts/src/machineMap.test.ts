@@ -64,6 +64,7 @@ const SHARED_ONLY_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>
     "recoverInterruptedTurnsMessage",
     "recoverInterruptedTurnsSubagentMessage",
     "removeAgentCreditsOnMerge",
+    "requireConnectDeviceApproval",
     "responseStreamingMode",
     "restoreWorktreesOnResume",
     "reviewGuideInstructions",

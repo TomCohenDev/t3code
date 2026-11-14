@@ -1,4 +1,5 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type {
   EnvironmentId,
   ModelSelection,
@@ -6,7 +7,6 @@ import type {
   ScopedProjectRef,
 } from "@t3tools/contracts";
 import type { ComposerThreadDraftState, DraftThreadEnvMode } from "../composerDraftStore";
-import { getClientSettings } from "../hooks/useSettings";
 
 type ComposerModelSelectionState = Pick<
   ComposerThreadDraftState,
@@ -83,6 +83,24 @@ export function hasExplicitComposerModelSelection(
   );
 }
 
+export function threadHasStarted(
+  thread: Pick<EnvironmentThreadShell, "latestRun" | "itemCount" | "runtime"> | null | undefined,
+): boolean {
+  return Boolean(thread && (thread.latestRun !== null || thread.itemCount > 0 || thread.runtime));
+}
+
+/**
+ * A draft is seeded from sticky state, project defaults, prompt links, or a carried selection.
+ * That seed is what an unstarted thread sends; once the thread has started, its own selection
+ * wins unless the user picked a model or traits for it.
+ */
+export function draftModelSelectionApplies(
+  draft: Pick<ComposerThreadDraftState, "modelSelectionExplicit"> | null | undefined,
+  threadStarted: boolean,
+): boolean {
+  return !threadStarted || draft?.modelSelectionExplicit === true;
+}
+
 export function resolveThreadActionProjectRef(
   context: ChatThreadActionContext,
 ): ScopedProjectRef | null {
@@ -118,6 +136,8 @@ export async function startNewThreadFromContext(
     }
     // Fork: only this "in current project" path reads the setting. The project picker
     // (`ForkTerminalThreadPaletteItems.tsx`) keeps its terminal a draft until the first command.
+    // Fork: a static import makes a cycle, because composerDraftStore imports this file.
+    const { getClientSettings } = await import("../hooks/useSettings");
     await context.handleNewTerminalThread(projectRef, {
       opensAsThread: getClientSettings().currentProjectTerminalOpensThread,
     });

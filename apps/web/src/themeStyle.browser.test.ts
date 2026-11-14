@@ -13,7 +13,7 @@ vi.mock(import("./state/server"), async () => {
 });
 
 import { fontSettingOrThemeFont } from "./appearanceFonts";
-import { getActiveThemeFonts, THEME_USER_CSS_ELEMENT_ID } from "./forkThemeStyle";
+import { getActiveThemeFonts } from "./forkThemeStyle";
 import { appAtomRegistry } from "./rpc/atomRegistry";
 import { applyThemePalette, publishedThemeDefinitions } from "./themePalette";
 
@@ -34,12 +34,7 @@ const STYLED_THEME = {
   shadow: "4px 4px 0 0 #000",
   fonts: { sans: "Bricolage Grotesque" },
   canvasPattern: "dots",
-  css: "body { outline: 1px solid red; }",
 } as const;
-
-function userCss(): string | null {
-  return document.getElementById(THEME_USER_CSS_ELEMENT_ID)?.textContent ?? null;
-}
 
 function withEnvironmentThemes(themes: ReadonlyArray<EnvironmentTheme>): Disposable {
   appAtomRegistry.set(publishedThemes.atom, themes);
@@ -64,10 +59,9 @@ describe("theme style fields", () => {
     expect(root.dataset.themeRadius).toBeUndefined();
     expect(root.dataset.canvasPattern).toBeUndefined();
     expect(getActiveThemeFonts()).toEqual({});
-    expect(userCss()).toBeNull();
   });
 
-  it("applies the fields and user CSS of the active theme only", () => {
+  it("applies the fields of the active theme only", () => {
     using _themes = withEnvironmentThemes([PLAIN_THEME, STYLED_THEME]);
     applyThemePalette("styled");
 
@@ -77,14 +71,12 @@ describe("theme style fields", () => {
     expect(root.dataset.themeShadow).toBe("");
     expect(root.dataset.canvasPattern).toBe("dots");
     expect(getActiveThemeFonts()).toEqual({ sans: "Bricolage Grotesque" });
-    expect(userCss()).toBe(STYLED_THEME.css);
 
     applyThemePalette("plain");
     expect(root.style.getPropertyValue("--radius")).toBe("");
     expect(root.dataset.themeShadow).toBeUndefined();
     expect(root.dataset.canvasPattern).toBeUndefined();
     expect(getActiveThemeFonts()).toEqual({});
-    expect(userCss()).toBeNull();
   });
 });
 

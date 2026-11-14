@@ -140,8 +140,9 @@ const MACHINE_LOCAL_SERVER_SETTINGS = [
   "deviceOnboardingCompleted",
   // The icon that tells this machine apart from the others.
   "environmentIcon",
-  // The time of the last local theme change (MM-408).
+  // The time of the last local theme or appearance change (MM-408).
   "defaultThemeSetAt",
+  "defaultAppearanceSetAt",
   // A one-time migration flag of this machine's own settings file, not a preference.
   "projectSettingsFolded",
 ] as const satisfies ReadonlyArray<keyof ServerSettings>;
@@ -180,6 +181,7 @@ const CIRCLE_SERVER_SETTINGS = [
   "sidebarTabs",
   "mobileSidebarTabs",
   "defaultTheme",
+  "defaultAppearance",
   "threadCardLayouts",
   "snoozePresets",
   "favorites",

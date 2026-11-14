@@ -16,6 +16,7 @@ import { PreviewToolkit } from "./preview/tools.ts";
 import { PreviewControlsToolkit } from "./previewControls/tools.ts";
 import { ProjectToolkit } from "./project/tools.ts";
 import { PullRequestsToolkit } from "./pullRequests/tools.ts";
+import { ThemeToolkit } from "./theme/tools.ts";
 import { ThreadToolkit } from "./thread/tools.ts";
 import { WorktreeToolkit } from "./worktree/tools.ts";
 
@@ -51,6 +52,7 @@ export const McpToolkits = {
   attachment: AttachmentToolkit,
   project: ProjectToolkit,
   environment: EnvironmentToolkit,
+  theme: ThemeToolkit,
   previewControls: PreviewControlsToolkit,
   device: DeviceToolkit,
   pullRequests: PullRequestsToolkit,

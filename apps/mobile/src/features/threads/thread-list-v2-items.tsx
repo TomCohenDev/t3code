@@ -28,9 +28,11 @@ import {
 } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
+  type EnvironmentId,
   type EnvironmentMachineKind,
   type MobileThreadCardLayout,
 } from "@t3tools/contracts";
+import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import {
@@ -165,6 +167,7 @@ const TABULAR_DURATION_STYLE = {
 } as const;
 
 function ThreadListV2Duration(props: {
+  readonly environmentId: EnvironmentId;
   readonly startedAt: string | null;
   readonly leadingSpace: boolean;
 }) {
@@ -175,7 +178,7 @@ function ThreadListV2Duration(props: {
     <>
       {props.leadingSpace ? " " : null}
       <RNText style={TABULAR_DURATION_STYLE}>
-        {formatWorkingDurationLabel(nowMs - startedAtMs)}
+        {formatWorkingDurationLabel(toServerClock(props.environmentId, nowMs) - startedAtMs)}
       </RNText>
     </>
   );
@@ -825,6 +828,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const statusDuration =
     statusLabel !== undefined && statusDurationStartedAt !== undefined ? (
       <ThreadListV2Duration
+        environmentId={thread.environmentId}
         startedAt={statusDurationStartedAt}
         leadingSpace={statusLabel.label !== null}
       />

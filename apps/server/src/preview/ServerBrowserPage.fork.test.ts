@@ -66,7 +66,7 @@ describe("server browser snapshot timeouts", () => {
         }),
       ).rejects.toMatchObject({
         tag: "PreviewAutomationTimeoutError",
-        detail: { timeoutMs: 10_000, stage },
+        detail: { timeoutMs: 10_000, pendingStages: expect.arrayContaining([stage]) },
       });
     },
   );
