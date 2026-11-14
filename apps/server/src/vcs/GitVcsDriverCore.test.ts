@@ -1009,7 +1009,8 @@ it.effect("invalidates cached metadata after interrupted worktree creation", () 
             !holdCheckout ||
             !ChildProcess.isStandardCommand(command) ||
             !command.args.includes("worktree") ||
-            !command.args.includes("add")
+            // The unlock ends the checkout, so a cancel here keeps the new worktree.
+            !command.args.includes("unlock")
           )
             return handle;
           holdCheckout = false;
