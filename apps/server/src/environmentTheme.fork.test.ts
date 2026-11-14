@@ -10,6 +10,7 @@ import * as Scope from "effect/Scope";
 
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
+import { ServerSettingsService } from "./serverSettings.ts";
 
 const encodeThemeFile = Schema.encodeSync(Schema.fromJsonString(EnvironmentThemeFile));
 
@@ -34,6 +35,7 @@ const withEnvironmentThemes = <A, E>(
     E,
     | EnvironmentTheme.EnvironmentThemeService
     | ServerConfig.ServerConfig
+    | ServerSettingsService
     | FileSystem.FileSystem
     | Path.Path
     | Scope.Scope
@@ -53,6 +55,7 @@ const withEnvironmentThemes = <A, E>(
       Effect.provide(
         EnvironmentTheme.layer.pipe(
           Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
+          Layer.provideMerge(ServerSettingsService.layerTest()),
         ),
       ),
     );
@@ -64,9 +67,15 @@ const currentThemes = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("environment theme", (it) => {
-  it.effect("attaches a theme's own css file and no other", () =>
+  it.effect("attaches a theme's own css file after its css field, and no other", () =>
     withEnvironmentThemes(
       {
+        "dusk.json": encodeThemeFile({
+          ...NIGHTFALL_THEME,
+          name: "Dusk",
+          css: "a { color: red; }",
+        }),
+        "dusk.css": "b { color: blue; }",
         "nightfall.json": encodeThemeFile(NIGHTFALL_THEME),
         "nightfall.css": "body { color: red; }",
         "shared-light.json": encodeThemeFile(SHARED_THEME),
@@ -77,6 +86,7 @@ it.layer(NodeServices.layer)("environment theme", (it) => {
         assert.deepEqual(
           themes.map((theme) => [theme.id, theme.css]),
           [
+            ["dusk", "a { color: red; }\nb { color: blue; }"],
             ["nightfall", "body { color: red; }"],
             ["shared-light", undefined],
           ],
