@@ -1123,7 +1123,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       />
     ) : (
       <span
-        aria-hidden
         className={cn(
           THREAD_CARD_TITLE_CLASS,
           shouldRecede ? "font-normal" : "font-medium",
@@ -1153,7 +1152,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {thread.title}
       </span>
     );
-  const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
 
   const prBadgeShape = supportsMultiplePullRequests
     ? resolveThreadPullRequestBadge(thread.pullRequests)
@@ -1485,7 +1483,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           >
             {/* `contents` keeps one-line rows a single flex row. */}
             <div className={multiline ? "flex h-6 min-w-0 items-center gap-2.5" : "contents"}>
-              {accessibleTitle}
               {inFolder ? null : (
                 <span
                   className={cn(
@@ -1693,7 +1690,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             />
           }
         >
-          {accessibleTitle}
           {cardLayout === null ? (
             <div
               className={cn(THREAD_CARD_CONTENT_CLASS, "h-[4.875rem]", metaLineEmpty && "h-auto")}
