@@ -27,6 +27,7 @@ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterReg
 import * as ResourceCleanupService from "../orchestration-v2/ResourceCleanupService.ts";
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
@@ -88,6 +89,7 @@ const layerTestWith = (tunnelPairingUrl: string | undefined) =>
     Layer.provide(layerConnect),
     Layer.provide(Layer.mock(AnalyticsService.AnalyticsService)({ record: () => Effect.void })),
     Layer.provide(ServerSecretStore.layer),
+    Layer.provide(DocumentText.layer),
     Layer.provideMerge(layerConfigWith(tunnelPairingUrl)),
     Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );

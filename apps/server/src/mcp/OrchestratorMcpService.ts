@@ -910,11 +910,18 @@ function threadPullRequests(
 }
 
 // Awaited background work keeps a thread live after its turn ends, as auto-settle and the sidebar treat it.
+function threadStatus(
+  activeStatus: OrchestratorMcpThreadListItem["status"] | null | undefined,
+  settledStatus: OrchestratorMcpThreadListItem["status"],
+  pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"],
+) {
+  if (activeStatus != null) return activeStatus;
+  if (settledStatus === "failed") return settledStatus;
+  return backgroundWorkHoldsCompletion(pendingBackgroundTasks ?? []) ? "waiting" : settledStatus;
+}
+
 function listedThreadStatus(shell: OrchestrationV2ThreadShell) {
-  if (shell.activityRunStatus != null) return shell.activityRunStatus;
-  return backgroundWorkHoldsCompletion(shell.pendingBackgroundTasks ?? [])
-    ? "waiting"
-    : shell.status;
+  return threadStatus(shell.activityRunStatus, shell.status, shell.pendingBackgroundTasks);
 }
 
 function listItemFromShell(
@@ -967,7 +974,7 @@ function threadDetail(
     appLink: threadAppLinkFor(scope, projection.thread.id),
     createdBy: projection.thread.createdBy,
     creationSource: projection.thread.creationSource,
-    status: active?.status ?? latest?.status ?? "idle",
+    status: threadStatus(active?.status, latest?.status ?? "idle", shell.pendingBackgroundTasks),
     latestRunId: latest?.id ?? null,
     activeRunId: active?.id ?? null,
     providerInstanceId: projection.thread.modelSelection.instanceId,
@@ -2265,9 +2272,11 @@ const make = Effect.gen(function* () {
       );
       yield* refuseTerminalWhileOff(modelFields.modelSelection.instanceId);
       yield* refuseTerminalThreadWithoutExec(scope.requestNamespace, modelFields.modelSelection);
-      const derivedTitle = input.prompt.split("\n")[0]?.trim() ?? "";
-      const title =
-        input.title ?? (derivedTitle.length > 0 ? derivedTitle.slice(0, 80) : "Scheduled task");
+      // Never end on a lone high surrogate, which renders as a broken character.
+      const derivedTitle = (input.prompt.split("\n")[0]?.trim() ?? "")
+        .slice(0, 80)
+        .replace(/[\uD800-\uDBFF]$/, "");
+      const title = input.title ?? (derivedTitle.length > 0 ? derivedTitle : "Scheduled task");
       const upsertInput: ScheduledTaskUpsertInput = {
         title,
         prompt: input.prompt,
@@ -3143,7 +3152,20 @@ const make = Effect.gen(function* () {
                 title: request.title,
                 index,
               });
-              yield* threadManagement
+              const initialMessage =
+                request.prompt === undefined
+                  ? undefined
+                  : {
+                      senderThreadId: scope.thread.threadId,
+                      messageId: stableMessageId({
+                        scope,
+                        requestKey: key,
+                        index,
+                      }),
+                      text: request.prompt,
+                      attachments: [],
+                    };
+              const created = yield* threadManagement
                 .dispatch({
                   type: "thread.create",
                   createdBy: "agent",
@@ -3160,6 +3182,7 @@ const make = Effect.gen(function* () {
                   ...(parent.thread.linkOrigin === undefined
                     ? {}
                     : { linkOrigin: parent.thread.linkOrigin }),
+                  ...(initialMessage === undefined ? {} : { initialMessage }),
                 })
                 .pipe(
                   Effect.mapError((error) =>
@@ -3173,9 +3196,14 @@ const make = Effect.gen(function* () {
               const resolvedModelSelection = (yield* threadManagement
                 .getThreadRecords(threadId, [])
                 .pipe(Effect.mapError(threadManagementFailure))).thread.modelSelection;
-              if (request.prompt !== undefined) {
+              // A replayed creation that carried no prompt has no run yet.
+              if (
+                initialMessage !== undefined &&
+                !created.storedEvents.some(({ event }) => event.type === "run.created")
+              ) {
                 yield* threadManagement
                   .dispatch({
+                    ...initialMessage,
                     type: "message.dispatch",
                     createdBy: "agent",
                     creationSource: "mcp",
@@ -3186,14 +3214,6 @@ const make = Effect.gen(function* () {
                       index,
                     }),
                     threadId,
-                    senderThreadId: scope.thread.threadId,
-                    messageId: stableMessageId({
-                      scope,
-                      requestKey: key,
-                      index,
-                    }),
-                    text: request.prompt,
-                    attachments: [],
                     modelSelection: resolvedModelSelection,
                     dispatchMode: { type: "start_immediately" },
                   })
