@@ -82,7 +82,7 @@ import {
   hasUnseenCompletion,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
-  resolveSidebarThreadStatus,
+  resolveSidebarRowStatus,
   resolveThreadLastVisitedAt,
   shouldRecedeSidebarThread,
   resolveWorkingStartedAt,
@@ -808,7 +808,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const terminalLabel = terminalThreadStatusLabel(thread.terminal, lastVisitedAt);
   const isUnread =
     hasUnseenCompletion({ ...thread, lastVisitedAt }) || terminalLabel === "Completed";
-  const status = terminalThreadRowStatus(resolveSidebarThreadStatus(thread), terminalLabel);
+  const status = terminalThreadRowStatus(
+    resolveSidebarRowStatus({ ...thread, lastVisitedAt }),
+    terminalLabel,
+  );
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
