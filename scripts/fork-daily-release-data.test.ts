@@ -105,6 +105,31 @@ it("keeps only the last upstream merge for the first release", () => {
   assert.strictEqual(grouped.integration.length, 2);
 });
 
+it("names an upstream pull request once when upstream lands it twice", () => {
+  const grouped = groupDailyChanges(
+    [
+      {
+        commit: commit("s2", "chore(sync): merge pingdotgg/t3code main", ["m1", "u5"]),
+        brought: [
+          commit("u5", "fix: again (#503)"),
+          commit("u4", "fix: again (#503)"),
+          commit("u6", "fix: no pull request"),
+        ],
+        branchAuthor: undefined,
+      },
+    ],
+    (sha) => sha.startsWith("u"),
+    false,
+  );
+  assert.deepStrictEqual(
+    grouped.upstream.map((change) => [change.sha, change.pullRequest?.number ?? null]),
+    [
+      ["u5", 503],
+      ["u6", null],
+    ],
+  );
+});
+
 it("lists the fork commits of a direct merge of fork branches", () => {
   const grouped = groupDailyChanges(
     [

@@ -294,9 +294,24 @@ export function groupDailyChanges(
 
   return {
     fork,
-    upstream: onlyLastUpstreamMerge ? (upstreamByMerge.at(-1) ?? []) : upstreamByMerge.flat(),
+    upstream: oneChangePerPullRequest(
+      onlyLastUpstreamMerge ? (upstreamByMerge.at(-1) ?? []) : upstreamByMerge.flat(),
+    ),
     integration,
   };
+}
+
+/** Upstream lands a pull request twice at times (a revert, then the same change again). */
+function oneChangePerPullRequest(
+  changes: ReadonlyArray<UpstreamChange>,
+): ReadonlyArray<UpstreamChange> {
+  const seen = new Set<number>();
+  return changes.filter((change) => {
+    if (change.pullRequest === null) return true;
+    if (seen.has(change.pullRequest.number)) return false;
+    seen.add(change.pullRequest.number);
+    return true;
+  });
 }
 
 /** Text outside HTML comments and fenced code blocks: pull request templates hide examples there. */
