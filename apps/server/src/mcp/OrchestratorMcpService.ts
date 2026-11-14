@@ -112,6 +112,7 @@ import {
   runOutcome,
 } from "../orchestration-v2/RestartBackgroundNote.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import { placeholderThreadTitle } from "../orchestration-v2/placeholderThreadTitle.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
@@ -823,7 +824,7 @@ function threadTitle(input: {
   readonly index: number;
 }): string {
   const detail = input.title?.trim() || input.prompt?.trim();
-  if (!detail) return `${input.parentTitle} thread ${input.index + 1}`;
+  if (!detail) return placeholderThreadTitle(input.parentTitle, input.index);
   if (detail.length <= 80) return detail;
   let end = 77;
   const previous = detail.charCodeAt(end - 1);
@@ -2178,9 +2179,8 @@ const make = Effect.gen(function* () {
     interactionModeRank(modes.interactionMode) <= interactionModeRank(limits.interactionMode);
 
   /**
-   * Its webhook URL starts runs, so only a caller that may start one sees it: never a client
-   * approved for read-only access, and a thread caller only with a live turn, at modes covering
-   * every mode the task runs at.
+   * Creation returns a webhook URL only to callers allowed to start its runs: never a read-only
+   * client, and a thread caller only with a live turn at modes covering every mode the task runs at.
    */
   const summarizeScheduledTask = Effect.fn("OrchestratorMcpService.summarizeScheduledTask")(
     function* (
@@ -2318,7 +2318,7 @@ const make = Effect.gen(function* () {
     }),
     listScheduledTasks: Effect.fn("OrchestratorMcpService.listScheduledTasks")(
       function* (scope, input) {
-        const { parent, limits } = yield* loadCaller(scope, ["runs"]);
+        const { parent } = yield* loadCaller(scope, []);
         const projectId = input.projectId ?? parent?.thread.projectId;
         const { tasks } = yield* scheduledTasks
           .list()
@@ -2328,10 +2328,13 @@ const make = Effect.gen(function* () {
             ),
           );
         return {
-          tasks: yield* Effect.forEach(
-            tasks.filter((task) => projectId === undefined || task.projectId === projectId),
-            (task) => summarizeScheduledTask(scope, { parent, limits }, task),
-          ),
+          tasks: tasks
+            .filter(
+              (task) =>
+                (projectId === undefined || task.projectId === projectId) &&
+                (input.scheduledTaskId === undefined || task.id === input.scheduledTaskId),
+            )
+            .map((task) => scheduledTaskSummary(task, false)),
         };
       },
     ),
@@ -2442,7 +2445,7 @@ const make = Effect.gen(function* () {
               failure("orchestration_error", `Could not update scheduled task: ${error.message}`),
             ),
           );
-        return yield* summarizeScheduledTask(scope, { parent, limits }, task);
+        return scheduledTaskSummary(task, false);
       },
     ),
     deleteScheduledTask: Effect.fn("OrchestratorMcpService.deleteScheduledTask")(

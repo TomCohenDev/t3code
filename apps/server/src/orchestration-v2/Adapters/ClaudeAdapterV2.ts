@@ -3676,6 +3676,14 @@ const CLAUDE_SCHEDULED_WAKEUP_TASK: OrchestrationV2PendingBackgroundTask = {
 // most 60 s before the minute-rounded scheduledFor it reports; the rest is slack.
 const CLAUDE_SCHEDULED_WAKEUP_EARLY_FIRE_MARGIN_MS = 120_000;
 
+// The CLI answers a control request such as setModel with a replayed local-command user frame.
+// It belongs to no turn, so on an idle session it is not the start of a wake.
+function isClaudeLocalCommandEcho(message: SDKMessage): boolean {
+  if (message.type !== "user" || !("isReplay" in message) || !message.isReplay) return false;
+  const content = message.message.content;
+  return typeof content === "string" && content.startsWith("<local-command-stdout>");
+}
+
 function claudePendingBackgroundTasksFromRoster(
   roster: ReadonlyMap<string, OrchestrationV2PendingBackgroundTask>,
   awaitedTaskIds: ReadonlySet<string>,
@@ -4930,6 +4938,8 @@ interface ActiveClaudeTurnContext {
   // Set while this turn's latest compaction status reports a failure, with
   // Claude's error text when it sent one.
   compactionFailure: { readonly message: string | undefined } | null;
+  // The title a `session_title_changed` frame reported; a `/rename` result applies it to the thread.
+  nativeSessionTitle: string | null;
   // Steers end segments whose usage is excluded from the final result; bill them too, oldest first.
   readonly steeredSegmentUsage: Array<SDKResultMessage["usage"]>;
   // Set as finalization starts: a steer admitted later would stay pending
@@ -5008,6 +5018,8 @@ interface ClaudeLiveQueryContext {
   claudeCodeVersion: string | undefined;
   permissionMode: PermissionMode;
   stopping: boolean;
+  // A turn that had not attached when the CLI exited fails its start with this cause.
+  exitCause: Cause.Cause<ClaudeAgentSdkQueryRunnerError> | undefined;
   readonly subagentsFromEarlierProcesses: ReadonlySet<ActiveClaudeSubagent>;
   // Subagents this process still ran when a replacement took over; only its exit can end them.
   handedOffSubagents: ReadonlySet<ActiveClaudeSubagent>;
@@ -10375,6 +10387,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             (yield* Ref.get(activeTurn)) ??
             (yield* settledTurnForSubagentFrame(liveQuery.nativeThreadId, message));
           if (context === null) {
+            if (isClaudeLocalCommandEcho(message)) {
+              return;
+            }
             yield* applyWorkflowProgressWithoutTurn(message);
             // Buffer wake evidence before clearing the task from the roster.
             if (message.type === "system" && message.subtype === "task_notification") {
@@ -11121,6 +11136,35 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 return messages.length === entry.messages.length
                   ? current
                   : new Map(current).set(liveQuery.nativeThreadId, { ...entry, messages });
+              });
+            }
+          }
+
+          if (
+            message.type === "system" &&
+            (message.subtype as string) === "session_title_changed" &&
+            "title" in message &&
+            typeof message.title === "string"
+          ) {
+            context.nativeSessionTitle = normalizeClaudeSessionTitle(message.title);
+          }
+
+          if (
+            message.type === "result" &&
+            message.subtype === "success" &&
+            !message.is_error &&
+            message.local_command === "rename" &&
+            context.nativeSessionTitle !== null
+          ) {
+            const title = context.nativeSessionTitle;
+            context.nativeSessionTitle = null;
+            // The native session already has this title; the next turn must not send it back.
+            appliedSessionTitles.set(liveQuery.nativeThreadId, title);
+            if (title !== context.input.appThread.title) {
+              yield* emitProviderEvent({
+                type: "app_thread.created",
+                driver: CLAUDE_PROVIDER,
+                appThread: { ...context.input.appThread, title },
               });
             }
           }
@@ -12693,6 +12737,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             claudeCodeVersion: undefined,
             permissionMode: queryOptions.permissionMode,
             stopping: false,
+            exitCause: undefined,
             handedOffSubagents: new Set(),
             subagentsFromEarlierProcesses: new Set(
               [...(yield* Ref.get(sessionSubagentsByTaskId)).values()].filter(
@@ -12772,6 +12817,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             Effect.exit,
             Effect.flatMap(
               Effect.fnUntraced(function* (exit: ClaudeQueryStreamExit) {
+                if (exit._tag === "Failure") context.exitCause = exit.cause;
                 const heldContext = yield* Ref.get(activeTurn);
                 if (
                   (yield* Ref.get(queryContext))?.query === querySession &&
@@ -12991,6 +13037,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               rateLimitResetTimes: new Map(),
               latestAssistantRateLimit: null,
               compactionFailure: null,
+              nativeSessionTitle: null,
               steeredSegmentUsage: [],
               steersClosed: false,
               steeredLedgerUsage: { inputTokens: 0, outputTokens: 0 },
@@ -13025,6 +13072,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                   driver: CLAUDE_PROVIDER,
                   detail: CLAUDE_QUERY_ENDED_BEFORE_TURN_DETAIL,
+                  ...(querySession.exitCause === undefined
+                    ? {}
+                    : { cause: querySession.exitCause }),
                 });
               }
               if (
