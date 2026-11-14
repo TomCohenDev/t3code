@@ -83,14 +83,14 @@ it.effect("keeps a snapshot's inner deadline and stalled capture stage", () =>
         ok: false,
         error: {
           _tag: "PreviewAutomationTimeoutError",
-          message: "Snapshot screenshot timed out after 10000ms.",
-          detail: { stage: "screenshot", timeoutMs: 10_000 },
+          message: "Snapshot rendering placement timed out after 10000ms.",
+          detail: { stage: "rendering placement", timeoutMs: 10_000 },
         },
       });
       const error = yield* Fiber.join(pending);
-      expect(error).toMatchObject({ timeoutMs: 10_000, captureStage: "screenshot" });
+      expect(error).toMatchObject({ timeoutMs: 10_000, captureStage: "rendering placement" });
       expect(error.message).toContain("10000ms");
-      expect(error.message).toContain("screenshot");
+      expect(error.message).toContain("rendering placement");
       expect(error.message).not.toContain("15000ms");
     }),
   ),
