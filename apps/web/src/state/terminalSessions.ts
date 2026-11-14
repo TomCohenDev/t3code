@@ -135,7 +135,7 @@ const EMPTY_TERMINAL_SESSION_ATOM = Atom.make(EMPTY_TERMINAL_SESSION_STATE).pipe
 );
 
 const decodeAttachKey = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Tuple([EnvironmentId, TerminalAttachInput, Schema.Boolean])),
+  Schema.fromJsonString(Schema.Tuple([EnvironmentId, TerminalAttachInput])),
 );
 
 // The family key carries the whole launch so an idle atom leaves nothing behind.
@@ -148,18 +148,13 @@ const attachedTerminalSessionFamily = Atom.family((key: string) => {
       status: "error",
     }).pipe(Atom.withLabel(`web-terminal-session:${key}`));
   }
-  const [environmentId, terminal, draft] = decoded.value;
+  const [environmentId, terminal] = decoded.value;
   return Atom.make((get): TerminalSessionState => {
     const session = get(environmentSession.sessionStateAtom(environmentId));
     const canRead = sessionHasScope(session, AuthTerminalReadScope);
     const canOperate = sessionHasScope(session, AuthTerminalOperateScope);
     const attach = canOperate
-      ? get(
-          (draft ? terminalEnvironment.attachDraft : terminalEnvironment.attach)({
-            environmentId,
-            input: terminal,
-          }),
-        )
+      ? get(terminalEnvironment.attach({ environmentId, input: terminal }))
       : canRead
         ? get(
             terminalEnvironment.observe({
@@ -199,11 +194,9 @@ const attachedTerminalSessionFamily = Atom.family((key: string) => {
 export function attachedTerminalSessionAtom(
   environmentId: EnvironmentId | null,
   terminal: TerminalAttachInput | null,
-  /** Fork: the shell of a draft in Terminal mode, whose stream detaches soon after its view. */
-  draft = false,
 ): Atom.Atom<TerminalSessionState> {
   if (environmentId === null || terminal === null) return EMPTY_TERMINAL_SESSION_ATOM;
-  return attachedTerminalSessionFamily(JSON.stringify([environmentId, terminal, draft]));
+  return attachedTerminalSessionFamily(JSON.stringify([environmentId, terminal]));
 }
 
 const NO_KNOWN_TERMINAL_SESSIONS_ATOM = Atom.make<ReadonlyArray<KnownTerminalSession> | null>(null);

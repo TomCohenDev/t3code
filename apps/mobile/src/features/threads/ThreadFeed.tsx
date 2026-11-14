@@ -3885,17 +3885,22 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
 
   if (props.contentPresentation.kind === "unavailable" && props.queuedMessages.length === 0) {
     return (
-      <ThreadFeedPlaceholder
-        title={props.contentPresentation.title}
-        detail={props.contentPresentation.detail}
-        action={
-          // Fork: continue the thread on a machine that is connected (forkContinueElsewhere.tsx).
-          <ContinueElsewhereButton environmentId={props.environmentId} threadId={props.threadId} />
-        }
-        topInset={topContentInset}
-        bottomInset={bottomContentInset}
-        horizontalPadding={horizontalPadding}
-      />
+      <View style={{ flex: 1, marginLeft: contentLeftInset, marginRight: contentRightInset }}>
+        <ThreadFeedPlaceholder
+          title={props.contentPresentation.title}
+          detail={props.contentPresentation.detail}
+          action={
+            // Fork: continue the thread on a machine that is connected (forkContinueElsewhere.tsx).
+            <ContinueElsewhereButton
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+            />
+          }
+          topInset={topContentInset}
+          bottomInset={bottomContentInset}
+          horizontalPadding={horizontalPadding}
+        />
+      </View>
     );
   }
 

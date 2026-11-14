@@ -796,11 +796,9 @@ function AssistantPanel(props: { readonly capture: AssistantCapture | null }) {
           existing.trim() ? `\n\n${prepared.text}` : prepared.text,
         );
       }
-      // Overflow is kept: the panel closes, so a rejected attachment would be lost.
+      // Restore keeps overflow: the panel closes, so a rejected attachment would be lost.
       if (prepared) {
-        appendComposerDraftAttachments(threadDraftKey, prepared.attachments, {
-          allowOverflow: true,
-        });
+        appendComposerDraftAttachments(threadDraftKey, prepared.attachments, { restore: true });
       }
       url = threadUrl({ environmentId: targetThread.environmentId, threadId: targetThread.id });
       // The new thread draft stays unused, as when the panel closes.

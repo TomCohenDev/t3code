@@ -14,7 +14,7 @@ vi.mock(import("@t3tools/client-runtime/state/thread-workflows"), async (importO
 
 vi.mock(import("../../state/entities"), async (importOriginal) => ({
   ...(await importOriginal()),
-  useThreadProjection: (() => state.projection) as never,
+  useQuietThreadProjection: (() => state.projection) as never,
 }));
 
 vi.mock(import("../../state/use-atom-command"), async (importOriginal) => ({

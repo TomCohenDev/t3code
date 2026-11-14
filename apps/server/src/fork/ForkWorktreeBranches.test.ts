@@ -139,7 +139,8 @@ it.effect.each(["succeeds", "fails"] as const)(
                   ),
                 );
               }
-              if (args.includes("worktree") && args.includes("add")) {
+              // `worktree add -h` only probes for --reason support; it checks nothing out.
+              if (args.includes("worktree") && args.includes("add") && !args.includes("-h")) {
                 cleanups.push(
                   yield* withRepositoryLease(
                     leaseKey,

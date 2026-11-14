@@ -233,9 +233,20 @@ it.layer(NodeServices.layer)("server self update", (it) => {
   // regression: #34502 a remote update never replaces the launcher, so it can be older than the server
   it.effect("names its launcher's protocol to the staged preflight, not its own", () =>
     Effect.gen(function* () {
-      const { selfUpdate, preflightProtocols } = yield* makeHarness({ launcherProtocol: 3 });
+      const { selfUpdate, preflightProtocols, baseDir } = yield* makeHarness({
+        launcherProtocol: 3,
+      });
+      yield* TestClock.setTime(5_000);
       expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
       expect(preflightProtocols).toEqual(["3"]);
+      // That launcher holds no lock between its servers; SSH launches wait on this marker instead.
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      expect(
+        JSON.parse(
+          yield* fs.readFileString(path.join(baseDir, "runtime", "desktop-update-in-progress")),
+        ),
+      ).toEqual({ startedAt: 5_000, expiresAt: 65_000 });
     }),
   );
 
@@ -369,6 +380,27 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       const result = yield* selfUpdate.update({ targetVersion: "0.1.5-nightly.20261028.1" });
       expect(result.updateId).toBe("launcher-id");
       expect(order).toEqual(["index", "download", "extract", "preflight", "accept"]);
+    }),
+  );
+
+  it.effect("stages the runtime without asking the launcher to restart", () =>
+    Effect.gen(function* () {
+      const { selfUpdate, order } = yield* makeHarness();
+      expect(yield* selfUpdate.update({ targetVersion: "1.1.0", stageOnly: true })).toEqual({
+        targetVersion: "1.1.0",
+        method: "boot-service",
+      });
+      expect(order).toEqual(["index", "download", "extract", "preflight"]);
+      expect((yield* selfUpdate.update({ targetVersion: "1.1.0" })).updateId).toBe("launcher-id");
+      expect(order).toEqual([
+        "index",
+        "download",
+        "extract",
+        "preflight",
+        "index",
+        "preflight",
+        "accept",
+      ]);
     }),
   );
 
