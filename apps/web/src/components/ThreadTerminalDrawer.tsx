@@ -481,8 +481,6 @@ interface TerminalViewportProps {
   providerInstanceId?: ProviderInstanceId;
   /** Fork: the shell slug of a terminal thread; the server default when absent. */
   shell?: string | undefined;
-  /** Fork: the shell of a draft in Terminal mode, which detaches soon after it leaves. */
-  draft?: boolean | undefined;
   /** Fork: output only, such as a terminal thread while its server setting is off. */
   readOnly?: boolean | undefined;
   onSessionExited: () => void;
@@ -512,7 +510,6 @@ export function TerminalViewport(props: TerminalViewportProps) {
     props.worktreePath ?? null,
     runtimeEnvSignature(props.runtimeEnv),
     props.shell ?? null,
-    props.draft === true,
   ]);
   return <TerminalSessionViewport key={sessionKey} {...props} />;
 }
@@ -528,7 +525,6 @@ function TerminalSessionViewport({
   runtimeEnv,
   providerInstanceId,
   shell,
-  draft,
   readOnly,
   onSessionExited,
   onStatusChange,
@@ -648,19 +644,15 @@ function TerminalSessionViewport({
   const zoomTerminal = useEffectEvent(zoom);
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
   // Keyed by the launch (see TerminalViewport), so the atom is fixed for this surface.
-  const terminalSessionAtom = attachedTerminalSessionAtom(
-    environmentId,
-    {
-      threadId,
-      terminalId,
-      cwd,
-      ...(worktreePath !== undefined ? { worktreePath } : {}),
-      ...(runtimeEnv ? { env: runtimeEnv } : {}),
-      ...(providerInstanceId ? { providerInstanceId } : {}),
-      ...(shell ? { shell } : {}),
-    },
-    draft,
-  );
+  const terminalSessionAtom = attachedTerminalSessionAtom(environmentId, {
+    threadId,
+    terminalId,
+    cwd,
+    ...(worktreePath !== undefined ? { worktreePath } : {}),
+    ...(runtimeEnv ? { env: runtimeEnv } : {}),
+    ...(providerInstanceId ? { providerInstanceId } : {}),
+    ...(shell ? { shell } : {}),
+  });
   // Attaching starts with the viewport, while the WASM surface is still loading;
   // the surface reads the session itself, so output chunks never re-render here.
   useAtomMount(terminalSessionAtom);

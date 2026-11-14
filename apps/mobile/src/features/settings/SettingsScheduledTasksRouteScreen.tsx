@@ -83,7 +83,11 @@ import {
   type ScheduledTaskDraft as Draft,
 } from "./scheduledTaskDraft";
 import { settingsTargetsForProject } from "./settings-environment-filter.logic";
-import { useScheduledTaskDestinationLabel, useScheduledTaskEditor } from "./scheduled-task-editor";
+import {
+  useScheduledTaskDestinationLabel,
+  useScheduledTaskEditor,
+  useScheduledTaskThread,
+} from "./scheduled-task-editor";
 import {
   discardScheduledTaskEditor,
   markScheduledTaskEditorSaved,
@@ -693,6 +697,10 @@ function TaskForm({
     .sort((left, right) => Number(right.pinnedAt != null) - Number(left.pinnedAt != null));
   const config = useEnvironmentServerConfig(environmentId);
   const destinationLabel = useScheduledTaskDestinationLabel(environmentId, draft.threadId);
+  const boundThread = useScheduledTaskThread(environmentId, draft.threadId);
+  // Bound runs use the thread's current model, so the locked row shows that one.
+  const shownSelection =
+    draft.threadId === null ? draft.modelSelection : (boundThread?.modelSelection ?? null);
   const modelOptions = buildModelOptions(config, null, undefined, draft.projectId);
   // Existing webhook tasks keep the option so they can still switch to a timer.
   const webhookDenial = managedCapabilityDenial(config?.managedPolicy, "webhookTasks");
@@ -948,19 +956,25 @@ function TaskForm({
             label="Model"
             borderTop
             value={
-              draft.useProjectDefaultModel
+              // Bound runs keep the thread's model, also with the project default switched on.
+              draft.useProjectDefaultModel && draft.threadId === null
                 ? "Project default"
                 : (modelOptions.find(
                     (option) =>
-                      option.selection.instanceId === draft.modelSelection?.instanceId &&
-                      option.selection.model === draft.modelSelection?.model,
+                      option.selection.instanceId === shownSelection?.instanceId &&
+                      option.selection.model === shownSelection?.model,
                   )?.label ??
-                  draft.modelSelection?.model ??
+                  shownSelection?.model ??
                   (modelOptions.length ? "Choose model" : "No models available"))
             }
             onPress={() => navigation.navigate("SettingsScheduledTaskModel")}
+            // The saved selection only seeds new threads; bound runs ignore it.
             disabled={
-              saving || dictationPending || environmentUnavailable || draft.useProjectDefaultModel
+              saving ||
+              dictationPending ||
+              environmentUnavailable ||
+              draft.useProjectDefaultModel ||
+              draft.threadId !== null
             }
           />
         </SettingsSection>
