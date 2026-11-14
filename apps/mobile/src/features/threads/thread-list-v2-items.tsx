@@ -85,6 +85,7 @@ import {
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozePresets,
   threadHasUnseenCompletion,
+  resolveThreadListV2RowStatus,
   resolveThreadListV2Status,
   resolveThreadListV2ProviderDrivers,
   resolveThreadListV2SwipeActions,
@@ -809,7 +810,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 
   // Fork: a terminal thread fills in an idle row from its main terminal.
   const terminalLabel = terminalThreadStatusLabel(thread.terminal, thread.lastVisitedAt);
-  const status = terminalThreadRowStatus(resolveThreadListV2Status(thread), terminalLabel);
+  const rawStatus = resolveThreadListV2Status(thread);
+  const status = terminalThreadRowStatus(resolveThreadListV2RowStatus(thread), terminalLabel);
   const isUnread =
     status === "ready" && (threadHasUnseenCompletion(thread) || terminalLabel === "Completed");
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
@@ -1349,7 +1351,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         </View>
       ) : null}
       <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
-        {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+        {(rawStatus === "failed" || rawStatus === "limited") && thread.runtime?.lastError ? (
           <Text
             className={cn(
               "flex-1 text-xs",
