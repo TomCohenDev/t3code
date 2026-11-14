@@ -69,6 +69,7 @@ export type T3McpToolSummaryAction =
   | "device"
   | "html-preview"
   | "html-render"
+  | "send-to-user"
   // Fork: machine map tools.
   | "machine-map";
 
@@ -374,6 +375,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_send_attachments: tool(["Send", "Sending", "Sent", "attachments"], "attachment-send"),
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
+  send_to_user: tool(["Send", "Sending", "Sent", "a message"], "send-to-user"),
   // Fork: machine tools on kitshn.
   machines_read: tool(["Read", "Reading", "Read", "kitshn"], "machine-map"),
   machines_resources: tool(["Read", "Reading", "Read", "machine resources"], "machine-map"),

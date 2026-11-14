@@ -10,6 +10,7 @@ import { EnvironmentToolkit } from "./environment/tools.ts";
 import { HtmlToolkit } from "./html/tools.ts";
 import { KitshnToolkit } from "./kitshn/tools.ts";
 import { MachineMapToolkit } from "./machineMap/tools.ts";
+import { MessageToolkit } from "./message/tools.ts";
 import { OrchestratorToolkit } from "./orchestrator/tools.ts";
 import { PreviewToolkit } from "./preview/tools.ts";
 import { PreviewControlsToolkit } from "./previewControls/tools.ts";
@@ -54,6 +55,7 @@ export const McpToolkits = {
   device: DeviceToolkit,
   pullRequests: PullRequestsToolkit,
   html: HtmlToolkit,
+  message: MessageToolkit,
   // Fork: the machine tools on kitshn (MM-801).
   machineMap: MachineMapToolkit,
   // Fork: kitshn publishing.
