@@ -931,16 +931,16 @@ function TaskForm({
               value={draft.useProjectDefaultModel}
               disabled={saving || dictationPending || environmentUnavailable}
               onValueChange={(useProjectDefaultModel) =>
-                setDraft({
-                  ...draft,
+                setDraft((current) => ({
+                  ...current,
                   useProjectDefaultModel,
                   modelSelection:
-                    draft.modelSelection ??
+                    current.modelSelection ??
                     scheduledTaskDefaultModel(
                       config,
-                      projects.find((project) => project.id === draft.projectId) ?? null,
+                      projects.find((project) => project.id === current.projectId) ?? null,
                     ),
-                })
+                }))
               }
             />
           </View>
