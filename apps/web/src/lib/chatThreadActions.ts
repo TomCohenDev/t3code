@@ -7,7 +7,6 @@ import type {
   ScopedProjectRef,
 } from "@t3tools/contracts";
 import type { ComposerThreadDraftState, DraftThreadEnvMode } from "../composerDraftStore";
-import { getClientSettings } from "../hooks/useSettings";
 
 type ComposerModelSelectionState = Pick<
   ComposerThreadDraftState,
@@ -137,6 +136,8 @@ export async function startNewThreadFromContext(
     }
     // Fork: only this "in current project" path reads the setting. The project picker
     // (`ForkTerminalThreadPaletteItems.tsx`) keeps its terminal a draft until the first command.
+    // Fork: a static import makes a cycle, because composerDraftStore imports this file.
+    const { getClientSettings } = await import("../hooks/useSettings");
     await context.handleNewTerminalThread(projectRef, {
       opensAsThread: getClientSettings().currentProjectTerminalOpensThread,
     });
