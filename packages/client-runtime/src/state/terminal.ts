@@ -52,24 +52,6 @@ export function createTerminalEnvironmentAtoms<R, E>(
     readonly input: { readonly threadId: string; readonly terminalId?: string | undefined };
   }) => JSON.stringify([environmentId, input.threadId, input.terminalId ?? null]);
   const lifecycleConcurrency = { mode: "serial" as const, key: terminalThreadKey };
-  const attachStream = (input: EnvironmentRpcInput<typeof WS_METHODS.terminalAttach>) => {
-    // Retry an unanswered first attach unchanged so it can still open the shell.
-    let replied = false;
-    return subscribeDynamic(WS_METHODS.terminalAttach, () =>
-      Effect.sync(() => ({
-        ...input,
-        ...(replied ? { resume: true } : {}),
-        maxHistoryBytes: DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
-      })),
-    ).pipe(
-      Stream.onFirst(() =>
-        Effect.sync(() => {
-          replied = true;
-        }),
-      ),
-      Stream.scan(nextTerminalAttachSeedState, applyTerminalAttachStreamEvent),
-    );
-  };
   const atoms = {
     observe: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:observe",
@@ -82,18 +64,26 @@ export function createTerminalEnvironmentAtoms<R, E>(
     }),
     attach: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:attach",
-      subscribe: attachStream,
-    }),
-    /**
-     * Fork: the attach stream of a draft shell in Terminal mode. The server discards a draft
-     * shell only while no attach stream holds it (`AbandonedTerminalDrafts.ts`), so a draft that
-     * the user leaves must detach soon, not after the 5 minutes of other streams. Other terminals
-     * keep the long stream, so a switch back does not replay their history.
-     */
-    attachDraft: createEnvironmentSubscriptionAtomFamily(runtime, {
-      label: "environment-data:terminal:attach-draft",
-      idleTtlMs: 5_000,
-      subscribe: attachStream,
+      // The server sizes the PTY to every attached viewer, so a closed view must detach now.
+      idleTtlMs: 0,
+      subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.terminalAttach>) => {
+        // Retry an unanswered first attach unchanged so it can still open the shell.
+        let replied = false;
+        return subscribeDynamic(WS_METHODS.terminalAttach, () =>
+          Effect.sync(() => ({
+            ...input,
+            ...(replied ? { resume: true } : {}),
+            maxHistoryBytes: DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
+          })),
+        ).pipe(
+          Stream.onFirst(() =>
+            Effect.sync(() => {
+              replied = true;
+            }),
+          ),
+          Stream.scan(nextTerminalAttachSeedState, applyTerminalAttachStreamEvent),
+        );
+      },
     }),
     metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:terminal:metadata",

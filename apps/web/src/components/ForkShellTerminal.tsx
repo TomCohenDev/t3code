@@ -126,7 +126,6 @@ export function ForkShellTerminal(props: {
         worktreePath={launch.worktreePath}
         runtimeEnv={launch.env}
         shell={props.shell}
-        draft={props.draft}
         readOnly={readOnly}
         onSessionExited={() => {}}
         onStatusChange={setStatus}
