@@ -9,7 +9,12 @@ const state = vi.hoisted(() => ({ links: [] as ReadonlyArray<unknown> }));
 
 vi.mock(import("~/state/query"), async (original) => ({
   ...(await original()),
-  useEnvironmentQuery: (() => ({ data: { links: state.links }, error: null })) as never,
+  useEnvironmentQuery: (() => ({
+    data: { links: state.links },
+    error: null,
+    isPending: false,
+    refresh: () => {},
+  })) as never,
 }));
 // The session may link and unlink: the fork still offers neither (MM-1921).
 vi.mock(import("~/state/peerLinks"), async (original) => ({
