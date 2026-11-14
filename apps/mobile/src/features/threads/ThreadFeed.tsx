@@ -3891,7 +3891,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           detail={props.contentPresentation.detail}
           action={
             // Fork: continue the thread on a machine that is connected (forkContinueElsewhere.tsx).
-            <ContinueElsewhereButton environmentId={props.environmentId} threadId={props.threadId} />
+            <ContinueElsewhereButton
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+            />
           }
           topInset={topContentInset}
           bottomInset={bottomContentInset}
