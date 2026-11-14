@@ -745,7 +745,7 @@ The theme that you select in Settings > Appearance is the one control. A publish
 
 #### Style
 
-Published themes can set shape, fonts, a canvas pattern and user CSS, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern`, `canvasPatternColor` and `css`.
+Published themes can set shape, fonts and a canvas pattern, in the theme JSON fields `radius`, `borderWidth`, `shadow`, `fonts`, `canvasPattern` and `canvasPatternColor`. User CSS is upstream's `css` field. The fork also reads an optional `<id>.css` file next to the theme file and appends it to that field.
 
 - The sidebar wordmark link carries `data-fork-brand="wordmark"` and the environment pill carries `data-fork-brand="pill"`. Theme CSS can target these, and not the upstream labels, which change.
 

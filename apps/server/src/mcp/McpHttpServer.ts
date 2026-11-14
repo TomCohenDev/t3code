@@ -55,6 +55,7 @@ import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
 import { registerUsageSource } from "../fork/usageSourceTool.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
+import * as ThemeHandlers from "./toolkits/theme/handlers.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import * as AttachmentHandlers from "./toolkits/attachment/handlers.ts";
 import * as ThreadHandlers from "./toolkits/thread/handlers.ts";
@@ -1262,6 +1263,10 @@ const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentHandlers.layer,
 ).pipe(Layer.provide(ThreadCommandExecutor.layer));
 
+const layerThemeToolkit = toolkitRegistration(McpToolkits.theme, ThemeHandlers.layer).pipe(
+  Layer.provide(ThreadCommandExecutor.layer),
+);
+
 export const layerProjectRegistration = toolkitRegistration(
   McpToolkits.project,
   ProjectHandlers.layer,
@@ -1331,6 +1336,7 @@ const toolkitRegistrations = {
   attachment: layerAttachmentToolkit,
   project: layerProjectRegistration,
   environment: layerEnvironmentToolkit,
+  theme: layerThemeToolkit,
   previewControls: layerPreviewControlsRegistration,
   device: layerDeviceToolkit,
   pullRequests: layerPullRequestsToolkit,

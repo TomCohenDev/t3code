@@ -661,6 +661,8 @@ export const EnvironmentThemeFonts = Schema.Struct({
 });
 export type EnvironmentThemeFonts = typeof EnvironmentThemeFonts.Type;
 
+export const THEME_CSS_MAX_LENGTH = 20_000;
+
 const environmentThemeFields = {
   version: Schema.optional(Schema.Literal(1)),
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(48)),
@@ -688,6 +690,8 @@ const environmentThemeFields = {
   canvasPatternColor: Schema.optional(EnvironmentThemeCssValue),
   /** Fork: icons that replace the stock icons of named slots. See `EnvironmentThemeIcons`. */
   icons: Schema.optional(EnvironmentThemeIcons),
+  /** Custom styles for web and desktop clients. */
+  css: Schema.optional(Schema.String.check(Schema.isMaxLength(THEME_CSS_MAX_LENGTH))),
 };
 
 export const EnvironmentThemeFile = Schema.Struct(environmentThemeFields);
@@ -697,8 +701,8 @@ export const EnvironmentTheme = Schema.Struct({
   id: EnvironmentThemeId,
   ...environmentThemeFields,
   /**
-   * Contents of the optional `<id>.css` file next to the theme file. The
-   * server reads it, so it never appears inside the JSON file itself.
+   * Fork: the file's `css`, then the optional `<id>.css` file next to it. That file can make
+   * the total longer than `THEME_CSS_MAX_LENGTH`.
    */
   css: Schema.optional(Schema.String),
 });

@@ -272,6 +272,7 @@ export interface ThreadDetailScreenProps {
   readonly activePendingUserInputAnswers: Record<string, string | ReadonlyArray<string>> | null;
   readonly respondingUserInputId: RuntimeRequestId | null;
   readonly connectionStateLabel: EnvironmentConnectionPhase;
+  readonly connectionAwaitingApproval?: boolean;
   readonly threadSyncStatus?: EnvironmentThreadStatus;
   readonly historyControls?: ThreadFeedHistoryControls;
   /** Fork: a message link's target. See forkMessageLinks. */
@@ -772,6 +773,7 @@ function ThreadDetailBody(
     const connectionStatus = connectionFloatingStatus({
       connectionError: connectionRetrying ? retryConnectionError : props.connectionError,
       connectionState: props.connectionStateLabel,
+      connectionAwaitingApproval: props.connectionAwaitingApproval === true,
       environmentLabel: props.environmentLabel,
       // Fork: a refused pairing opens Add environment instead of retrying (forkPairAgain.ts).
       onReconnect:

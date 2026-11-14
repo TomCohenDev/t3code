@@ -97,20 +97,13 @@ export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
 export type ThemeColors = Readonly<Record<ThemeColorRole, string>>;
 export type ThemeVariants = Readonly<Partial<Record<ThemeAppearance, ThemeColors>>>;
 /**
- * Optional shape, font, texture and user CSS fields a published theme carries.
+ * Optional shape, font, texture and icon fields a published theme carries.
  * Every field is optional, and an absent field keeps the stock look.
  */
 export type ThemeStyle = Readonly<
   Pick<
     EnvironmentTheme,
-    | "radius"
-    | "borderWidth"
-    | "shadow"
-    | "fonts"
-    | "canvasPattern"
-    | "canvasPatternColor"
-    | "css"
-    | "icons"
+    "radius" | "borderWidth" | "shadow" | "fonts" | "canvasPattern" | "canvasPatternColor" | "icons"
   >
 >;
 export type ThemeDefinition = Readonly<{
@@ -124,6 +117,8 @@ export type ThemeDefinition = Readonly<{
   managed?: boolean;
   /** Only published themes carry it today; saved and built-in themes do not. */
   style?: ThemeStyle;
+  /** Custom styles for web and desktop. */
+  css?: string;
 }>;
 
 export const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {

@@ -2,10 +2,6 @@ import type { EnvironmentTheme } from "@t3tools/contracts";
 import type { ThemeStyle } from "@t3tools/shared/themePalettes";
 import * as Equal from "effect/Equal";
 
-/** Id of the style element that holds the active theme's user CSS. */
-export const THEME_USER_CSS_ELEMENT_ID = "t3-theme-user-css";
-let userCssElement: HTMLStyleElement | null = null;
-
 type ThemeFonts = NonNullable<ThemeStyle["fonts"]>;
 const NO_THEME_FONTS: ThemeFonts = {};
 let activeThemeFonts: ThemeFonts = NO_THEME_FONTS;
@@ -48,7 +44,6 @@ export function publishedThemeStyle(theme: EnvironmentTheme): ThemeStyle | undef
     ...(theme.canvasPatternColor !== undefined
       ? { canvasPatternColor: theme.canvasPatternColor }
       : {}),
-    ...(theme.css !== undefined ? { css: theme.css } : {}),
     ...(theme.icons !== undefined ? { icons: theme.icons } : {}),
   };
   return Object.keys(style).length > 0 ? style : undefined;
@@ -99,17 +94,4 @@ export function applyThemeStyle(root: HTMLElement, style: ThemeStyle | undefined
     activeThemeIcons = icons;
     for (const listener of activeThemeIconListeners) listener();
   }
-
-  // The style element goes last in <head>, so user CSS wins over the app
-  // stylesheet at equal specificity. It is removed when the theme has none.
-  const css = style?.css;
-  if (css === undefined) {
-    userCssElement?.remove();
-    userCssElement = null;
-    return;
-  }
-  userCssElement ??= document.createElement("style");
-  userCssElement.id = THEME_USER_CSS_ELEMENT_ID;
-  if (userCssElement.textContent !== css) userCssElement.textContent = css;
-  if (userCssElement !== document.head.lastElementChild) document.head.append(userCssElement);
 }
