@@ -694,6 +694,7 @@ it.effect("a refused dispatch records its refusal, and opaque causes stay generi
       Layer.provide(
         Layer.mergeAll(
           ManagedPolicy.layerTest(),
+          ServerSettings.layerTest(),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),

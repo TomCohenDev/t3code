@@ -303,6 +303,7 @@ const createCloudflareAccessBrowserSession = Effect.fn(
       ),
     );
   yield* appendSessionCookie(
+    request,
     created.cookieName ?? sessions.cookieName,
     created.sessionToken,
     created.response.expiresAt,
