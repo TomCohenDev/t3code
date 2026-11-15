@@ -14,7 +14,10 @@ const baseState = {
 describe("pair base URL selection", () => {
   it("pairs through the tunnel URL of a loopback server with tunnel pairing on", () => {
     expect(
-      resolveDirectPairingBaseUrl({ ...baseState, tunnelPairingUrl: "https://t3.example.com" }),
+      resolveDirectPairingBaseUrl(
+        { ...baseState, tunnelPairingUrl: "https://t3.example.com" },
+        "linux",
+      ),
     ).toBe("https://t3.example.com");
   });
 });
