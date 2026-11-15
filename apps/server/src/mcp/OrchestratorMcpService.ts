@@ -1337,28 +1337,21 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  /**
-   * A client has no thread to inherit a model from, so it falls back to the
-   * project default the app resolves: the project override, then the environment.
-   */
-  const projectDefaultModelSelection = Effect.fn("OrchestratorMcp.projectDefaultModelSelection")(
-    function* (project: Effect.Success<ReturnType<typeof requireProject>>) {
-      const settings = yield* serverSettings.getSettings.pipe(
-        Effect.mapError((error) =>
-          failure("orchestration_error", `Unable to read settings: ${error.message}`),
-        ),
+  const projectDefaultModelSelection = Effect.fn(
+    "OrchestratorMcpService.projectDefaultModelSelection",
+  )(function* (project: Effect.Success<ReturnType<typeof requireProject>>) {
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+    );
+    const selection = resolveProjectSettings(settings, project.id, project).settings
+      .defaultModelSelection;
+    if (selection === null)
+      return yield* failure(
+        "invalid_request",
+        `Project ${project.id} has no default model, so this caller cannot pick one for it.`,
       );
-      const selection = resolveProjectSettings(settings, project.id, project).settings
-        .defaultModelSelection;
-      if (selection === null) {
-        return yield* failure(
-          "invalid_request",
-          `Project ${project.id} has no default model, so this caller cannot pick one for it.`,
-        );
-      }
-      return selection;
-    },
-  );
+    return selection;
+  });
   const secretRequests = yield* SecretRequests.SecretRequests;
 
   const requireCapability = (scope: McpInvocationScope) =>
@@ -2114,7 +2107,7 @@ const make = Effect.gen(function* () {
       hasPendingChildRuns: false,
       providerInstanceId: task.providerInstanceId,
       model: task.model,
-      executedModel: null,
+      executedModel: task.executedModel ?? null,
       summary: task.result,
       resultContextTransferId: null,
       latestTerminalRunId: null,
