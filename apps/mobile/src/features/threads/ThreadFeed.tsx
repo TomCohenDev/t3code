@@ -1069,7 +1069,11 @@ interface MarkdownLinkHandlers {
     actionId: string,
     reply?: MarkdownLinkReply,
   ) => void;
-  readonly onImagePress?: (href: string) => void;
+  /** `withGallery` pages the image through its message's images; the feed's viewer sits outside that scope. */
+  readonly onImagePress?: (
+    href: string,
+    withGallery?: (source: FilePreviewSource) => FilePreviewSource,
+  ) => void;
   readonly resolveImageSource?: MarkdownImageSourceResolver;
   readonly fileEmbedLabel?: (href: string, standalone: boolean) => string | null;
   readonly linkCustomization?: (href: string) => MarkdownLinkCustomization | undefined;
@@ -1155,8 +1159,11 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
     props.environmentId,
   );
   const threadIcons = useThreadChipIcons(props.environmentId, liveMarkdown);
+  const withGallery = useFilePreviewGallery();
+  const onImagePress = props.linkHandlers.onImagePress;
   const linkHandlers: MarkdownLinkHandlers = {
     ...props.linkHandlers,
+    ...(onImagePress ? { onImagePress: (href: string) => onImagePress(href, withGallery) } : {}),
     onLinkPress: (href) => props.linkHandlers.onLinkPress(href, props.reply),
     onFileContextMenuAction: (href, actionId) =>
       props.linkHandlers.onFileContextMenuAction(href, actionId, props.reply),
@@ -3042,7 +3049,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     };
     return lookup().catch(() => relativePath);
   };
-  const onMarkdownLinkPress = (href: string, imageEmbed = false, reply?: MarkdownLinkReply) => {
+  const onMarkdownLinkPress = (
+    href: string,
+    imageEmbed = false,
+    reply?: MarkdownLinkReply,
+    withGallery?: (source: FilePreviewSource) => FilePreviewSource,
+  ) => {
     if (forkThreadLinks.openKnownThread(href)) return;
     markdownLinkRequest.current?.abort();
     const request = new AbortController();
@@ -3084,7 +3096,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         if (request.signal.aborted) return;
         openPreview(
           scope,
-          media.kind === "video" ? { video: media.source } : { file: media.source },
+          media.kind === "video"
+            ? { video: media.source }
+            : { file: withGallery ? withGallery(media.source) : media.source },
         );
       };
       const resource = "resource" in media.source ? media.source.resource : null;
@@ -3161,7 +3175,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     // Fork: with `threadAddressing` on, the fork pill also covers web addresses and message links.
     linkCustomization: (href) =>
       forkThreadLinks.linkCustomization(href) ?? enrichedThreadLinkCustomization(href),
-    onImagePress: (href) => onMarkdownLinkPress(href, true),
+    onImagePress: (href, withGallery) => onMarkdownLinkPress(href, true, undefined, withGallery),
     resolveImageSource,
     fileContextMenu: (href) => {
       const skill = enrichedSkillReference(href, props.skills);
