@@ -148,7 +148,14 @@ const assertShellIndexCoversShells = Effect.fnUntraced(function* () {
   const trimmed = (
     row: Pick<
       ProjectionStore.ActiveShellIndexEntry,
-      "id" | "projectId" | "lineage" | "settledOverride" | "settledAt" | "pinnedAt" | "snoozedUntil"
+      | "id"
+      | "projectId"
+      | "lineage"
+      | "settledOverride"
+      | "settledAt"
+      | "pinnedAt"
+      | "pinOrderKey"
+      | "snoozedUntil"
     >,
   ) => ({
     id: row.id,
@@ -157,6 +164,7 @@ const assertShellIndexCoversShells = Effect.fnUntraced(function* () {
     settledOverride: row.settledOverride,
     settledAt: iso(row.settledAt),
     pinnedAt: iso(row.pinnedAt),
+    pinOrderKey: row.pinOrderKey ?? null,
     snoozedUntil: iso(row.snoozedUntil),
   });
   assert.deepEqual(index.map(trimmed), shells.map(trimmed));
@@ -2499,13 +2507,28 @@ const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
   assert.deepEqual(reordered.updatedAt, createdAt);
   assert.equal(reordered.thread.activeOrderKey, "a");
 
+  // MCP pins read the stored pin key from the active shell index.
+  yield* store.apply({
+    id: EventId.make("event:background-updates:pinned"),
+    type: "thread.pinned",
+    threadId,
+    occurredAt: DateTime.add(createdAt, { minutes: 52 }),
+    payload: {
+      ...reordered.thread,
+      pinnedAt: DateTime.add(createdAt, { minutes: 52 }),
+      pinOrderKey: "m",
+    },
+  });
+  const pinned = yield* readActivity;
+  yield* assertShellIndexCoversShells();
+
   // An already-unpinned thread keeps its activity time even when replay's envelope advances.
   yield* store.apply({
     id: EventId.make("event:background-updates:already-unpinned"),
     type: "thread.unpinned",
     threadId,
     occurredAt: DateTime.add(createdAt, { minutes: 55 }),
-    payload: { ...reordered.thread, pinnedAt: null, pinOrderKey: null },
+    payload: { ...pinned.thread, pinnedAt: null, pinOrderKey: null },
   });
   yield* readActivity;
 });
@@ -8447,21 +8470,32 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const [originalRow] = yield* sql<{
         payload_json: string;
       }>`SELECT payload_json FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId}`;
-      for (const [field, value] of [
-        ["archivedAt", DateTime.formatIso(now)],
-        ["settledOverride", "settled"],
-      ]) {
-        yield* sql`UPDATE orchestration_v2_projection_threads
-          SET payload_json = json_set(payload_json, ${`$.${field}`}, ${value})
-          WHERE thread_id = ${threadId}`;
-        assert.isUndefined(
-          (yield* store.getLimitRecoveryCandidates({ now, autoResume: true, snooze: false })).find(
+      const limitThread = (yield* store.getThreadProjection(threadId)).thread;
+      for (const archivedAt of [now, null]) {
+        yield* store.apply({
+          id: EventId.make(`event:limit-shell:archived:${archivedAt !== null}`),
+          type: archivedAt === null ? "thread.unarchived" : "thread.archived",
+          threadId,
+          occurredAt: now,
+          payload: { ...limitThread, archivedAt },
+        });
+        assert.strictEqual(
+          (yield* store.getLimitRecoveryCandidates({ now, autoResume: true, snooze: false })).some(
             (row) => row.id === threadId,
           ),
+          archivedAt === null,
         );
-        yield* sql`UPDATE orchestration_v2_projection_threads
-          SET payload_json = ${originalRow!.payload_json} WHERE thread_id = ${threadId}`;
       }
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = json_set(payload_json, '$.settledOverride', 'settled')
+        WHERE thread_id = ${threadId}`;
+      assert.isUndefined(
+        (yield* store.getLimitRecoveryCandidates({ now, autoResume: true, snooze: false })).find(
+          (row) => row.id === threadId,
+        ),
+      );
+      yield* sql`UPDATE orchestration_v2_projection_threads
+        SET payload_json = ${originalRow!.payload_json} WHERE thread_id = ${threadId}`;
       yield* sql`UPDATE orchestration_v2_projection_threads SET deleted_at = ${DateTime.formatIso(now)} WHERE thread_id = ${threadId}`;
       assert.isUndefined(
         (yield* store.getLimitRecoveryCandidates({ now, autoResume: true, snooze: false })).find(
