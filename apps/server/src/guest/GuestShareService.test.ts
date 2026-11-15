@@ -606,6 +606,7 @@ it.effect("gives a fork's guest the commands the fork shows from its source thre
     const run = (yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]!;
     yield* eventSink.write({
       events: [
+        forkResolvedProviderThread(now),
         {
           id: EventId.make("event:run-done"),
           type: "run.updated",
@@ -613,7 +614,12 @@ it.effect("gives a fork's guest the commands the fork shows from its source thre
           runId: run.id,
           providerInstanceId: instanceId,
           occurredAt: now,
-          payload: { ...run, status: "completed", completedAt: now },
+          payload: {
+            ...run,
+            status: "completed",
+            completedAt: now,
+            providerThreadId: forkProviderThreadId,
+          },
         },
       ],
     });
