@@ -148,3 +148,5 @@ export const CONFIGURE_GLOBAL_SCRIPT_SHORTCUTS_CHANNEL =
 // Fork: browser capture leases. Here, not in contracts, because the sandboxed preload cannot load packages.
 export const FORK_BROWSER_CAPTURE_CHANNEL = "fork:browser-capture";
 export const FORK_BROWSER_CAPTURE_REPORT_CHANNEL = "fork:browser-capture-report";
+
+export const RESTART_AUDIO_SERVICE_CHANNEL = "desktop:restart-audio-service";

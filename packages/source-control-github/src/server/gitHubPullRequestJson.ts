@@ -389,6 +389,7 @@ export interface GitHubPullRequestActivity {
   readonly author: PullRequestActor | null;
   readonly comments: ReadonlyArray<PullRequestComment>;
   readonly commits: ReadonlyArray<PullRequestCommit>;
+  readonly truncated: boolean;
 }
 
 /** The author's role on the repository, left out where GitHub reports none. */

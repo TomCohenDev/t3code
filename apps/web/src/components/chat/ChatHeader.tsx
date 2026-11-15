@@ -22,6 +22,7 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Badge } from "../ui/badge";
+import { MiddleTruncate } from "../ui/middle-truncate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShortcutHint } from "../focusLevels/ShortcutHint";
 import { toastManager } from "../ui/toast";
@@ -303,9 +304,12 @@ export const ChatHeader = memo(function ChatHeader({
                   }
                 >
                   <ProjectFavicon project={activeProject} className="size-3.5" />
-                  <WorkspaceBreadcrumbText className="max-w-40">
-                    {activeProjectName}
-                  </WorkspaceBreadcrumbText>
+                  <MiddleTruncate
+                    data-slot="workspace-breadcrumb-text"
+                    value={activeProjectName ?? ""}
+                    showTitle={false}
+                    variant="cap-aligned"
+                  />
                 </TooltipTrigger>
                 <TooltipPopup side="top">
                   New thread in {activeProjectName}
