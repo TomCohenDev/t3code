@@ -370,7 +370,7 @@ function foldClaudeFields(fields: ClaudeFields, record: DecodedTranscriptRecord)
 // Codex records setup context as user text ahead of the real request. Skip
 // these leading blocks when deriving a title; imported messages keep them.
 const CODEX_TITLE_PREAMBLE =
-  /^(?:\s*(?:<(recommended_plugins|environment_context|user_instructions|INSTRUCTIONS|in-app-browser-context)(?:\s[^>]*)?>[\s\S]*?<\/\1>|# AGENTS\.md instructions\b[^\n]*|## My request for Codex:))+/;
+  /^(?:\s*(?:<(recommended_plugins|environment_context|user_instructions|INSTRUCTIONS|in-app-browser-context|external_codex_apps_open_page)(?:\s[^>]*)?>[\s\S]*?<\/\1>|# AGENTS\.md instructions\b[^\n]*|## My request for Codex:))+/;
 
 // Codex appends an entry per rename; like Codex, the newest nonempty name wins.
 function parseCodexThreadNames(contents: string): ReadonlyMap<string, string> {
@@ -449,13 +449,14 @@ export function parseAgentSessionTranscript(
     input.source === "claudeAgent"
       ? records.reduce(foldClaudeFields, emptyClaudeFields)
       : emptyClaudeFields;
-  return parseAgentSessionRecords(
+  const thread = parseAgentSessionRecords(
     input,
     records,
     claudeFields,
     input.maxMessages ?? DEFAULT_AGENT_SESSION_IMPORT_MAX_MESSAGES,
     0,
   );
+  return thread === "empty" ? null : thread;
 }
 
 function parseAgentSessionRecords(
@@ -464,7 +465,7 @@ function parseAgentSessionRecords(
   claudeFields: ClaudeFields,
   maxMessages: AgentSessionImportMaxMessages,
   droppedMessageCount: number,
-): AgentSessionThread | null {
+): AgentSessionThread | "empty" | null {
   const fallbackTimestamp = DateTime.formatIso(DateTime.makeUnsafe(input.lastActiveAtMs));
   // Claude filenames are session IDs. Codex rollout filenames include extra
   // timestamp text, so only transcript metadata can provide a resumable ID.
@@ -657,6 +658,7 @@ function parseAgentSessionRecords(
     });
   }
 
+  if (messages.length === 0 && droppedMessageCount === 0) return "empty";
   const visibleMessages = messages.map(
     ({ codexResponseUser: _codexResponseUser, ...message }) => message,
   );
@@ -2163,6 +2165,15 @@ export const make = Effect.gen(function* () {
             settings.agentSessionImportMaxMessages,
             snapshot.droppedMessageCount,
           );
+          if (parsedThread === "empty") {
+            // null means an unreadable history base, which may hold the conversation.
+            if (candidate.source === "codex" && inheritedRecords === null) {
+              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+            }
+            // Never recorded as imported, so charging them would starve real sessions every run.
+            transcriptsRemaining += 1;
+            return Option.none<AgentSessionRecentThread>();
+          }
           if (parsedThread === null) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }

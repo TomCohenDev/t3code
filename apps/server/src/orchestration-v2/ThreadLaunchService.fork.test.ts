@@ -119,6 +119,8 @@ function makeHarness(options: HarnessOptions = {}) {
       isOutsideRepository: () => Effect.succeed(false),
       currentBranch: () => Effect.succeed(null),
       resolveWorktreeBaseRemote: () => Effect.succeed({ remoteName: "origin", branchName: "main" }),
+      resolvePrimaryRemoteName: () => Effect.succeed("origin"),
+      resolveDefaultBranchName: () => Effect.succeed("main"),
       remoteExists: () => Effect.succeed(true),
       remoteBranchExists: () => Effect.succeed(true),
       removeWorktree,

@@ -661,7 +661,7 @@ export const EnvironmentThemeFonts = Schema.Struct({
 });
 export type EnvironmentThemeFonts = typeof EnvironmentThemeFonts.Type;
 
-export const THEME_CSS_MAX_LENGTH = 20_000;
+export const THEME_CSS_MAX_LENGTH = 50_000;
 
 const environmentThemeFields = {
   version: Schema.optional(Schema.Literal(1)),

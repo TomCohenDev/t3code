@@ -187,8 +187,8 @@ Available context keys are `terminalFocus`, `terminalOpen`, `previewFocus`,
 `draftThreadRoute`, `turnRunning`, `editableFocus`, `timelineFocus`, `sidebarFocus`,
 `rightPanelFocus`, `approvalPending`, `compactBeforeSendShown`, `isWeb`, and `isDesktop`.
 `compactBeforeSendShown` is true while the composer shows the **Compact** or **Keep** toggle.
-`rightPanelOpen` applies only to `rightPanel.new` and is true while the right panel is
-open; the default `mod+t` uses it to open the panel's new-tab menu.
+In a thread, `rightPanelOpen` is true while its right panel is open; the default
+`mod+t` uses it to open the panel's new-tab menu.
 `draftThreadRoute` is true on a draft thread, including a restored draft, until it is first sent.
 `editableFocus` is true while a text field, the composer, or another editor has
 the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the

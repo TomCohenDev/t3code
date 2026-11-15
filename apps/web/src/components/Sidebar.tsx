@@ -1838,7 +1838,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
     // Fork: over a sidebar tab the list stops sorting and the ghost follows the pointer.
-    const contextDrag = sidebarTabs.moveDrag(point) || pointerOutsideThreadList(point);
+    // Search results cannot reorder, so their context preview starts inside the list.
+    const contextDrag =
+      sidebarTabs.moveDrag(point) ||
+      searchResultsListRef.current !== null ||
+      pointerOutsideThreadList(point);
     setDragState((current) =>
       current === null || current.contextDrag === contextDrag
         ? current
