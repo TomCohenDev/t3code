@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 import { FetchHttpClient } from "effect/http";
 import { expect } from "vite-plus/test";
 
+import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { PreviewServerGroups } from "./PreviewServerGroups.ts";
@@ -27,6 +28,9 @@ it.effect.each(["linux", "darwin", "win32"] as const)(
         Layer.mergeAll(
           FileSystem.layerNoop({}),
           Layer.succeed(HostProcess.Platform, platform),
+          Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+            shouldRunOpportunisticWork: Effect.succeed(true),
+          }),
           Layer.succeed(PreviewServerGroups, {
             active: Effect.succeed(true),
             observe: (scan) => Effect.sync(() => observed.push(scan.listeners)),

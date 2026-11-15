@@ -125,6 +125,7 @@ vi.mock("../features/threads/forkContinueElsewhere", () => ({
   ContinueElsewhereButton: () => null,
 }));
 vi.mock("expo", () => ({
+  requireNativeModule: () => ({ is24HourFormat: () => true }),
   useEvent: (_player: unknown, _event: unknown, initial: unknown) => initial,
   useReleasingSharedObjectWithLifecycle: (
     lifecycle: {
@@ -254,6 +255,7 @@ vi.mock("../components/ui/Menu", () => ({
 }));
 vi.mock("../components/ui/FilePreviewGallery", () => ({
   FilePreviewGallery: ({ children }: { children?: ReactNode }) => children,
+  useFilePreviewGallery: () => (source: unknown) => source,
 }));
 vi.mock("../components/ui/FilePreviewModal", () => ({
   FilePreviewModal: (props: { source: { name: string } | null }) =>

@@ -3411,7 +3411,11 @@ const make = Effect.gen(function* () {
     } satisfies ServerBrowserViewer;
   });
 
-  yield* manager.events.pipe(Stream.runForEach(mirrorManagerEvent), Effect.forkScoped);
+  // Subscribe before the service is built: a forked stream subscribes later and misses a tab opened at once.
+  yield* Stream.fromSubscription(yield* manager.subscribeEvents).pipe(
+    Stream.runForEach(mirrorManagerEvent),
+    Effect.forkScoped,
+  );
   if (
     !PreviewBrowserHost.sandboxDisabled(yield* HostProcess.Environment) &&
     (yield* PreviewBrowserHost.sandboxBlocked)

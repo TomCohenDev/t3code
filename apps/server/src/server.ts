@@ -545,6 +545,7 @@ const layerForkPreviewServerGroups = ForkPreviewServerGroups.layer.pipe(
 
 const layerPortScanner = PortScanner.layer.pipe(
   Layer.provide(ProcessRunner.layer),
+  Layer.provide(layerBackground),
   Layer.provideMerge(layerForkPreviewServerGroups),
 );
 
