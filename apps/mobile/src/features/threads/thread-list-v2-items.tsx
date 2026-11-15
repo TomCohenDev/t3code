@@ -90,6 +90,7 @@ import {
   resolveThreadListV2ProviderDrivers,
   resolveThreadListV2SwipeActions,
   layoutThreadListV2RowMenuActions,
+  threadListV2RowAccessibilityLabel,
   type ThreadListV2Status,
 } from "./threadListV2";
 import { ForkThreadCardLayout } from "./forkThreadCardLayout";
@@ -836,8 +837,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ) : null;
   const recede = shouldRecedeThreadRow({ status, selected });
   const isRegeneratingTitle = thread.titleRegeneration != null;
-  const rowAccessibilityLabel = `${thread.title}${providerNameLabel ? `, ${providerNameLabel}` : ""}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
   const timeLabel = props.timeLabel;
+  const rowAccessibilityLabel = threadListV2RowAccessibilityLabel({
+    title: thread.title,
+    variant,
+    woke: showsWoke,
+    // Working and waiting rows show only an icon and a duration, so name them for speech.
+    statusLabel:
+      statusLabel && (statusLabel.label ?? (status === "waiting" ? "Waiting" : "Working")),
+    timeLabel,
+    snoozeWakeLabel: snoozedRow ? props.snoozeWakeLabelText : undefined,
+    providerNameLabel,
+    hasQueuedMessages: props.hasQueuedMessages === true,
+    regeneratingTitle: isRegeneratingTitle,
+  });
 
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
   const handleAcknowledgeWoke = useCallback(() => {
@@ -1657,7 +1670,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         threadTitle={thread.title}
       >
         {(close) => (
-          <Menu actions={menuActions} onPressAction={handleMenuAction} shouldOpenOnLongPress>
+          <Menu
+            accessibilityLabel={rowAccessibilityLabel}
+            actions={menuActions}
+            onPressAction={handleMenuAction}
+            shouldOpenOnLongPress
+          >
             {rowContent(close)}
           </Menu>
         )}

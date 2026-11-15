@@ -2833,21 +2833,18 @@ const make = Effect.gen(function* () {
         return { tabId: tab.tabId, colorScheme };
       }
       case "snapshot": {
-        const snapshot = await withForkBrowserCapture(
-          desktopChannel.capture,
-          tab,
-          tab.desktop !== null,
-          () =>
-            withScreencastsPaused(tab, () =>
-              // Fork: acknowledge paintable placement before capture.
-              ServerBrowserPage.snapshot({
-                ...tab,
-                renderScale: tab.desktop ? "display" : RENDER_SCALE,
-                fullScreenshot: (input as PreviewAutomationSnapshotInput | undefined)
-                  ?.fullScreenshot,
-              }),
-            ),
-        );
+        const snapshotInput = input as PreviewAutomationSnapshotInput | undefined;
+        const rendering = {
+          ...tab,
+          renderScale: tab.desktop ? "display" : RENDER_SCALE,
+          fullScreenshot: snapshotInput?.fullScreenshot,
+        } as const;
+        // Fork: acknowledge paintable placement before a pixel capture.
+        const snapshot = await (snapshotInput?.pixelsRequired === false
+          ? withScreencastsPaused(tab, () => ServerBrowserPage.snapshotMetadata(rendering))
+          : withForkBrowserCapture(desktopChannel.capture, tab, tab.desktop !== null, () =>
+              withScreencastsPaused(tab, () => ServerBrowserPage.snapshot(rendering)),
+            ));
         const loadError = loadErrorOf(tab);
         return loadError ? { ...snapshot, url: loadError.url, loadError } : snapshot;
       }
