@@ -86,12 +86,17 @@ function holdRpc<Input>(method: string, end: Effect.Effect<never, Error>) {
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let markCalled = () => {};
+  const called = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
   const calls: Input[] = [];
   const answer = answerRpc(method, (input: Input) => {
     calls.push(input);
+    markCalled();
     return Effect.promise(() => held).pipe(Effect.andThen(end));
   });
-  return { calls, release, [Symbol.dispose]: () => answer[Symbol.dispose]() };
+  return { calls, called, release, [Symbol.dispose]: () => answer[Symbol.dispose]() };
 }
 
 // The socket is the only fake layer; see test/appScenarios.renders.tsx.
@@ -285,7 +290,9 @@ it("an interrupted image-only first send of a new thread says it may not have be
     .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
   await expect.element(page.getByRole("img", { name: "shot.png" })).toBeVisible();
   await userEvent.keyboard("{Enter}");
-  await vi.waitFor(() => expect(launch.calls).toHaveLength(1));
+  // The send first verifies the upload on the server, which can outlast a waitFor poll on CI.
+  await launch.called;
+  expect(launch.calls).toHaveLength(1);
   await userEvent.keyboard("next draft");
   await expect.element(editor).toHaveTextContent("next draft");
   launch.release();
