@@ -275,6 +275,8 @@ export interface ThreadDetailScreenProps {
   readonly historyControls?: ThreadFeedHistoryControls;
   /** Fork: a message link's target. See forkMessageLinks. */
   readonly forkMessageLink?: ForkMessageLinkRequest | undefined;
+  /** Fork: false while the thread history still syncs, so message links wait for it. */
+  readonly forkThreadSynced?: boolean;
   readonly activeThreadBusy: boolean;
   readonly canStopThread: boolean;
   readonly queuedRunEdit: QueuedRunEdit | null;
@@ -1524,7 +1526,7 @@ function ThreadDetailBody(
                   contentMaxWidth={contentMaxWidth}
                   historyControls={props.historyControls}
                   forkMessageLink={props.forkMessageLink}
-                  forkThreadSynced={props.threadSyncStatus === "live"}
+                  forkThreadSynced={props.forkThreadSynced}
                   contentSideInsets={deriveContentSideInsets(nativeMetrics)}
                   layoutVariant={layoutVariant}
                   usesAutomaticContentInsets={props.usesAutomaticContentInsets}

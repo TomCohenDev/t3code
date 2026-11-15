@@ -1126,6 +1126,7 @@ function ThreadRouteContent(
           connectionAwaitingApproval={routeEnvironmentRuntime?.connectionAwaitingApproval === true}
           historyControls={historyControls}
           forkMessageLink={forkMessageLink}
+          forkThreadSynced={selectedThreadDetailState.status === "live"}
           activeThreadBusy={composer.activeThreadBusy}
           canStopThread={awaitingBootstrapTurn || composer.interruptibleRunId !== null}
           queuedRunEdit={composer.queuedRunEdit}
