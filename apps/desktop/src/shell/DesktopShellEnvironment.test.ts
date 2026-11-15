@@ -711,9 +711,16 @@ describe("DesktopShellEnvironment", () => {
           Effect.gen(function* () {
             assert.isTrue(yield* service.awaitDiscovery);
             assert.equal(env.PATH, "/usr/bin");
+            // The retry still does real file system work after the clock moves.
+            const fromFish = yield* service.updates.pipe(
+              Stream.filter((update) => update.environment.PATH === "/fish/bin:/usr/bin"),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
 
             fishReady = true;
             yield* TestClock.adjust("30 seconds");
+            assert.isTrue(Option.isSome(yield* Fiber.join(fromFish)));
             assert.equal(env.PATH, "/fish/bin:/usr/bin");
             return true;
           }),
