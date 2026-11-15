@@ -53,6 +53,7 @@ import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
   DESKTOP_RENDERER_ORIGINS,
+  MCP_HTTP_PATH,
 } from "./httpCors.ts";
 import { requestUrl } from "./requestUrl.ts";
 
@@ -271,39 +272,40 @@ export const layerBrowserApiCors = Layer.unwrap(
     };
     // Dev uses credentialed requests from Vite or the Electron custom origin, so both must be
     // explicit. Packaged desktop omits credentials and uses Effect's default wildcard origin.
-    if (devOrigin) {
-      return HttpRouter.cors({
-        allowedOrigins: [
-          devOrigin,
-          ...DESKTOP_RENDERER_ORIGINS,
-          ...config.devAllowedOrigins,
-          ...trustedOrigins,
-          ...(Option.isSome(kitshnGrants) ? kitshnGrants.value.peerOrigins() : []),
-        ],
-        credentials: true,
-        ...shared,
-      });
-    }
-    if (trustedOrigins.length === 0 && Option.isNone(kitshnGrants)) {
-      return HttpRouter.cors(shared);
-    }
-    // Fork: T3CODE_TRUSTED_BROWSER_ORIGINS. A trusted origin gets its exact
+    const cors = HttpMiddleware.cors(
+      devOrigin
+        ? {
+            allowedOrigins: [
+              devOrigin,
+              ...DESKTOP_RENDERER_ORIGINS,
+              ...config.devAllowedOrigins,
+              ...trustedOrigins,
+              ...(Option.isSome(kitshnGrants) ? kitshnGrants.value.peerOrigins() : []),
+            ],
+            credentials: true,
+            ...shared,
+          }
+        : shared,
+    );
+    // Fork: T3CODE_TRUSTED_BROWSER_ORIGINS. Outside dev, a trusted origin gets its exact
     // origin with credentials, so its cookies (for example Cloudflare Access)
     // reach this server. Every other origin keeps the wildcard without credentials.
-    const wildcard = HttpMiddleware.cors(shared);
-    const credentialed = HttpMiddleware.cors({
-      allowedOrigins: isTrusted,
-      credentials: true,
-      ...shared,
-    });
+    const credentialed =
+      devOrigin === undefined && (trustedOrigins.length > 0 || Option.isSome(kitshnGrants))
+        ? HttpMiddleware.cors({ allowedOrigins: isTrusted, credentials: true, ...shared })
+        : undefined;
     return HttpRouter.middleware(
-      (httpApp) =>
-        Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
+      (httpEffect) => {
+        const withCors = cors(httpEffect);
+        const withCredentials = credentialed?.(httpEffect);
+        return Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
+          if (request.url.split("?", 1)[0] === MCP_HTTP_PATH) return httpEffect;
           const origin = request.headers["origin"];
-          return origin !== undefined && isTrusted(origin)
-            ? credentialed(httpApp)
-            : wildcard(httpApp);
-        }),
+          return withCredentials !== undefined && origin !== undefined && isTrusted(origin)
+            ? withCredentials
+            : withCors;
+        });
+      },
       { global: true },
     );
   }),
