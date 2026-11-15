@@ -45,6 +45,7 @@ export function ThreadContextChip(props: {
                 to="/$environmentId/$threadId"
                 params={{ environmentId, threadId }}
                 {...forkMessageLinkNavigation(props.messageId)}
+                draggable={false}
               />
             }
             aria-label={`${props.messageId ? "Message in thread" : "Thread"}, ${title}`}

@@ -713,7 +713,7 @@ function ThreadRenameInput(props: {
       }}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
-      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
+      className="-mx-1 min-w-0 flex-1 rounded-sm bg-card px-1 text-sm font-medium text-card-foreground outline-none ring-1 ring-inset ring-input focus:ring-foreground"
     />
   );
 }
@@ -1650,7 +1650,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )
             ) : null}
           </PreviewCardTrigger>
-          {sortable?.isDragging ? null : detailsCard}
+          {isRenaming || sortable?.isDragging ? null : detailsCard}
         </PreviewCard>
       </li>
     );
@@ -1764,7 +1764,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             />
           )}
         </PreviewCardTrigger>
-        {snoozeMenuOpen || sortable?.isDragging ? null : detailsCard}
+        {isRenaming || snoozeMenuOpen || sortable?.isDragging ? null : detailsCard}
       </PreviewCard>
     </li>
   );
