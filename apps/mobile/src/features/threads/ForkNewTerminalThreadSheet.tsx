@@ -357,8 +357,6 @@ export function ForkNewTerminalThreadSheet({ route }: StaticScreenProps<NewTermi
         <WorktreeSetupCard
           snapshot={setupCard}
           turnStarted={false}
-          turnStartedAt={null}
-          working={false}
           onCancel={() => void cancel()}
           onWorkLocally={
             setupCard.phase === "running"
