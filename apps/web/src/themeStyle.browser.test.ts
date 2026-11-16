@@ -11,6 +11,8 @@ vi.mock(import("./state/server"), async () => {
   publishedThemes.atom = Atom.make<ReadonlyArray<EnvironmentTheme>>([]);
   return { themeServerEnvironmentThemesAtom: publishedThemes.atom } as never;
 });
+// The background loader reaches the environment session, which this test does not mock.
+vi.mock(import("./themeBackground"), () => ({ applyThemeBackground: () => {} }));
 
 import { fontSettingOrThemeFont } from "./appearanceFonts";
 import { getActiveThemeFonts } from "./forkThemeStyle";
