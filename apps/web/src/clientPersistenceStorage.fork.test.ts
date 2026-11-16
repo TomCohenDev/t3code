@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { readBrowserClientSettings } from "./clientPersistenceStorage";
+
 function createLocalStorageStub(): Storage {
   const store = new Map<string, string>();
   return {
@@ -31,20 +33,17 @@ function getTestWindow(): Window & typeof globalThis {
 }
 
 afterEach(() => {
-  vi.resetModules();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("clientPersistenceStorage", () => {
-  it("moves the old sidebar group settings to the tab keys once", async () => {
+  it("moves the old sidebar group settings to the tab keys once", () => {
     const testWindow = getTestWindow();
     testWindow.localStorage.setItem(
       "t3code:client-settings:v1",
       JSON.stringify({ sidebarGroupsEnabled: true, sidebarGroupSingleThreadOpens: true }),
     );
-    const { readBrowserClientSettings } = await import("./clientPersistenceStorage");
-
     const settings = readBrowserClientSettings();
     expect(settings?.sidebarTabsEnabled).toBe(true);
     expect(settings?.sidebarTabSingleThreadOpens).toBe(true);
