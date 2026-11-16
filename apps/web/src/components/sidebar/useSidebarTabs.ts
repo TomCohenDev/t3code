@@ -162,12 +162,14 @@ export function useSidebarTabs(input: {
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly projects: ReadonlyArray<EnvironmentProject>;
   readonly routeThreadKey: string | null;
-  /** Search covers every tab. */
+  /** Search covers every tab, so no tab reads as selected while it runs. */
   readonly searching: boolean;
+  /** Ends the search. A tab click calls it: the list then shows that tab, not the results. */
+  readonly clearSearch: () => void;
   /** Changes at each snooze wake, so the tab statuses see woken threads. */
   readonly snoozeWakeTick: number;
 }) {
-  const { routeThreadKey, searching, snoozeWakeTick } = input;
+  const { routeThreadKey, searching, clearSearch, snoozeWakeTick } = input;
   const enabledOnDevice = useClientSettings((s) => s.sidebarTabsEnabled);
   // The hosted app has no primary server to hold the tabs, so it shows none.
   const primaryAvailable = usePrimarySettingsAvailable();
@@ -405,6 +407,12 @@ export function useSidebarTabs(input: {
   const moveTab = (id: string, toIndex: number) =>
     update((current) => moveSidebarTab(current, id, toIndex));
 
+  /** The user picked a tab. The pick ends a search, so the tab's threads show at once. */
+  const selectTab = (id: string) => {
+    if (searching) clearSearch();
+    setTabId(id);
+  };
+
   return {
     enabled,
     /** The tabs have loaded, so edits can save. */
@@ -413,6 +421,9 @@ export function useSidebarTabs(input: {
     settings,
     tabId,
     setTabId,
+    selectTab,
+    /** The search results replace the list, so the bar shows no tab as selected. */
+    selectedTabId: searching ? null : tabId,
     tabs,
     visibleThreads,
     ruleOptions,
