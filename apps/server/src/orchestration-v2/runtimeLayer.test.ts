@@ -5632,7 +5632,9 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         const host = Layer.mergeAll(
           NodeServices.layer,
           NodeCrypto.layer,
+          ServerSettings.layerTest(),
           Layer.mock(PullRequestService.PullRequestService)({
+            withSharedProjectReads: (effect) => effect,
             // Earlier tests can leave watches in other projects; only this one's reads count.
             detail: (input) =>
               (input.projectId === projectId
