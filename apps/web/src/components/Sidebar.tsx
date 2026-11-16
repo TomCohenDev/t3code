@@ -3156,9 +3156,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               projectFor={(thread) =>
                 projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
               }
-              onOpenThread={(thread) =>
-                navigateToThread(scopeThreadRef(thread.environmentId, thread.id))
-              }
+              onOpenThread={(thread) => {
+                // A single-thread tab is a tab pick too, so it ends the search.
+                clearThreadSearch();
+                navigateToThread(scopeThreadRef(thread.environmentId, thread.id));
+              }}
             />
           </SidebarGroup>
         }

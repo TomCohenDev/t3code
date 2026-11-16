@@ -115,6 +115,8 @@ function stepTab(direction: 1 | -1): boolean {
   const tabs = sidebarTabButtons();
   if (tabs.length < 2) return false;
   const selected = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
+  // During a search no tab is selected: Next opens the first tab, Previous the last.
+  if (selected === -1) return selectTab(direction === 1 ? 0 : tabs.length - 1);
   return selectTab((selected + direction + tabs.length) % tabs.length);
 }
 
@@ -153,7 +155,8 @@ export function useSidebarKeyboard(input: {
           return direction === 1 && (onTab || rows.length > 0) ? focusRow(rows[0]) : false;
         const index = rows.indexOf(row);
         if (direction === -1 && index === 0) {
-          const selectedTab = tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+          const selectedTab =
+            tabs.find((tab) => tab.getAttribute("aria-selected") === "true") ?? tabs[0];
           selectedTab?.focus();
           return true;
         }

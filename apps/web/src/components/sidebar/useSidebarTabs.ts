@@ -409,7 +409,7 @@ export function useSidebarTabs(input: {
 
   /** The user picked a tab. The pick ends a search, so the tab's threads show at once. */
   const selectTab = (id: string) => {
-    if (searching) clearSearch();
+    clearSearch();
     setTabId(id);
   };
 
@@ -420,7 +420,6 @@ export function useSidebarTabs(input: {
     emptyMessage,
     settings,
     tabId,
-    setTabId,
     selectTab,
     /** The search results replace the list, so the bar shows no tab as selected. */
     selectedTabId: searching ? null : tabId,

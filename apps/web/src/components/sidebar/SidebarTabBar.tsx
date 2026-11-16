@@ -373,7 +373,8 @@ export function SidebarTabBar(props: {
   const editingDefault = editing?.tabId === DEFAULT_SIDEBAR_TAB_ID;
   const editingTab =
     editing === null ? null : (savedTabs.find((tab) => tab.id === editing.tabId) ?? null);
-  const selected = state.tabs.find((tab) => tab.id === state.selectedTabId) ?? null;
+  // The Edit button stays through a search: its loss would resize the bar and refit the tabs.
+  const selected = state.tabs.find((tab) => tab.id === state.tabId) ?? null;
 
   const { setListElement, setMeasureElement, available, gap, tabWidths, moreWidth } = useTabWidths(
     state.tabs.map((tab) => tab.id),
