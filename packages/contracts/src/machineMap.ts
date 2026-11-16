@@ -282,6 +282,7 @@ const CIRCLE_CLIENT_SETTINGS = [
   "speechPostProcessingPrompt",
   "speechRemoveFillerWords",
   "speechSilenceFiltering",
+  "speechStreaming",
   "speechTranslateToEnglish",
   "terminalAppShortcutsFirst",
   "terminalThreadFontSizeMax",

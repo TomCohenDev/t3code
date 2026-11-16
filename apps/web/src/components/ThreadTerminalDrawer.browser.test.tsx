@@ -177,6 +177,8 @@ vi.mock("../state/server", async () => {
     themeServerEnvironmentThemesAtom: Atom.make([]),
   };
 });
+// The theme background loader reaches the environment session, which this test does not mock.
+vi.mock("../themeBackground", () => ({ applyThemeBackground: () => {} }));
 vi.mock("../state/terminal", () => ({
   terminalEnvironment: { write: {}, resize: fixture.resizeCommand },
 }));
