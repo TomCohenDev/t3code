@@ -1,5 +1,6 @@
 import {
   type ContextMenuItem,
+  type ContextMenuSource,
   type ForkKeybindingCommand,
   type LocalApi,
   type ScopedThreadRef,
@@ -41,13 +42,14 @@ export function showThreadActionMenu(
   api: LocalApi,
   items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>>,
   position: { x: number; y: number },
+  source: ContextMenuSource,
   preset: ThreadActionPreset | undefined,
 ): Promise<ThreadActionMenuId | null> {
-  if (!preset) return api.contextMenu.show(items, position);
+  if (!preset) return api.contextMenu.show(items, position, source);
   for (const id of preset) {
     const item = findEnabledItem(items, id);
     if (!item) continue;
-    if (item.children) return api.contextMenu.show(item.children, position);
+    if (item.children) return api.contextMenu.show(item.children, position, source);
     return Promise.resolve(item.id);
   }
   return Promise.resolve(null);
@@ -129,6 +131,7 @@ export function useSidebarKeyboard(input: {
   readonly runThreadAction: (
     threadRef: ScopedThreadRef,
     position: { x: number; y: number },
+    source: ContextMenuSource,
     preset: ThreadActionPreset,
   ) => void;
 }) {
@@ -175,6 +178,7 @@ export function useSidebarKeyboard(input: {
         latest.current.runThreadAction(
           threadRef,
           threadMenuPosition(scopedThreadKey(threadRef)),
+          "keyboard",
           THREAD_ACTION_KEYBINDINGS[command],
         );
         return true;
