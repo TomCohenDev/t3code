@@ -35,7 +35,8 @@ import { filterSettingsSections } from "./settings-search";
 import { forkMobileMessagePins } from "./SettingsForkPinsRouteScreen";
 import { useServerConfigs } from "../../state/entities";
 import { usePaneRole } from "../../components/ui/Pane";
-import { I18nProvider, useGT } from "../../i18n/I18nProvider";
+import { useGT } from "gt-react-native";
+import { I18nProvider } from "../../i18n/I18nProvider";
 
 export function SettingsRouteScreen() {
   const list = useSettingsListPlacement();
@@ -301,7 +302,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage(
           "SettingsEnvironmentSourceControl",
           "arrow.triangle.branch",
-          gt("Source control"),
+          gt("Source control & issues"),
         ),
         serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
       ],

@@ -215,6 +215,7 @@ vi.mock("../hooks/useSettings", async () => {
   return {
     useClientSettings: <T,>(select: (settings: typeof DEFAULT_CLIENT_SETTINGS) => T) =>
       select(DEFAULT_CLIENT_SETTINGS),
+    ensureClientSettingsHydrated: async () => {},
     getClientSettings: () => DEFAULT_CLIENT_SETTINGS,
   };
 });

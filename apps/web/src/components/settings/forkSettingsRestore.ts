@@ -62,7 +62,6 @@ const FORK_RESTORED_SETTINGS = [
   ["backForwardButtons", "Back and forward buttons"],
   ["brandingHidden", "Hide T3 branding"],
   ["rememberBackForwardHistory", "Remember back and forward history"],
-  ["confirmTerminalClose", "Terminal close confirmation"],
   ["restartReconnectWarningGrace", "Quiet reconnect after restart"],
   ["settingsFind", "Find in settings"],
 ] as const satisfies ReadonlyArray<

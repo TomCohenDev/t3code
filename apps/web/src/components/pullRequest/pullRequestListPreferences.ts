@@ -50,7 +50,7 @@ const DEFAULT_PULL_REQUEST_LIST_PREFERENCES = {
 const BoundedPreference = Schema.String.check(Schema.isMaxLength(200));
 /** Fork: the most owners that the URL and the saved preferences keep, the same bound as labels. */
 export const MAX_PULL_REQUEST_LIST_OWNERS = 10;
-const PullRequestListPreferencesSchema = Schema.Struct({
+export const PullRequestListPreferencesSchema = Schema.Struct({
   involvement: PullRequestInvolvement,
   state: PullRequestListState,
   environmentId: Schema.optional(EnvironmentId),

@@ -714,11 +714,10 @@ Each terminal keeps up to 5,000 lines and 8 MiB of output on the server.
 
 ### Terminal settings
 
-App shortcuts take priority in a focused terminal, and the app asks before a terminal closes.
+App shortcuts take priority in a focused terminal. Upstream owns the terminal close confirmation (`confirmTerminalClose`).
 
-- **Setting:** client settings `terminalAppShortcutsFirst` (off by default) and `confirmTerminalClose` (on by default). Settings > Terminal > "App shortcuts in terminal" and "Terminal close confirmation".
+- **Setting:** client setting `terminalAppShortcutsFirst` (off by default). Settings > Terminal > "App shortcuts in terminal".
 - **Works on:** web, desktop.
-- **Limits:** the mobile app does not ask, because it never closes a terminal: its close button only leaves the terminal screen. Revisit if the mobile app gets a close action.
 
 ## Web app and look
 

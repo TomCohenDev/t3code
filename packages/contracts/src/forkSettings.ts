@@ -211,7 +211,6 @@ export const PullRequestWatchRemarkFilter = Schema.Struct({
 export type PullRequestWatchRemarkFilter = typeof PullRequestWatchRemarkFilter.Type;
 
 export const ForkClientSettingsFields = {
-  confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /** Fork: a focused terminal hands keys that match an app keybinding to the app first. */
   terminalAppShortcutsFirst: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
@@ -341,7 +340,6 @@ export const ForkClientSettingsFields = {
 };
 
 export const ForkClientSettingsPatchFields = {
-  confirmTerminalClose: Schema.optionalKey(Schema.Boolean),
   terminalAppShortcutsFirst: Schema.optionalKey(Schema.Boolean),
   appToggleShortcuts: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
   backgroundWorkDetails: Schema.optionalKey(Schema.Boolean),
