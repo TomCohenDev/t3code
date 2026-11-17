@@ -288,7 +288,8 @@ it("an interrupted image-only first send of a new thread says it may not have be
   editor
     .element()
     .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
-  await expect.element(page.getByRole("img", { name: "shot.png" })).toBeVisible();
+  // The thumbnail shows while the image still compresses, and a send then is refused.
+  await expect.element(page.getByRole("button", { name: "Preview shot.png" })).toBeEnabled();
   await userEvent.keyboard("{Enter}");
   // The send first verifies the upload on the server, which can outlast a waitFor poll on CI.
   await launch.called;
