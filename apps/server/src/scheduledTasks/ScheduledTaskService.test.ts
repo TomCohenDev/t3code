@@ -548,6 +548,7 @@ it.effect("a one-time task is removed once its turn completes", () =>
           }),
           NodeCrypto.layer,
           Scheduler.layer,
+          ServerSettings.layerTest(),
         ),
       ),
     );
