@@ -150,3 +150,5 @@ export const FORK_BROWSER_CAPTURE_CHANNEL = "fork:browser-capture";
 export const FORK_BROWSER_CAPTURE_REPORT_CHANNEL = "fork:browser-capture-report";
 
 export const RESTART_AUDIO_SERVICE_CHANNEL = "desktop:restart-audio-service";
+
+export const START_FILE_DRAG_CHANNEL = "desktop:start-file-drag";

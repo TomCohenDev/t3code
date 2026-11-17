@@ -666,7 +666,7 @@ export const EnvironmentThemeFonts = Schema.Struct({
 });
 export type EnvironmentThemeFonts = typeof EnvironmentThemeFonts.Type;
 
-export const THEME_CSS_MAX_LENGTH = 50_000;
+export const THEME_CSS_MAX_LENGTH = 100_000;
 
 const environmentThemeFields = {
   version: Schema.optional(Schema.Literal(1)),
@@ -710,6 +710,8 @@ export const EnvironmentTheme = Schema.Struct({
    * the total longer than `THEME_CSS_MAX_LENGTH`.
    */
   css: Schema.optional(Schema.String),
+  /** Revision of the image file published beside the theme; absent without one. */
+  background: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(64))),
 });
 export type EnvironmentTheme = typeof EnvironmentTheme.Type;
 

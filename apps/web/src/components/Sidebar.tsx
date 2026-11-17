@@ -63,6 +63,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   AuthOrchestrationOperateScope,
+  type ContextMenuSource,
   ProjectId,
   type ScopedThreadRef,
   type ThreadId,
@@ -429,6 +430,7 @@ function useSidebarThreads(input: {
     readonly listFilter: ReturnType<typeof ForkSidebar.useSidebarFilters>["listFilter"];
     readonly projects: ReadonlyArray<EnvironmentProject>;
     readonly searching: boolean;
+    readonly clearSearch: () => void;
   };
   // Set in boring mode: the project groups to fold active threads into, in order.
   readonly folderGroups: readonly SidebarProjectSnapshot[] | null;
@@ -465,6 +467,7 @@ function useSidebarThreads(input: {
     projects: input.fork.projects,
     routeThreadKey: routeRowThreadKey,
     searching: input.fork.searching,
+    clearSearch: input.fork.clearSearch,
     snoozeWakeTick: snoozeWakeClock,
   });
   const listFilter = input.fork.listFilter;
@@ -1168,6 +1171,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       ? null
       : scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, threads));
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
+  const clearThreadSearch = useStableCallback(() => {
+    setThreadSearchQuery("");
+    setSearchHighlightKey(null);
+  });
   // The open draft's first send names its thread in place; a finalized draft reached by
   // navigation resolves through its redirect instead, and still reveals.
   const routeKeyInPlace = routeDraftThread?.promotedTo != null;
@@ -1310,7 +1317,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     void handleNewThread(scopeProjectRef(group.environmentId, group.id));
   });
   const handleProjectFolderContextMenu = useStableCallback(
-    (group: SidebarProjectSnapshot, position: { x: number; y: number }) => {
+    (
+      group: SidebarProjectSnapshot,
+      position: { x: number; y: number },
+      source: ContextMenuSource,
+    ) => {
       const api = readLocalApi();
       if (!api) return;
       void (async () => {
@@ -1330,6 +1341,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               { id: "project-settings", label: "Project settings", icon: "settings" },
             ],
             position,
+            source,
           ),
         );
         if (clicked._tag === "Failure") return;
@@ -1404,6 +1416,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       listFilter: filters.listFilter,
       projects,
       searching: isSearchingThreads,
+      clearSearch: clearThreadSearch,
     },
     threads: listedThreads,
     delegatedUnderParent,
@@ -1552,10 +1565,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     void router.navigate({ to: "/draft/$draftId", params: { draftId } });
   };
 
-  const clearThreadSearch = () => {
-    setThreadSearchQuery("");
-    setSearchHighlightKey(null);
-  };
   const selectThreadSearchResult = (thread: EnvironmentThreadShell) => {
     const ref = scopeThreadRef(thread.environmentId, thread.id);
     // A row listed for a message match opens find on it, as the palette does.
@@ -2368,7 +2377,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
 
   const handleMultiSelectContextMenu = useStableCallback(
-    async (position: { x: number; y: number }) => {
+    async (position: { x: number; y: number }, source: ContextMenuSource) => {
       const api = readLocalApi();
       if (!api) return;
       const selectedThreadKeys = [...useThreadSelectionStore.getState().selectedThreadKeys];
@@ -2466,6 +2475,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             },
           ],
           position,
+          source,
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -2620,7 +2630,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
 
   const handleDraftContextMenu = useStableCallback(
-    (draftId: DraftId, position: { x: number; y: number }) => {
+    (draftId: DraftId, position: { x: number; y: number }, source: ContextMenuSource) => {
       void (async () => {
         const api = readLocalApi();
         const session = useComposerDraftStore.getState().getDraftSession(draftId);
@@ -2642,6 +2652,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               hasProject: projectGroup != null,
             }),
             position,
+            source,
           ),
         );
         if (clicked._tag === "Failure") return;
@@ -2674,6 +2685,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     (
       threadRef: ScopedThreadRef,
       position: { x: number; y: number },
+      source: ContextMenuSource,
       keyPreset?: ThreadActionPreset,
     ) => {
       void (async () => {
@@ -2686,7 +2698,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           selectionState.hasSelection() &&
           selectionState.selectedThreadKeys.has(threadKey)
         ) {
-          await handleMultiSelectContextMenu(position);
+          await handleMultiSelectContextMenu(position, source);
           return;
         }
         const thread = threadByKeyRef.current.get(threadKey);
@@ -2759,6 +2771,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               snoozePresets,
             }),
             position,
+            source,
             keyPreset,
           ),
         );
@@ -3151,9 +3164,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               projectFor={(thread) =>
                 projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null
               }
-              onOpenThread={(thread) =>
-                navigateToThread(scopeThreadRef(thread.environmentId, thread.id))
-              }
+              onOpenThread={(thread) => {
+                // A single-thread tab is a tab pick too, so it ends the search.
+                clearThreadSearch();
+                navigateToThread(scopeThreadRef(thread.environmentId, thread.id));
+              }}
             />
           </SidebarGroup>
         }
