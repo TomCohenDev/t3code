@@ -286,8 +286,8 @@ it("an interrupted image-only first send of a new thread says it may not have be
   // The thumbnail shows while the image still compresses, and a send then is refused.
   await expect.element(page.getByRole("button", { name: "Preview shot.png" })).toBeEnabled();
   await userEvent.keyboard("{Enter}");
-  // A refused send never reaches the RPC. Without a bound the test runs to its deadline with a
-  // bare timeout and leaves its tree mounted for the tests after it.
+  // A refused send never reaches the RPC; the bound turns that into a clear failure instead of
+  // a bare test timeout.
   await vi.waitFor(() => expect(launch.calls).toHaveLength(1), { timeout: 10_000 });
   await userEvent.keyboard("next draft");
   await expect.element(editor).toHaveTextContent("next draft");
