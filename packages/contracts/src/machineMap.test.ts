@@ -87,6 +87,7 @@ const SHARED_ONLY_SETTINGS: Readonly<Record<SettingScope, ReadonlyArray<string>>
     "textGenerationModelSelection",
     "threadAddressing",
     "threadTitleInstructions",
+    "usageHistoryRetentionDays",
     "usageModelAliases",
     "usageModelFilter",
     "usagePriceOverrides",

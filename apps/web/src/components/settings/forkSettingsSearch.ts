@@ -438,12 +438,6 @@ export const TERMINAL_ITEMS = [
     searchTerms: ["terminal keybindings keyboard shortcuts priority shell focus"],
   },
   {
-    id: "terminal-close-confirmation",
-    title: "Terminal close confirmation",
-    to: "/settings/terminal",
-    searchTerms: ["ask before terminal close stop process"],
-  },
-  {
     id: "terminal-key-mappings",
     title: "Terminal key mappings",
     to: "/settings/terminal",

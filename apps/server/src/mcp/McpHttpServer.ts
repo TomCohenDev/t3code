@@ -74,6 +74,7 @@ import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import * as PullRequestsHandlers from "./toolkits/pullRequests/handlers.ts";
 import * as ToolSearchHandlers from "./toolkits/toolSearch/handlers.ts";
 import { ToolSearchToolkit } from "./toolkits/toolSearch/tools.ts";
+import * as IssuesHandlers from "./toolkits/issues/handlers.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
 import {
   DeviceScreenshotTool,
@@ -1299,6 +1300,8 @@ export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsHandlers.layer,
 ).pipe(Layer.provide(PullRequestWatchService.layer));
 
+const layerIssuesToolkit = toolkitRegistration(McpToolkits.issues, IssuesHandlers.layer);
+
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,
   DeviceHandlers.layerStandard,
@@ -1357,6 +1360,7 @@ const toolkitRegistrations = {
   previewControls: layerPreviewControlsRegistration,
   device: layerDeviceToolkit,
   pullRequests: layerPullRequestsToolkit,
+  issues: layerIssuesToolkit,
   html: layerHtmlToolkit,
   message: layerMessageToolkit,
   usageSources: registerUsageSource(toolkitRegistration),

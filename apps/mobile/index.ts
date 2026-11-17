@@ -8,6 +8,8 @@ import "react-native-gesture-handler";
 import { AppRegistry, LogBox } from "react-native";
 import { featureFlags } from "react-native-screens";
 
+// Before any GT module initializes: GT validates locales with Intl APIs that Hermes lacks.
+import "./src/i18n/intl-polyfills";
 import App from "./src/App";
 import { AssistantPanelRoot } from "./src/features/assistant/AssistantPanel";
 
