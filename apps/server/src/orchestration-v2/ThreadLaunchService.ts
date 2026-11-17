@@ -192,18 +192,16 @@ export class ThreadLaunchBaseRefError extends Schema.TaggedError<ThreadLaunchBas
   }
 }
 
-/** A new worktree was asked to create a branch that already exists. */
 export class ThreadLaunchBranchExistsError extends Schema.TaggedError<ThreadLaunchBranchExistsError>()(
   "ThreadLaunchBranchExistsError",
   {
     projectId: ProjectId,
     projectTitle: Schema.String,
-    workspaceRoot: Schema.String,
     branch: Schema.String,
   },
 ) {
   override get message(): string {
-    return `Branch "${this.branch}" already exists in project "${this.projectTitle}" (${this.workspaceRoot}).`;
+    return `Branch "${this.branch}" already exists in project "${this.projectTitle}".`;
   }
 }
 
@@ -429,8 +427,7 @@ const make = Effect.gen(function* () {
     if (project === undefined) return;
     const cwd = project.workspaceRoot;
     const { baseRef, branch } = strategy;
-    const checksBranch = branch !== undefined && !isTemporaryWorktreeBranch(branch);
-    // Errors keep their order below: missing repository, then base ref, then branch conflict.
+    // Errors keep their order below: missing repository, then base ref, then branch exists or conflicts.
     const [outside, hasBaseCommit, localBranches] = yield* Effect.all(
       [
         // Fork: only Git's own answer marks a folder outside a repository, as in launch().
@@ -442,7 +439,7 @@ const make = Effect.gen(function* () {
             git
               .hasCommit({ cwd, refName: baseRef === "-" ? "@{-1}" : baseRef })
               .pipe(Effect.orElseSucceed(() => true)),
-        checksBranch
+        branch !== undefined
           ? git
               .listLocalBranchNames(cwd)
               .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
@@ -479,18 +476,15 @@ const make = Effect.gen(function* () {
         workspaceRoot: project.workspaceRoot,
         baseRef,
       });
-    // Provisioning flattens temporary names that collide, so only explicit names are refused.
-    if (!checksBranch) return;
-    // Fork: `git worktree add -b` also refuses a branch that exists. Limit: short names read a
-    // branch that shares its name with a tag as `heads/<name>`, so the launch reports that case.
-    // Revisit if agents name branches after tags.
+    if (branch === undefined) return;
     if (localBranches.includes(branch))
       return yield* new ThreadLaunchBranchExistsError({
         projectId: project.id,
         projectTitle: project.title,
-        workspaceRoot: cwd,
         branch,
       });
+    // Provisioning flattens temporary names that collide, so only explicit names are refused.
+    if (isTemporaryWorktreeBranch(branch)) return;
     const conflictingBranch = localBranches.find(
       (existing) => existing.startsWith(`${branch}/`) || branch.startsWith(`${existing}/`),
     );
