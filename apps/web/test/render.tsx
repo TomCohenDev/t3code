@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { act as reactAct, createContext, use, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { vi } from "vite-plus/test";
+import { onTestFinished, vi } from "vite-plus/test";
 import { page, utils, type Locator, type LocatorSelectors } from "vite-plus/test/browser";
 
 declare global {
@@ -101,6 +101,9 @@ export async function render(
     },
   };
 
+  // A test that times out never reaches its `await using` disposal, so the tree would stay
+  // mounted for the tests after it.
+  onTestFinished(() => screen[Symbol.asyncDispose]());
   try {
     await screen.rerender(ui);
   } catch (error) {

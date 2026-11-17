@@ -86,17 +86,12 @@ function holdRpc<Input>(method: string, end: Effect.Effect<never, Error>) {
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
-  let markCalled = () => {};
-  const called = new Promise<void>((resolve) => {
-    markCalled = resolve;
-  });
   const calls: Input[] = [];
   const answer = answerRpc(method, (input: Input) => {
     calls.push(input);
-    markCalled();
     return Effect.promise(() => held).pipe(Effect.andThen(end));
   });
-  return { calls, called, release, [Symbol.dispose]: () => answer[Symbol.dispose]() };
+  return { calls, release, [Symbol.dispose]: () => answer[Symbol.dispose]() };
 }
 
 // The socket is the only fake layer; see test/appScenarios.renders.tsx.
@@ -291,9 +286,9 @@ it("an interrupted image-only first send of a new thread says it may not have be
   // The thumbnail shows while the image still compresses, and a send then is refused.
   await expect.element(page.getByRole("button", { name: "Preview shot.png" })).toBeEnabled();
   await userEvent.keyboard("{Enter}");
-  // The send first verifies the upload on the server, which can outlast a waitFor poll on CI.
-  await launch.called;
-  expect(launch.calls).toHaveLength(1);
+  // A refused send never reaches the RPC. Without a bound the test runs to its deadline with a
+  // bare timeout and leaves its tree mounted for the tests after it.
+  await vi.waitFor(() => expect(launch.calls).toHaveLength(1), { timeout: 10_000 });
   await userEvent.keyboard("next draft");
   await expect.element(editor).toHaveTextContent("next draft");
   launch.release();
