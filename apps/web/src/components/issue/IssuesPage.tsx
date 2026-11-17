@@ -72,7 +72,6 @@ import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/c
 import { SidebarInset } from "~/components/ui/sidebar";
 import { isElectron } from "~/env";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
-import { shortcutLabelForCommand } from "~/keybindings";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import { usePanelAnimationSettings, usePanelPresence } from "~/panelAnimations";
 import {
@@ -525,14 +524,11 @@ export function IssuesPage() {
                 showThreadPanelControl={false}
                 terminalAvailable={false}
                 terminalOpen={false}
-                terminalShortcutLabel={null}
                 threadPanelOpen={false}
                 threadPanelPresentation="inline"
-                threadPanelShortcutLabel={null}
                 onToggleThreadPanel={() => undefined}
                 rightPanelAvailable={panelSurface !== null}
                 rightPanelOpen={rightPanelState.isOpen}
-                rightPanelShortcutLabel={shortcutLabelForCommand(keybindings, "rightPanel.toggle")}
                 rightPanelUnavailableLabel="Select an issue first"
                 onToggleTerminal={() => undefined}
                 onToggleRightPanel={toggleRightPanel}
@@ -670,6 +666,8 @@ export function IssuesPage() {
             onAddFiles={() => undefined}
             onAddPullRequest={() => undefined}
             onAddPullRequests={() => undefined}
+            onAddMachines={() => undefined}
+            machinesAvailable={false}
             onAddDevice={() => undefined}
             browserAvailable={false}
             terminalAvailable={false}
