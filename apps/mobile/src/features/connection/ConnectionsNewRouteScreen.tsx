@@ -112,7 +112,13 @@ function PairingForm({
   useForkClientInvite(inviteUrl, setHostInput);
 
   const handleHostChange = (value: string) => {
-    setHostInput(value);
+    const pairing = parsePairingUrl(value);
+    if (pairing.code) {
+      setHostInput(pairing.host);
+      setCodeInput(pairing.code);
+    } else {
+      setHostInput(value);
+    }
     clearError();
   };
 

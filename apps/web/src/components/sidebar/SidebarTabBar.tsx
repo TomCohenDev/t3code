@@ -373,6 +373,7 @@ export function SidebarTabBar(props: {
   const editingDefault = editing?.tabId === DEFAULT_SIDEBAR_TAB_ID;
   const editingTab =
     editing === null ? null : (savedTabs.find((tab) => tab.id === editing.tabId) ?? null);
+  // The Edit button stays through a search: its loss would resize the bar and refit the tabs.
   const selected = state.tabs.find((tab) => tab.id === state.tabId) ?? null;
 
   const { setListElement, setMeasureElement, available, gap, tabWidths, moreWidth } = useTabWidths(
@@ -474,13 +475,13 @@ export function SidebarTabBar(props: {
                 key={tab.id}
                 tab={tab}
                 jumpCommand={SIDEBAR_TAB_JUMP_KEYBINDING_COMMANDS[index] ?? null}
-                selected={tab.id === state.tabId}
+                selected={tab.id === state.selectedTabId}
                 dropTarget={state.dropTargetId === tab.id}
                 squeezed={squeezedIndex !== null && state.tabs[squeezedIndex] === tab}
                 project={tab.singleThread === null ? null : props.projectFor(tab.singleThread)}
                 routeThreadKey={props.routeThreadKey}
                 sortable={reorderable && !tab.isDefault}
-                onSelect={() => state.setTabId(tab.id)}
+                onSelect={() => state.selectTab(tab.id)}
                 onOpenThread={props.onOpenThread}
                 onEdit={(anchor) => setEditing({ tabId: tab.id, anchor })}
               />
@@ -497,7 +498,7 @@ export function SidebarTabBar(props: {
             compact={squeezedIndex !== null}
             onSelect={(tab) =>
               tab.singleThread === null
-                ? state.setTabId(tab.id)
+                ? state.selectTab(tab.id)
                 : props.onOpenThread(tab.singleThread)
             }
           />
