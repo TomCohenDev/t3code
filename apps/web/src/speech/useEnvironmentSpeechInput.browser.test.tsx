@@ -66,7 +66,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../components/sidebar/mainAppLocation", () => ({
   useCloseAppModal: () => () => Promise.resolve(),
 }));
-vi.mock("../state/session", () => ({
+vi.mock("../state/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/session")>()),
   useEnvironmentScope: (id: string) => mocks.canDictate.has(id),
   usePreparedConnection: (environmentId: string | null) => {
     if (!environmentId || !mocks.connected.has(environmentId)) return Option.none();
