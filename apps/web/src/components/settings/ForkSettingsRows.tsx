@@ -118,37 +118,6 @@ export function SettingsFindSettingsRow() {
   );
 }
 
-/** Fork: `confirmTerminalClose`. */
-export function TerminalCloseConfirmationSettingsRow() {
-  const settings = useScopedSettings();
-  const updateSettings = useUpdateScopedSettings();
-  return (
-    <SettingsRow
-      {...searchableSetting("terminal-close-confirmation")}
-      description="Ask before closing a terminal and stopping its process."
-      resetAction={
-        settings.confirmTerminalClose !== DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose ? (
-          <SettingResetButton
-            label="terminal close confirmation"
-            onClick={() =>
-              updateSettings({
-                confirmTerminalClose: DEFAULT_UNIFIED_SETTINGS.confirmTerminalClose,
-              })
-            }
-          />
-        ) : null
-      }
-      control={
-        <Switch
-          checked={settings.confirmTerminalClose}
-          onCheckedChange={(checked) => updateSettings({ confirmTerminalClose: Boolean(checked) })}
-          aria-label="Confirm terminal close"
-        />
-      }
-    />
-  );
-}
-
 /** Fork: `terminalAppShortcutsFirst`. */
 export function TerminalAppShortcutsFirstSettingsRow() {
   const settings = useScopedSettings();
