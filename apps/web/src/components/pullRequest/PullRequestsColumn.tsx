@@ -83,6 +83,7 @@ export function PullRequestsColumn({
   sortMenu,
   filtersMenu,
   filterChips,
+  savedViewsMenu,
   rightPanelControl,
   titlebarControls,
   rightPanelOpen,
@@ -105,6 +106,7 @@ export function PullRequestsColumn({
   filtersMenu: ReactNode;
   /** Fork: the active filter chips. They render nothing while `pullRequestFilters` is off. */
   filterChips: ReactNode;
+  savedViewsMenu: ReactNode;
   rightPanelControl: ReactNode;
   titlebarControls: ReactNode;
   rightPanelOpen: boolean;
@@ -243,6 +245,7 @@ export function PullRequestsColumn({
               </div>
               {sortMenu}
               {filtersMenu}
+              {savedViewsMenu}
               <PullRequestCompactFilterMenu
                 label="Filter by provider"
                 outlined

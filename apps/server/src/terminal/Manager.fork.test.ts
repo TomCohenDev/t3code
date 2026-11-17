@@ -120,7 +120,7 @@ const createManager = (options: {
       ...(options.customShells === undefined
         ? {}
         : { forkCustomShells: Ref.get(options.customShells) }),
-    });
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables));
     const events = yield* Ref.make<ReadonlyArray<TerminalEvent>>([]);
     const unsubscribe = yield* manager.subscribe((event) =>
       Ref.update(events, (current) => [...current, event]),
@@ -147,8 +147,13 @@ const threadScreen = (shell: string): TerminalOpenInput => ({
   shell,
 });
 
-const uvOnPath = (command: string, _platform: NodeJS.Platform, env: NodeJS.ProcessEnv) =>
-  command === "uv" && env.PATH?.includes("/usr/bin") ? "/usr/bin/uv" : undefined;
+// Every absolute shell path in these tests exists, and only `uv` is found on the PATH.
+const fakeExecutables = (command: string, _platform: NodeJS.Platform, env: NodeJS.ProcessEnv) =>
+  command.startsWith("/")
+    ? command
+    : command === "uv" && env.PATH?.includes("/usr/bin")
+      ? "/usr/bin/uv"
+      : undefined;
 
 it.layer(
   Layer.merge(NodeServices.layer, ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer))),
@@ -181,7 +186,7 @@ it.layer(
       expect(pty.spawnInputs).toHaveLength(1);
       expect(pty.spawnInputs[0]).toMatchObject({ shell: "/usr/bin/uv", args: ["run", "python"] });
       expect(pty.spawnInputs[0]?.env.T3_TEST_INTEGRATED).toBeUndefined();
-    }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect(
@@ -216,7 +221,7 @@ it.layer(
           snapshot.history.indexOf("print(1)"),
         );
         expect(snapshot.history).toContain("print(1)");
-      }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+      }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect("fails a custom shell whose executable is missing, with its name", () =>
@@ -235,7 +240,7 @@ it.layer(
       expect(yield* errorMessages).toEqual([
         'The shell "repl" cannot start: "missing-repl" is not an executable file, and not on the PATH of the terminal.',
       ]);
-    }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect("adds the new shell line only when a new shell starts", () =>
@@ -268,7 +273,7 @@ it.layer(
 
       expect(started.status).toBe("running");
       expect(started.history.split("new shell")).toHaveLength(2);
-    }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect("lists only the shells that can start when a shell is not defined", () =>
@@ -285,7 +290,7 @@ it.layer(
       yield* manager.open(threadScreen("removed"));
 
       expect((yield* errorMessages).join(" ")).toContain("This server has: zsh, python.");
-    }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect("gives a detected shell the hook", () =>
@@ -348,7 +353,7 @@ it.layer(
         event.type === "activity" && event.hasRunningSubprocess ? [event.threadId] : [],
       );
       expect(new Set(runningThreads)).toEqual(new Set(["fish-thread"]));
-    }).pipe(Effect.provideService(SpawnExecutableResolution, uvOnPath)),
+    }).pipe(Effect.provideService(SpawnExecutableResolution, fakeExecutables)),
   );
 
   it.effect(

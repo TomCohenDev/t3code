@@ -36,7 +36,6 @@ const FORK_PAGE_ROWS: Record<
   inAppNotificationCompletions: "in-app-notification-completions",
   inAppNotificationAttentionStays: "in-app-notification-attention-stays",
   inAppNotificationClosesOnOpen: "in-app-notification-closes-on-open",
-  confirmTerminalClose: "terminal-close-confirmation",
   terminalAppShortcutsFirst: "terminal-app-shortcuts-first",
   currentProjectTerminalOpensThread: "current-project-terminal-opens-thread",
   appToggleShortcuts: "app-toggle-shortcuts",

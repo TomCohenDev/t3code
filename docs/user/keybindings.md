@@ -14,6 +14,9 @@ stays open behind it. This also works on an item that is disabled now, and on ro
 keyboard cheat sheet. The page opens with that action filtered and a new binding for it ready to
 record.
 
+To free a default shortcut for another command, choose **Unassign** from its row's
+actions menu. **Reset to default** brings it back.
+
 ## Composer controls
 
 `mod+shift+d` starts dictation in the focused editor, or the composer, and finishes it on the next press;

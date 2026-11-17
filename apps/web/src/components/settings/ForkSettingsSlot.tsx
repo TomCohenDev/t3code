@@ -24,7 +24,6 @@ import {
   RestartReconnectWarningGraceSettingsRow,
   SettingsFindSettingsRow,
   TerminalAppShortcutsFirstSettingsRow,
-  TerminalCloseConfirmationSettingsRow,
 } from "./ForkSettingsRows";
 import { RestoreWorktreesSettingsRow, WorktreeArtifactSettingsRows } from "./ForkWorktreeSettings";
 import { GlobalScriptsSettingsRows } from "./GlobalScriptsSettings";
@@ -104,7 +103,6 @@ export const FORK_SETTING_ROWS: Readonly<Record<ForkSettingRowId, ComponentType>
   "tooltip-shortcuts": TooltipShortcutsSettingsRow,
   "tooltip-shortcut-limit": TooltipShortcutLimitSettingsRow,
   "settings-find": SettingsFindSettingsRow,
-  "terminal-close-confirmation": TerminalCloseConfirmationSettingsRow,
   "thread-card-layout": ThreadCardLayoutSettingsRows,
   "thread-addressing": ThreadAddressingSettingsRow,
   "preview-local-server-groups": PreviewLocalServerGroupsSettingsRow,

@@ -218,6 +218,7 @@ export function useThreadRightPanel(input: {
   const canvasPreview = useThreadPreviewCanvasSource(activeThreadRef, shownPreviewMiniPlayer);
   const pullRequestsCapabilityKnown = serverConfig !== null;
   const supportsPullRequests = serverConfig?.environment.capabilities.pullRequests === true;
+  const supportsIssues = serverConfig?.environment.capabilities.issues === true;
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequests = visibleThreadPullRequests(input.pullRequests);
@@ -398,6 +399,7 @@ export function useThreadRightPanel(input: {
     terminalLabelsById: activeTerminalLabelsById,
     pullRequestsCapabilityKnown,
     supportsPullRequests,
+    supportsIssues,
     visiblePullRequests,
     visiblePullRequestCount,
     pullRequestsSurfaceAvailable,
@@ -463,6 +465,7 @@ export function ThreadRightPanelView(props: {
       getShortcutContext={getShortcutContext}
       onSendAnnotation={props.onSendAnnotation}
       onCloseSurface={panel.closeRightPanelSurface}
+      issuesSupported={panel.supportsIssues}
       // A terminal thread screen has no composer or terminal drawer, so a side chat tab here runs
       // no shell commands. Revisit if terminal threads can open side chats.
       sideChatParentPanel={{ openToolDiff: panel.onOpenToolDiffStable, runShellCommand: () => {} }}
