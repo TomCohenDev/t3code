@@ -55,7 +55,7 @@ import {
 } from "./forkNewTerminalThread";
 import { isDraftThreadRoute } from "./thread-route-state";
 import { stagePendingTerminalLaunch } from "../terminal/terminalLaunchContext";
-import { WorktreeSetupCard } from "./worktree-setup-card";
+import { WorktreeSetupCard, WorktreeSetupDetails } from "./worktree-setup-card";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 const TITLE = "New terminal thread";
@@ -123,6 +123,7 @@ export function ForkNewTerminalThreadSheet({ route }: StaticScreenProps<NewTermi
   const [startFromOrigin, setStartFromOrigin] = useState(route.params.startFromOrigin);
   const [threadId] = useState(() => ThreadId.make(uuidv4()));
   const [creation, setCreation] = useState<Creation>({ phase: "idle" });
+  const [setupDetailsOpen, setSetupDetailsOpen] = useState(false);
   // A worktree that is ready stays the folder of the next try, when the thread failed to start.
   const [preparedWorktree, setPreparedWorktree] = useState<{
     readonly worktreePath: string;
@@ -255,6 +256,21 @@ export function ForkNewTerminalThreadSheet({ route }: StaticScreenProps<NewTermi
     const result = await cancelSetup({ environmentId, input: { threadId } });
     return result._tag === "Success" && result.value.cancelled;
   };
+  const setupCardProps =
+    setupCard === null
+      ? null
+      : {
+          snapshot: setupCard,
+          turnStarted: false,
+          onCancel: () => void cancel(),
+          onWorkLocally:
+            setupCard.phase === "running"
+              ? () =>
+                  void cancel().then((cancelled) => {
+                    if (cancelled) setFolder({ kind: "project" });
+                  })
+              : null,
+        };
 
   const choose = (choice: TerminalFolderChoice) => {
     if (locked) return;
@@ -353,20 +369,15 @@ export function ForkNewTerminalThreadSheet({ route }: StaticScreenProps<NewTermi
         ) : null}
       </ListSection>
 
-      {setupCard !== null ? (
+      {setupCardProps !== null ? (
         <WorktreeSetupCard
-          snapshot={setupCard}
-          turnStarted={false}
-          onCancel={() => void cancel()}
-          onWorkLocally={
-            setupCard.phase === "running"
-              ? () =>
-                  void cancel().then((cancelled) => {
-                    if (cancelled) setFolder({ kind: "project" });
-                  })
-              : null
-          }
+          {...setupCardProps}
+          detailsOpen={setupDetailsOpen}
+          onOpenDetails={() => setSetupDetailsOpen(true)}
         />
+      ) : null}
+      {setupCardProps !== null && setupDetailsOpen ? (
+        <WorktreeSetupDetails {...setupCardProps} onClose={() => setSetupDetailsOpen(false)} />
       ) : null}
       {failure !== null && setupCard === null ? (
         <Text className="px-2 text-sm text-danger">{failure}</Text>
