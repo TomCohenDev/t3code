@@ -5,6 +5,7 @@ import {
   serializeAssistantCitation,
 } from "@t3tools/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { msg, useGT } from "gt-react";
 import { PencilIcon, QuoteIcon } from "lucide-react";
 import {
   useEffect,
@@ -22,6 +23,7 @@ import {
   assistantCitationNavigation,
   assistantCitationRoute,
 } from "../../lib/assistantCitationNavigation";
+import { m } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { useQuietThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
@@ -55,9 +57,9 @@ function useCitationSource(citation: AssistantCitation) {
 
 // Fork: right-click menu entry on the quote card and the composer chip.
 const copyQuoteMenuItem = (citation: AssistantCitation) => ({
-  label: "Copy quote",
+  label: m(msg("Copy quote")),
   icon: "copy",
-  run: () => copyFromObjectMenu(citation.text, "Copy quote"),
+  run: () => copyFromObjectMenu(citation.text, m(msg("Copy quote"))),
 });
 
 const flat = (text: string) => text.replace(/\s+/g, " ");
@@ -87,6 +89,7 @@ function ResponseCard({
   leading: boolean;
   trailing: boolean;
 }) {
+  const gt = useGT();
   const { linkProps, goToSource } = useCitationSource(citation);
   return (
     // One copy boundary for the card and its comment, so a copied card carries the comment once.
@@ -103,7 +106,7 @@ function ResponseCard({
         aria-label={label}
         onContextMenu={(event) =>
           showObjectMenu(event, [
-            { label: "Go to source", run: goToSource },
+            { label: gt("Go to source"), run: goToSource },
             copyQuoteMenuItem(citation),
           ])
         }
@@ -138,6 +141,7 @@ export function AssistantCitationEmbed({
   leading: boolean;
   trailing: boolean;
 }) {
+  const gt = useGT();
   const wholeResponse = citation.prefix === "" && citation.suffix === "";
   const { comment, ...quoted } = citation;
   return (
@@ -145,7 +149,7 @@ export function AssistantCitationEmbed({
       citation={citation}
       copyMarkdown={serializeAssistantCitation(citation)}
       cardCopyMarkdown={serializeAssistantCitation(quoted)}
-      label={`Go to quoted response: ${assistantCitationLabel(quoted)}`}
+      label={gt("Go to quoted response: {label}", { label: assistantCitationLabel(quoted) })}
       comment={comment}
       leading={leading}
       trailing={trailing}
@@ -178,11 +182,12 @@ export function ResponseReplyCard({
   leading: boolean;
   trailing: boolean;
 }) {
+  const gt = useGT();
   return (
     <ResponseCard
       citation={record.citation}
       copyMarkdown={copyMarkdown}
-      label={`Go to the response this replies to: ${record.label}`}
+      label={gt("Go to the response this replies to: {label}", { label: record.label })}
       title={record.subagents?.map((subagent) => subagent.title).join(", ")}
       preview={flat(record.citation.text)}
       leading={leading}
@@ -208,6 +213,7 @@ export function AssistantCitationChip({
     onRestoreFocus?: () => void;
   };
 }) {
+  const gt = useGT();
   const { linkProps: sourceLinkProps, goToSource } = useCitationSource(citation);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
@@ -261,7 +267,7 @@ export function AssistantCitationChip({
     <Link
       {...sourceLinkProps}
       className="inline-flex min-w-0 items-center gap-[0.2em] self-baseline text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current rounded-sm"
-      aria-label={`View cited assistant text: ${label}`}
+      aria-label={gt("View cited assistant text: {label}", { label })}
     >
       <QuoteIcon aria-hidden="true" />
       <ContextChipLabel className="max-w-[16em]" dir={textDirection(label)}>
@@ -275,10 +281,10 @@ export function AssistantCitationChip({
       contentEditable={false}
       onContextMenu={(event) =>
         showObjectMenu(event, [
-          { label: "Go to source", run: goToSource },
+          { label: gt("Go to source"), run: goToSource },
           commentEditor
             ? {
-                label: citation.comment ? "Edit note" : "Add note",
+                label: citation.comment ? gt("Edit note") : gt("Add note"),
                 run: () => commentTriggerRef.current?.click(),
               }
             : null,
@@ -302,7 +308,9 @@ export function AssistantCitationChip({
         >
           <PopoverTrigger
             ref={commentTriggerRef}
-            aria-label={citation.comment ? "Edit citation comment" : "Add comment to citation"}
+            aria-label={
+              citation.comment ? gt("Edit citation comment") : gt("Add comment to citation")
+            }
             data-citation-comment-trigger="true"
             render={<ContextChipAction />}
           >
@@ -341,7 +349,7 @@ export function AssistantCitationChip({
                   : undefined
               }
               ref={commentPopupRef}
-              aria-label="Edit citation comment"
+              aria-label={gt("Edit citation comment")}
               width="md"
               padding="compact"
               onPointerDown={(event) => event.stopPropagation()}

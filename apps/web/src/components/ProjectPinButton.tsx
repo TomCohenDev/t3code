@@ -1,4 +1,5 @@
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { PinIcon, PinOffIcon } from "lucide-react";
 import type { KeyboardEvent } from "react";
 
@@ -34,7 +35,10 @@ export function ProjectPinButton(props: {
   readonly pinned: boolean;
   readonly onToggle: () => void;
 }) {
-  const action = `${props.pinned ? "Unpin" : "Pin"} ${props.name}`;
+  const gt = useGT();
+  const action = props.pinned
+    ? gt("Unpin {name}", { name: props.name })
+    : gt("Pin {name}", { name: props.name });
   return (
     <span
       className={cn(

@@ -29,14 +29,15 @@ import {
 } from "@t3tools/contracts";
 import { projectScriptCwd } from "@t3tools/shared/projectScripts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
+import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabelsCopy";
+import { useMessages } from "gt-react";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { use, useEffect, useRef, useState } from "react";
 
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { isElectron } from "../env";
-import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import { useTerminalThreadsEnabled } from "../hooks/useForkTerminalThreads";
@@ -583,6 +584,7 @@ function useTerminalThreadWorkspace(
   thread: EnvironmentThreadShell | null,
   project: EnvironmentProject | null,
 ) {
+  const messages = useMessages();
   const environmentId: EnvironmentId = threadRef.environmentId;
   const gitCwd = project
     ? projectScriptCwd({
@@ -628,7 +630,7 @@ function useTerminalThreadWorkspace(
   const terminalLabelsById = new Map(
     (sessions ?? []).map((session) => [
       session.target.terminalId,
-      resolveTerminalSessionLabel(session.target.terminalId, session.state.summary),
+      resolveTerminalSessionLabel(session.target.terminalId, session.state.summary, messages),
     ]),
   );
   const environments = useLogicalProjectEnvironments(project, false);
@@ -673,7 +675,7 @@ function useThreadShortcuts(threadRef: ScopedThreadRef, linkedPullRequestUrl: st
       linkedPullRequestUrl: linkedPullRequestUrl ?? thread.branchPullRequest?.url ?? null,
     });
     if (target === null) return;
-    void writeTextToClipboard(target.value, target.clipboardTarget).then(
+    void writeTextToClipboard(target.value, namedClipboardTarget(target.clipboardTarget)).then(
       (didCopy) => {
         if (didCopy)
           toastManager.add({
@@ -726,6 +728,7 @@ const toastResultFailure = (title: string) => (result: AtomCommandResult<unknown
 
 /** The drawer of a terminal thread. It never takes `term-1`, which is the main terminal. */
 function useTerminalThreadDrawer(threadRef: ScopedThreadRef) {
+  const messages = useMessages();
   const terminalActions = useThreadTerminalActions(threadRef);
   const canRead = useEnvironmentScope(threadRef.environmentId, AuthTerminalReadScope);
   const canOperate = useEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
@@ -822,15 +825,15 @@ function useTerminalThreadDrawer(threadRef: ScopedThreadRef) {
     const terminalId = uiState.activeTerminalId;
     const summary = drawerSessions.find((session) => session.target.terminalId === terminalId)
       ?.state.summary;
-    void confirmTerminalClose([resolveTerminalSessionLabel(terminalId, summary ?? null)]).then(
-      (confirmed) => {
-        if (!confirmed || !readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope))
-          return;
-        terminalActions.closeTerminalSession(terminalId);
-        store().closeTerminal(threadRef, terminalId);
-        focusActiveDrawerTerminal(threadRef);
-      },
-    );
+    void confirmTerminalClose([
+      resolveTerminalSessionLabel(terminalId, summary ?? null, messages),
+    ]).then((confirmed) => {
+      if (!confirmed || !readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope))
+        return;
+      terminalActions.closeTerminalSession(terminalId);
+      store().closeTerminal(threadRef, terminalId);
+      focusActiveDrawerTerminal(threadRef);
+    });
   };
 
   return {

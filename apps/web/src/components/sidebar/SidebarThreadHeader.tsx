@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import { XIcon } from "lucide-react";
 
 import { AppIcon } from "../AppIcon";
@@ -55,12 +56,13 @@ export function SidebarThreadHeader({
   activeSearchResultIndex,
   onClearSearch,
 }: SidebarThreadHeaderProps) {
+  const gt = useGT();
   const resultsVisible = isSearching && searchResultCount > 0;
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   const newThreadLabel = (
     <>
-      New thread
+      {gt("New thread")}
       <ShortcutHint command={newThreadCommand} />
     </>
   );
@@ -84,8 +86,8 @@ export function SidebarThreadHeader({
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.currentTarget.value)}
             onKeyDown={onSearchKeyDown}
-            placeholder="Search"
-            aria-label="Search threads"
+            placeholder={gt("Search", { $context: "search field placeholder" })}
+            aria-label={gt("Search threads")}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={resultsVisible}
@@ -106,7 +108,7 @@ export function SidebarThreadHeader({
                     size="icon-micro"
                     variant="ghost-muted"
                     className="shrink-0"
-                    aria-label="Clear thread search"
+                    aria-label={gt("Clear thread search")}
                     onClick={() => {
                       onClearSearch();
                       searchInputRef.current?.focus();
@@ -116,12 +118,14 @@ export function SidebarThreadHeader({
               >
                 <XIcon className="size-3" />
               </TooltipTrigger>
-              <TooltipPopup>Clear search</TooltipPopup>
+              <TooltipPopup>
+                <T>Clear search</T>
+              </TooltipPopup>
             </Tooltip>
           ) : null}
         </ShortcutTrigger>
         <TooltipPopup side="bottom">
-          Search threads
+          {gt("Search threads")}
           <ShortcutHint command="sidebar.search" context={{ sidebarFocus: true }} />
         </TooltipPopup>
       </Tooltip>
@@ -129,21 +133,21 @@ export function SidebarThreadHeader({
         {hasProjects ? (
           <>
             {projectScope}
-            <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
+            <SidebarHeaderIconButton label={gt("Add project")} onClick={onNewProject}>
               <AppIcon slot="sidebar.add-project" />
             </SidebarHeaderIconButton>
           </>
         ) : null}
         {terminalThreadButton}
         <SidebarHeaderIconButton
-          label="New thread"
+          label={gt("New thread")}
           command={newThreadCommand}
           tooltip={
             showNewThreadInProjectHint ? (
               <span className="flex flex-col gap-0.5">
                 <span>{newThreadLabel}</span>
                 <span className="text-muted-foreground">
-                  New thread in current project: Shift+click
+                  {gt("New thread in current project: Shift+click")}
                   <ShortcutHint command="chat.newLocal" />
                 </span>
               </span>

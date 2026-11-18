@@ -103,6 +103,7 @@ export function useContinueThreadElsewhere(): (threadRef: ScopedThreadRef) => Pr
         sourceLabel:
           backup?.sourceLabel ??
           presentations.get(threadRef.environmentId)?.entry.target.label ??
+          // oxlint-disable-next-line t3code/no-untranslated-copy -- part of the agent prompt, which stays English
           "another machine",
         branch: backup?.branch ?? thread?.branch ?? null,
         omittedItems: continuation.omittedItems,

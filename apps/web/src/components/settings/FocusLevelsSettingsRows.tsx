@@ -9,13 +9,14 @@ import { useClientSettings, updateClientSettings } from "../../hooks/useSettings
 import { Switch } from "../ui/switch";
 import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectLevels = (settings: ClientSettings) => settings.keyboardFocusLevels;
 const selectHighlight = (settings: ClientSettings) => settings.focusLevelHighlight;
 
 /** Fork: `keyboardFocusLevels`, Escape and arrow keys move focus between areas of the screen. */
 export function KeyboardFocusLevelsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectLevels);
   return (
     <SettingsRow
@@ -24,7 +25,7 @@ export function KeyboardFocusLevelsSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.keyboardFocusLevels ? (
           <SettingResetButton
-            label="keyboard focus levels"
+            ariaLabel="Reset keyboard focus levels to default"
             onClick={() =>
               void updateClientSettings({
                 keyboardFocusLevels: DEFAULT_CLIENT_SETTINGS.keyboardFocusLevels,
@@ -48,6 +49,7 @@ export function KeyboardFocusLevelsSettingsRow() {
 
 /** Fork: `focusLevelHighlight`, the outline fade on the area that takes keyboard focus. */
 export function FocusLevelHighlightSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectHighlight);
   return (
     <SettingsRow
@@ -56,7 +58,7 @@ export function FocusLevelHighlightSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.focusLevelHighlight ? (
           <SettingResetButton
-            label="focus highlight"
+            ariaLabel="Reset focus highlight to default"
             onClick={() =>
               void updateClientSettings({
                 focusLevelHighlight: DEFAULT_CLIENT_SETTINGS.focusLevelHighlight,
@@ -82,6 +84,7 @@ const selectTooltipShortcuts = (settings: ClientSettings) => settings.tooltipSho
 
 /** Fork: `tooltipShortcuts`, tooltips, menus and the command palette name the keys of an action. */
 export function TooltipShortcutsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectTooltipShortcuts);
   return (
     <SettingsRow
@@ -90,7 +93,7 @@ export function TooltipShortcutsSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.tooltipShortcuts ? (
           <SettingResetButton
-            label="shortcuts in tooltips"
+            ariaLabel="Reset shortcuts in tooltips to default"
             onClick={() =>
               void updateClientSettings({
                 tooltipShortcuts: DEFAULT_CLIENT_SETTINGS.tooltipShortcuts,
@@ -116,6 +119,7 @@ const selectShortcutLimit = (settings: ClientSettings) => settings.tooltipShortc
 
 /** Fork: `tooltipShortcutLimit`, the most keys one tooltip shows before "+N". */
 export function TooltipShortcutLimitSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const limit = useClientSettings(selectShortcutLimit);
   return (
     <SettingsRow
@@ -124,7 +128,7 @@ export function TooltipShortcutLimitSettingsRow() {
       resetAction={
         limit !== DEFAULT_CLIENT_SETTINGS.tooltipShortcutLimit ? (
           <SettingResetButton
-            label="keys per tooltip"
+            ariaLabel="Reset keys per tooltip to default"
             onClick={() =>
               void updateClientSettings({
                 tooltipShortcutLimit: DEFAULT_CLIENT_SETTINGS.tooltipShortcutLimit,

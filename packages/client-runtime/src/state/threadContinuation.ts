@@ -169,5 +169,6 @@ export function continuationPrompt(input: {
     input.branch === null
       ? ""
       : ` That thread worked on the branch \`${input.branch}\`. Fetch it if it was pushed, and check which of its changes are here before you change code.`;
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- agent prompt, sent to the agent in English
   return `Continue the thread "${input.title}" from ${input.sourceLabel}. Its history is attached.${omitted}${branch} Summarize where it stood in a few lines, then continue the work.`;
 }

@@ -1,6 +1,7 @@
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { showObjectMenu } from "../../objectMenu";
 import { useSortable } from "@dnd-kit/sortable";
+import { useGT } from "gt-react";
 import { CSS } from "@dnd-kit/utilities";
 import { type ReactNode, useLayoutEffect } from "react";
 import { cn } from "~/lib/utils";
@@ -121,6 +122,7 @@ export function SidebarSectionHeader(props: {
   isDropTarget?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
 }) {
+  const gt = useGT();
   const shelf =
     props.marker === "working-header"
       ? "working"
@@ -141,7 +143,9 @@ export function SidebarSectionHeader(props: {
         onContextMenu={(event) =>
           showObjectMenu(event, [
             {
-              label: props.toggle.expanded ? `Hide ${props.label}` : `Show ${props.label}`,
+              label: props.toggle.expanded
+                ? gt("Hide {section}", { section: props.label })
+                : gt("Show {section}", { section: props.label }),
               run: props.toggle.onToggle,
             },
           ])

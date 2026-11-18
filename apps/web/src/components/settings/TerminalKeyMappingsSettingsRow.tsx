@@ -16,7 +16,7 @@ import { updateClientSettings, useClientSettings } from "../../hooks/useSettings
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectMappings = (settings: ClientSettings) => settings.terminalKeyMappings;
 const decodeMappings = Schema.decodeUnknownOption(
@@ -33,6 +33,7 @@ function mergePreset(
 
 /** Fork: `terminalKeyMappings`, keys that every terminal sends as fixed bytes. */
 export function TerminalKeyMappingsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const mappings = useClientSettings(selectMappings);
   const saved = JSON.stringify(mappings, null, 2);
   // The field keeps what the user typed until it saves, so a rejected entry stays visible.
@@ -81,7 +82,7 @@ export function TerminalKeyMappingsSettingsRow() {
       resetAction={
         mappings.length > 0 ? (
           <SettingResetButton
-            label="terminal key mappings"
+            ariaLabel="Reset terminal key mappings to default"
             onClick={() => {
               setDraft(null);
               setError(null);

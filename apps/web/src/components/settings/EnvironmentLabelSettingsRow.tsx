@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -10,6 +10,7 @@ import {
 } from "./useScopedSettings";
 
 export function EnvironmentLabelSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["environmentLabelFromMachineMap"]);
@@ -24,7 +25,7 @@ export function EnvironmentLabelSettingsRow() {
         settings.environmentLabelFromMachineMap !==
           DEFAULT_SERVER_SETTINGS.environmentLabelFromMachineMap ? (
           <SettingResetButton
-            label="environment name from kitshn"
+            ariaLabel="Reset environment name from kitshn to default"
             onClick={() =>
               updateSettings({
                 environmentLabelFromMachineMap:

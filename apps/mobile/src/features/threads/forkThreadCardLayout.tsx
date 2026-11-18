@@ -28,6 +28,7 @@ import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
+import { m } from "../../i18n/messages";
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
@@ -379,7 +380,7 @@ export function ForkThreadCardLayout(props: {
         );
       case "access": {
         const access = RUNTIME_MODE_DETAILS[info.access];
-        return metaItem({ icon: access.icon, label: access.label });
+        return metaItem({ icon: access.icon, label: m(access.label) });
       }
       case "plan":
         return info.plan === null

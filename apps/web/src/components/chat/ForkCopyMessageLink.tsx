@@ -2,7 +2,7 @@ import type { KeybindingCommand, ScopedThreadRef } from "@t3tools/contracts";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { LinkIcon } from "lucide-react";
 
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { readThreadShell } from "../../state/entities";
 import { runRegisteredFocusLevelCommand } from "../focusLevels/useFocusLevelShortcuts";
 import { toastManager } from "../ui/toast";
@@ -67,7 +67,7 @@ export function ForkCopyMessageLink(props: {
 export function useForkCopyMessageLink(threadRef: ScopedThreadRef | null) {
   const enabled = useForkThreadAddressing(threadRef?.environmentId ?? null);
   const { copyToClipboard } = useCopyToClipboard({
-    target: "message link",
+    target: namedClipboardTarget("message link"),
     onCopy: () => toastManager.add({ type: "success", title: "Message link copied" }),
     onError: (error) =>
       toastManager.add({

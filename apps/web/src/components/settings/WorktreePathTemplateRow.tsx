@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Input } from "../ui/input";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -13,6 +13,7 @@ import {
 
 /** Fork: the `worktreePathTemplate` setting. See docs/fork/features.md. */
 export function WorktreePathTemplateRow() {
+  const searchableSetting = useSearchableSetting();
   const { connectedEnvironments, targets } = useSettingsScope();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -45,7 +46,7 @@ export function WorktreePathTemplateRow() {
       resetAction={
         mixed || settings.worktreePathTemplate !== "" ? (
           <SettingResetButton
-            label="worktree path template"
+            ariaLabel="Reset worktree path template to default"
             onClick={() => updateSettings({ worktreePathTemplate: "" })}
           />
         ) : null
