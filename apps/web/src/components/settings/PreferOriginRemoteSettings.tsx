@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -10,6 +10,7 @@ import {
 } from "./useScopedSettings";
 
 export function PreferOriginRemoteSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["preferOriginRemote"]);
@@ -23,7 +24,7 @@ export function PreferOriginRemoteSettingsRow() {
       resetAction={
         mixed || settings.preferOriginRemote !== DEFAULT_SERVER_SETTINGS.preferOriginRemote ? (
           <SettingResetButton
-            label="pull requests from origin"
+            ariaLabel="Reset pull requests from origin to default"
             onClick={() =>
               updateSettings({
                 preferOriginRemote: DEFAULT_SERVER_SETTINGS.preferOriginRemote,

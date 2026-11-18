@@ -9,7 +9,7 @@ import { updateClientSettings, useClientSettings } from "../../hooks/useSettings
 import { Switch } from "../ui/switch";
 import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { type SettingsSearchItemId, searchableSetting } from "./settingsSearch";
+import { type SettingsSearchItemId, useSearchableSetting } from "./settingsSearch";
 
 type InAppNotificationSwitchKey =
   | "inAppNotificationCompletions"
@@ -22,6 +22,7 @@ function InAppNotificationSwitchRow(props: {
   readonly label: string;
   readonly description: string;
 }) {
+  const searchableSetting = useSearchableSetting();
   const { settingKey } = props;
   const checked = useClientSettings((settings: ClientSettings) => settings[settingKey]);
   return (
@@ -31,7 +32,7 @@ function InAppNotificationSwitchRow(props: {
       resetAction={
         checked !== DEFAULT_CLIENT_SETTINGS[settingKey] ? (
           <SettingResetButton
-            label={props.label.toLowerCase()}
+            ariaLabel={`Reset ${props.label.toLowerCase()} to default`}
             onClick={() =>
               void updateClientSettings({ [settingKey]: DEFAULT_CLIENT_SETTINGS[settingKey] })
             }
@@ -53,6 +54,7 @@ const selectSeconds = (settings: ClientSettings) => settings.inAppNotificationSe
 
 /** Fork: how long in-app thread notifications show, which ones show, and when they close. */
 export function InAppNotificationSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const seconds = useClientSettings(selectSeconds);
   return (
     <>
@@ -62,7 +64,7 @@ export function InAppNotificationSettingsRows() {
         resetAction={
           seconds !== DEFAULT_CLIENT_SETTINGS.inAppNotificationSeconds ? (
             <SettingResetButton
-              label="in-app notification time"
+              ariaLabel="Reset in-app notification time to default"
               onClick={() =>
                 void updateClientSettings({
                   inAppNotificationSeconds: DEFAULT_CLIENT_SETTINGS.inAppNotificationSeconds,

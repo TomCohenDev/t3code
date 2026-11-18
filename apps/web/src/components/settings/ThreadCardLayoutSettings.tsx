@@ -41,7 +41,7 @@ import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { type SlotLayoutElementOption, SlotLayoutBuilder } from "./SlotLayoutBuilder";
 import { ThreadCardLayoutPreview } from "./ThreadCardLayoutPreview";
 import {
@@ -85,6 +85,7 @@ const MOBILE_OPTIONS: ReadonlyArray<SlotLayoutElementOption<MobileThreadCardElem
   MOBILE_THREAD_CARD_ELEMENTS.map((id) => ({ id, ...ELEMENT_OPTIONS[id] }));
 
 export function ThreadCardLayoutSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["threadCardLayouts"]);
@@ -127,7 +128,7 @@ export function ThreadCardLayoutSettingsRows() {
         resetAction={
           mixed || layout !== null ? (
             <SettingResetButton
-              label={`${surfaceLabel} card layout`}
+              ariaLabel={`Reset ${surfaceLabel} card layout to default`}
               onClick={() => (surface === "desktop" ? setDesktop(null) : setMobile(null))}
             />
           ) : null

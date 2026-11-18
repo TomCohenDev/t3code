@@ -14,12 +14,13 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 /**
  * Fork: tunnel pairing and the trusted browser origins of the desktop server. Desktop settings, so the row shows only in the desktop app that manages its backend.
  */
 export function TunnelPairingSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const desktopBridge = window.desktopBridge;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const canMaintain = useEnvironmentScope(primaryEnvironmentId, AuthEnvironmentMaintainScope);

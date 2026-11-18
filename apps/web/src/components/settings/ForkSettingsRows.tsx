@@ -10,7 +10,7 @@ import { Switch } from "../ui/switch";
 import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import {
   useScopedSettings,
@@ -25,6 +25,7 @@ import {
 
 /** Fork: `agentSessionImportWindowDays` and `agentSessionImportMaxMessages`. */
 export function AgentSessionImportSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -38,7 +39,7 @@ export function AgentSessionImportSettingsRows() {
           settings.agentSessionImportWindowDays !==
           DEFAULT_UNIFIED_SETTINGS.agentSessionImportWindowDays ? (
             <SettingResetButton
-              label="session import window"
+              ariaLabel="Reset session import window to default"
               onClick={() =>
                 updateSettings({
                   agentSessionImportWindowDays:
@@ -67,7 +68,7 @@ export function AgentSessionImportSettingsRows() {
           settings.agentSessionImportMaxMessages !==
           DEFAULT_UNIFIED_SETTINGS.agentSessionImportMaxMessages ? (
             <SettingResetButton
-              label="imported messages per session"
+              ariaLabel="Reset imported messages per session to default"
               onClick={() =>
                 updateSettings({
                   agentSessionImportMaxMessages:
@@ -93,6 +94,7 @@ export function AgentSessionImportSettingsRows() {
 
 /** Fork: `settingsFind`. */
 export function SettingsFindSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -102,7 +104,7 @@ export function SettingsFindSettingsRow() {
       resetAction={
         settings.settingsFind !== DEFAULT_UNIFIED_SETTINGS.settingsFind ? (
           <SettingResetButton
-            label="find in settings"
+            ariaLabel="Reset find in settings to default"
             onClick={() => updateSettings({ settingsFind: DEFAULT_UNIFIED_SETTINGS.settingsFind })}
           />
         ) : null
@@ -120,6 +122,7 @@ export function SettingsFindSettingsRow() {
 
 /** Fork: `terminalAppShortcutsFirst`. */
 export function TerminalAppShortcutsFirstSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -130,7 +133,7 @@ export function TerminalAppShortcutsFirstSettingsRow() {
         settings.terminalAppShortcutsFirst !==
         DEFAULT_UNIFIED_SETTINGS.terminalAppShortcutsFirst ? (
           <SettingResetButton
-            label="app shortcuts in terminal"
+            ariaLabel="Reset app shortcuts in terminal to default"
             onClick={() =>
               updateSettings({
                 terminalAppShortcutsFirst: DEFAULT_UNIFIED_SETTINGS.terminalAppShortcutsFirst,
@@ -154,6 +157,7 @@ export function TerminalAppShortcutsFirstSettingsRow() {
 
 /** Fork: `currentProjectTerminalOpensThread`. */
 export function CurrentProjectTerminalOpensThreadSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -164,7 +168,7 @@ export function CurrentProjectTerminalOpensThreadSettingsRow() {
         settings.currentProjectTerminalOpensThread !==
         DEFAULT_UNIFIED_SETTINGS.currentProjectTerminalOpensThread ? (
           <SettingResetButton
-            label="open terminal in current project as a thread"
+            ariaLabel="Reset open terminal in current project as a thread to default"
             onClick={() =>
               updateSettings({
                 currentProjectTerminalOpensThread:
@@ -189,6 +193,7 @@ export function CurrentProjectTerminalOpensThreadSettingsRow() {
 
 /** Fork: `messagePins`. */
 export function MessagePinsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -198,7 +203,7 @@ export function MessagePinsSettingsRow() {
       resetAction={
         settings.messagePins !== DEFAULT_UNIFIED_SETTINGS.messagePins ? (
           <SettingResetButton
-            label="message pins"
+            ariaLabel="Reset message pins to default"
             onClick={() => updateSettings({ messagePins: DEFAULT_UNIFIED_SETTINGS.messagePins })}
           />
         ) : null
@@ -216,6 +221,7 @@ export function MessagePinsSettingsRow() {
 
 /** Fork: `backgroundWorkDetails`. */
 export function BackgroundWorkDetailsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -225,7 +231,7 @@ export function BackgroundWorkDetailsSettingsRow() {
       resetAction={
         settings.backgroundWorkDetails !== DEFAULT_UNIFIED_SETTINGS.backgroundWorkDetails ? (
           <SettingResetButton
-            label="background work details"
+            ariaLabel="Reset background work details to default"
             onClick={() =>
               updateSettings({
                 backgroundWorkDetails: DEFAULT_UNIFIED_SETTINGS.backgroundWorkDetails,
@@ -247,6 +253,7 @@ export function BackgroundWorkDetailsSettingsRow() {
 
 /** Fork: `restartReconnectWarningGrace` (forkReconnectWarningGrace.ts). */
 export function RestartReconnectWarningGraceSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -257,7 +264,7 @@ export function RestartReconnectWarningGraceSettingsRow() {
         settings.restartReconnectWarningGrace !==
         DEFAULT_UNIFIED_SETTINGS.restartReconnectWarningGrace ? (
           <SettingResetButton
-            label="quiet reconnect after restart"
+            ariaLabel="Reset quiet reconnect after restart to default"
             onClick={() =>
               updateSettings({
                 restartReconnectWarningGrace: DEFAULT_UNIFIED_SETTINGS.restartReconnectWarningGrace,
@@ -281,6 +288,7 @@ export function RestartReconnectWarningGraceSettingsRow() {
 
 /** Fork: `forkUpdateMode`. The background service and the desktop app follow it. */
 export function ForkUpdateModeSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["forkUpdateMode"]);
@@ -293,7 +301,7 @@ export function ForkUpdateModeSettingsRow() {
       resetAction={
         mixed || settings.forkUpdateMode !== DEFAULT_UNIFIED_SETTINGS.forkUpdateMode ? (
           <SettingResetButton
-            label="automatic updates"
+            ariaLabel="Reset automatic updates to default"
             onClick={() =>
               updateSettings({ forkUpdateMode: DEFAULT_UNIFIED_SETTINGS.forkUpdateMode })
             }
@@ -316,6 +324,7 @@ export function ForkUpdateModeSettingsRow() {
 
 /** Fork: `autoSettleWaitsForBackgroundCommands`. */
 export function AutoSettleWaitsForBackgroundCommandsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["autoSettleWaitsForBackgroundCommands"]);
@@ -337,7 +346,7 @@ export function AutoSettleWaitsForBackgroundCommandsSettingsRow() {
         settings.autoSettleWaitsForBackgroundCommands !==
           DEFAULT_UNIFIED_SETTINGS.autoSettleWaitsForBackgroundCommands ? (
           <SettingResetButton
-            label="auto-settle waits for background commands"
+            ariaLabel="Reset auto-settle waits for background commands to default"
             onClick={() =>
               updateSettings({
                 autoSettleWaitsForBackgroundCommands:

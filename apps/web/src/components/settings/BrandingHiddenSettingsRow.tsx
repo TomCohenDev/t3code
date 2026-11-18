@@ -3,12 +3,13 @@ import { type ClientSettings, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectBrandingHidden = (settings: ClientSettings) => settings.brandingHidden;
 
 /** Fork: `brandingHidden`, hides the sidebar wordmark and the environment pill. */
 export function BrandingHiddenSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const hidden = useClientSettings(selectBrandingHidden);
   return (
     <SettingsRow
@@ -17,7 +18,7 @@ export function BrandingHiddenSettingsRow() {
       resetAction={
         hidden !== DEFAULT_CLIENT_SETTINGS.brandingHidden ? (
           <SettingResetButton
-            label="hide T3 branding"
+            ariaLabel="Reset hide T3 branding to default"
             onClick={() =>
               void updateClientSettings({ brandingHidden: DEFAULT_CLIENT_SETTINGS.brandingHidden })
             }

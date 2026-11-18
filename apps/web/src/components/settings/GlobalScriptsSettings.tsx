@@ -19,11 +19,12 @@ import {
 import { Button } from "../ui/button";
 import { ProjectActionsList } from "./ProjectActionsList";
 import { SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useScopedSettingsWriteAllowed } from "./useScopedSettings";
 
 export function GlobalScriptsSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const { scope, targets, target } = useSettingsScope();
   const canWriteSettings = useScopedSettingsWriteAllowed();
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, "global scripts update");
