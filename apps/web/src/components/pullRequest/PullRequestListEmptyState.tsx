@@ -164,13 +164,13 @@ export function PullRequestListEmptyState({
       <div className="flex flex-wrap justify-center gap-2">
         {filterCauses.length > 0 && onClearFilters ? (
           <Button size="sm" variant="outline" onClick={onClearFilters}>
-            Clear filters
+            <T>Clear filters</T>
           </Button>
         ) : null}
         {/* "Clear filters" already clears the owners. */}
         {onShowAllOwners && filterCauses.length === 0 ? (
           <Button size="sm" variant="outline" onClick={onShowAllOwners}>
-            Show all owners
+            <T>Show all owners</T>
           </Button>
         ) : null}
         {canLoadMore ? (

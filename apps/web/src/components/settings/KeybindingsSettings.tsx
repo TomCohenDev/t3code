@@ -167,7 +167,9 @@ function KeybindingCommandFilterChip({
   command: KeybindingCommand;
   onClear: () => void;
 }) {
-  const label = commandLabel(command);
+  const gt = useGT();
+  const m = useMessages();
+  const label = commandLabel(command, m);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -176,7 +178,7 @@ function KeybindingCommandFilterChip({
             type="button"
             variant="secondary"
             className="min-w-0"
-            aria-label={`Clear filter: ${label}`}
+            aria-label={gt("Clear filter: {label}", { label })}
             onClick={onClear}
           />
         }
@@ -184,7 +186,9 @@ function KeybindingCommandFilterChip({
         <span className="truncate">{label}</span>
         <XIcon aria-hidden className="size-4" />
       </TooltipTrigger>
-      <TooltipPopup side="top">Show all actions</TooltipPopup>
+      <TooltipPopup side="top">
+        <T>Show all actions</T>
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -1035,16 +1039,24 @@ function KeybindingRowMenu({
     onShowCommand
       ? { label: gt("Show bindings for this action"), run: () => onShowCommand(row.command) }
       : null,
-    canReset ? { label: gt("Reset to default"), disabled: isSaving, run: () => onReset(row) } : null,
+    canReset
+      ? { label: gt("Reset to default"), disabled: isSaving, run: () => onReset(row) }
+      : null,
     canUnassign
       ? {
           label: gt("Unassign", { $context: "verb, removes the key from a keyboard shortcut" }),
-          destructive: true, disabled: isSaving, run: () => onUnassign(row) }
+          destructive: true,
+          disabled: isSaving,
+          run: () => onUnassign(row),
+        }
       : null,
     canRemove
       ? {
           label: gt("Remove", { $context: "verb, removes a keybinding" }),
-          destructive: true, disabled: isSaving, run: () => onRemove(row) }
+          destructive: true,
+          disabled: isSaving,
+          run: () => onRemove(row),
+        }
       : null,
   ];
   if (entries.every((entry) => entry === null)) return null;
@@ -1126,9 +1138,11 @@ function KeybindingRowWhen({
       />
       {inactive ? (
         <Tooltip>
-          <TooltipTrigger render={<Badge variant="outline" size="sm" />}>Inactive</TooltipTrigger>
+          <TooltipTrigger render={<Badge variant="outline" size="sm" />}>
+            {gt("Inactive", { $context: "keybinding condition state" })}
+          </TooltipTrigger>
           <TooltipPopup side="top">
-            This condition needs keyboard focus levels, which are off.
+            <T>This condition needs keyboard focus levels, which are off.</T>
           </TooltipPopup>
         </Tooltip>
       ) : null}
@@ -1781,7 +1795,7 @@ export function KeybindingsSettingsPanel() {
         {addFromMenu === true && !canWriteSettings ? (
           <SettingsGroup>
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              You cannot change keybindings here.
+              <T>You cannot change keybindings here.</T>
             </div>
           </SettingsGroup>
         ) : null}
@@ -1811,7 +1825,9 @@ export function KeybindingsSettingsPanel() {
           <SettingsGroup>
             <div className="px-4 py-12 text-center text-sm text-muted-foreground">
               {commandFilter !== undefined && query.trim().length === 0
-                ? gt("{command} has no keybinding yet.", { command: commandLabel(commandFilter, m) })
+                ? gt("{command} has no keybinding yet.", {
+                    command: commandLabel(commandFilter, m),
+                  })
                 : gt("No keybindings match your search.")}
             </div>
           </SettingsGroup>

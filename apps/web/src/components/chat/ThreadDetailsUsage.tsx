@@ -165,19 +165,20 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
 /** Fork: the right-click menu of the usage rows: open the Usage page, copy the shown values. */
 function useForkUsageMenu() {
   const navigate = useNavigate();
+  const gt = useGT();
   return (event: Parameters<typeof showObjectMenu>[0], usageText: string) =>
     showObjectMenu(event, [
       {
-        label: "Open usage",
+        label: gt("Open usage"),
         keybindingCommand: "usage.open",
         run: () => void navigate({ to: "/usage" }),
       },
       usageText === ""
         ? null
         : {
-            label: "Copy usage",
+            label: gt("Copy usage"),
             icon: "copy",
-            run: () => copyFromObjectMenu(usageText, "Copy usage"),
+            run: () => copyFromObjectMenu(usageText, gt("Copy usage")),
           },
     ]);
 }

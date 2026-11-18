@@ -8,7 +8,7 @@ import { Input } from "../ui/input";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 /** The roles offered as toggles. Other roles in settings.json stay as they are. */
@@ -32,6 +32,7 @@ const parseLogins = (text: string) => [
 
 /** Fork: the three rows of `pullRequestWatchRemarkFilter`. */
 export function PullRequestWatchSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const { targets } = useSettingsScope();
@@ -64,7 +65,7 @@ export function PullRequestWatchSettingsRows() {
         resetAction={
           rolesMixed || filter.authorAssociations.length > 0 ? (
             <SettingResetButton
-              label="roles that wake agents"
+              ariaLabel="Reset roles that wake agents to default"
               onClick={() =>
                 updateSettings({
                   pullRequestWatchRemarkFilter: { authorAssociations: [] },
@@ -109,7 +110,7 @@ export function PullRequestWatchSettingsRows() {
         resetAction={
           loginsMixed || filter.authorLogins.length > 0 ? (
             <SettingResetButton
-              label="logins that wake agents"
+              ariaLabel="Reset logins that wake agents to default"
               onClick={() =>
                 updateSettings({
                   pullRequestWatchRemarkFilter: { authorLogins: [] },
@@ -149,7 +150,7 @@ export function PullRequestWatchSettingsRows() {
         resetAction={
           markerMixed || filter.agentMarker !== "" ? (
             <SettingResetButton
-              label="agent remark marker"
+              ariaLabel="Reset agent remark marker to default"
               onClick={() =>
                 updateSettings({
                   pullRequestWatchRemarkFilter: { agentMarker: "" },

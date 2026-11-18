@@ -3,13 +3,14 @@ import { type ClientSettings, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectButtons = (settings: ClientSettings) => settings.backForwardButtons;
 const selectRemember = (settings: ClientSettings) => settings.rememberBackForwardHistory;
 
 /** Fork: `backForwardButtons`, back and forward buttons in the title bar. */
 export function BackForwardButtonsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectButtons);
   return (
     <SettingsRow
@@ -18,7 +19,7 @@ export function BackForwardButtonsSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.backForwardButtons ? (
           <SettingResetButton
-            label="back and forward buttons"
+            ariaLabel="Reset back and forward buttons to default"
             onClick={() =>
               void updateClientSettings({
                 backForwardButtons: DEFAULT_CLIENT_SETTINGS.backForwardButtons,
@@ -42,6 +43,7 @@ export function BackForwardButtonsSettingsRow() {
 
 /** Fork: `rememberBackForwardHistory`, the desktop app keeps its back history after a restart. */
 export function RememberBackForwardHistorySettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectRemember);
   return (
     <SettingsRow
@@ -50,7 +52,7 @@ export function RememberBackForwardHistorySettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.rememberBackForwardHistory ? (
           <SettingResetButton
-            label="back and forward history"
+            ariaLabel="Reset back and forward history to default"
             onClick={() =>
               void updateClientSettings({
                 rememberBackForwardHistory: DEFAULT_CLIENT_SETTINGS.rememberBackForwardHistory,

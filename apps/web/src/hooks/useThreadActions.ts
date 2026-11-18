@@ -91,7 +91,7 @@ export function refuseBlockedArchive(thread: EnvironmentThreadShell): boolean {
   if (block === null) return false;
   toastManager.add({
     type: "warning",
-    title: "Cannot archive this thread now",
+    title: m(msg("Cannot archive this thread now")),
     description: m(THREAD_ARCHIVE_BLOCK_REASON[block].message),
   });
   return true;

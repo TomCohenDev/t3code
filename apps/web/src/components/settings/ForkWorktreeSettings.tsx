@@ -3,7 +3,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { Input } from "../ui/input";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -11,6 +11,7 @@ import {
 } from "./useScopedSettings";
 
 export function RestoreWorktreesSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const update = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["restoreWorktreesOnResume"]);
@@ -23,7 +24,7 @@ export function RestoreWorktreesSettingsRow() {
         mixed ||
         settings.restoreWorktreesOnResume !== DEFAULT_SERVER_SETTINGS.restoreWorktreesOnResume ? (
           <SettingResetButton
-            label="restore worktrees on resume"
+            ariaLabel="Reset restore worktrees on resume to default"
             onClick={() =>
               update({ restoreWorktreesOnResume: DEFAULT_SERVER_SETTINGS.restoreWorktreesOnResume })
             }
@@ -46,6 +47,7 @@ export function RestoreWorktreesSettingsRow() {
 const ARTIFACTS_DEFAULT_DAYS = 14;
 
 export function WorktreeArtifactSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const update = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["worktreeArtifactsAfterDays"]);
@@ -58,7 +60,7 @@ export function WorktreeArtifactSettingsRows() {
       resetAction={
         mixed || days !== DEFAULT_SERVER_SETTINGS.worktreeArtifactsAfterDays ? (
           <SettingResetButton
-            label="evict worktree artifacts"
+            ariaLabel="Reset evict worktree artifacts to default"
             onClick={() =>
               update({
                 worktreeArtifactsAfterDays: DEFAULT_SERVER_SETTINGS.worktreeArtifactsAfterDays,

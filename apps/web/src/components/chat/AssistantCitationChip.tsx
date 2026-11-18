@@ -5,7 +5,7 @@ import {
   serializeAssistantCitation,
 } from "@t3tools/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useGT } from "gt-react";
+import { msg, useGT } from "gt-react";
 import { PencilIcon, QuoteIcon } from "lucide-react";
 import {
   useEffect,
@@ -23,6 +23,7 @@ import {
   assistantCitationNavigation,
   assistantCitationRoute,
 } from "../../lib/assistantCitationNavigation";
+import { m } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { useQuietThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
@@ -56,9 +57,9 @@ function useCitationSource(citation: AssistantCitation) {
 
 // Fork: right-click menu entry on the quote card and the composer chip.
 const copyQuoteMenuItem = (citation: AssistantCitation) => ({
-  label: "Copy quote",
+  label: m(msg("Copy quote")),
   icon: "copy",
-  run: () => copyFromObjectMenu(citation.text, "Copy quote"),
+  run: () => copyFromObjectMenu(citation.text, m(msg("Copy quote"))),
 });
 
 const flat = (text: string) => text.replace(/\s+/g, " ");
@@ -88,6 +89,7 @@ function ResponseCard({
   leading: boolean;
   trailing: boolean;
 }) {
+  const gt = useGT();
   const { linkProps, goToSource } = useCitationSource(citation);
   return (
     // One copy boundary for the card and its comment, so a copied card carries the comment once.
@@ -104,7 +106,7 @@ function ResponseCard({
         aria-label={label}
         onContextMenu={(event) =>
           showObjectMenu(event, [
-            { label: "Go to source", run: goToSource },
+            { label: gt("Go to source"), run: goToSource },
             copyQuoteMenuItem(citation),
           ])
         }
@@ -279,10 +281,10 @@ export function AssistantCitationChip({
       contentEditable={false}
       onContextMenu={(event) =>
         showObjectMenu(event, [
-          { label: "Go to source", run: goToSource },
+          { label: gt("Go to source"), run: goToSource },
           commentEditor
             ? {
-                label: citation.comment ? "Edit note" : "Add note",
+                label: citation.comment ? gt("Edit note") : gt("Add note"),
                 run: () => commentTriggerRef.current?.click(),
               }
             : null,

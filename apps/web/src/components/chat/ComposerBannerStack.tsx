@@ -184,7 +184,7 @@ function NoticeCard({
       {...objectMenuProps([
         typeof item.title === "string"
           ? {
-              label: "Copy text",
+              label: gt("Copy text"),
               value: [item.title, typeof item.description === "string" ? item.description : ""]
                 .filter(Boolean)
                 .join(" · "),

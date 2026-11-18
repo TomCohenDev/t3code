@@ -752,7 +752,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         {regularImages.map((image, index) => (
           <div
             key={image.id}
-            {...objectMenuProps([{ label: "Copy name", value: image.name }])}
+            {...objectMenuProps([{ label: gt("Copy name"), value: image.name }])}
             {...objectMenuActionsProps}
             className={cn(
               "bg-background/70",
@@ -1058,7 +1058,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     return (
                       <div
                         key={file.id}
-                        {...objectMenuProps([{ label: "Copy name", value: file.name }])}
+                        {...objectMenuProps([{ label: gt("Copy name"), value: file.name }])}
                         {...objectMenuActionsProps}
                         className="flex min-w-0 items-center gap-1"
                       >

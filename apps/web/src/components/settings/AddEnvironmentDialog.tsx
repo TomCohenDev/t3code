@@ -253,7 +253,7 @@ export function AddEnvironmentDialog({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not add backend",
+          title: gt("Could not add backend"),
           description: requestHeaders.message,
         }),
       );

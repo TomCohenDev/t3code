@@ -3,12 +3,13 @@ import { type ClientSettings, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectEnabled = (settings: ClientSettings) => settings.pullRequestFilters;
 
 /** Fork: `pullRequestFilters`, the repository owner filter and the active filter chips. */
 export function PullRequestFiltersSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectEnabled);
   return (
     <SettingsRow
@@ -17,7 +18,7 @@ export function PullRequestFiltersSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.pullRequestFilters ? (
           <SettingResetButton
-            label="pull request filters"
+            ariaLabel="Reset pull request filters to default"
             onClick={() =>
               void updateClientSettings({
                 pullRequestFilters: DEFAULT_CLIENT_SETTINGS.pullRequestFilters,

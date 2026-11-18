@@ -1559,7 +1559,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:open-machines",
       searchTerms: ["show machines", "kitshn", "links", "machine map"],
-      title: "Show machines",
+      title: gt("Show machines"),
       icon: <NetworkIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         useRightPanelStore
@@ -3080,7 +3080,7 @@ function OpenCommandPaletteDialog(props: {
         ariaLabel={browseSubmitLabel}
         tooltip={
           isCloneDestinationStep && !canCloneProject ? (
-            "This connection needs permission to write source control and add projects."
+            gt("This connection needs permission to write source control and add projects.")
           ) : canCreateProject ? (
             <>
               {submitActionLabel}
@@ -3092,7 +3092,7 @@ function OpenCommandPaletteDialog(props: {
               ) : null}
             </>
           ) : (
-            "This connection cannot add projects."
+            gt("This connection cannot add projects.")
           )
         }
         disabled={

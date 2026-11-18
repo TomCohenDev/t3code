@@ -390,7 +390,7 @@ export function formatElapsedDurationLabel(
   return daysLabel(days, resolve);
 }
 
-function formatRelativeTimeUntil(isoDate: string): RelativeTimeParts | null {
+function formatRelativeTimeUntil(isoDate: string): Omit<RelativeTimeParts, "label"> | null {
   const date = parseTimestampDate(isoDate);
   if (!date) return null;
   const diffMs = date.getTime() - Date.now();

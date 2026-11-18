@@ -8,13 +8,14 @@ import { useClientSettings, updateClientSettings } from "../../hooks/useSettings
 import { useSelectedCircleSettings, useWriteSelectedCircle } from "../../machineMap/circleSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectEnabled = (settings: ClientSettings) => settings.sidebarTabsEnabled;
 const selectSingleThreadOpens = (settings: ClientSettings) => settings.sidebarTabSingleThreadOpens;
 
 /** Fork: `sidebarTabsEnabled` and `sidebarTabSingleThreadOpens`, sidebar tabs. */
 export function SidebarTabsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   // Fork: with a circle picked in the person picker, the row shows and sets that circle's values.
   const circleValues = useSelectedCircleSettings();
   const writeCircle = useWriteSelectedCircle();
@@ -32,7 +33,7 @@ export function SidebarTabsSettingsRow() {
         resetAction={
           enabled !== DEFAULT_CLIENT_SETTINGS.sidebarTabsEnabled ? (
             <SettingResetButton
-              label="sidebar tabs"
+              ariaLabel="Reset sidebar tabs to default"
               onClick={() =>
                 update({
                   sidebarTabsEnabled: DEFAULT_CLIENT_SETTINGS.sidebarTabsEnabled,
@@ -56,7 +57,7 @@ export function SidebarTabsSettingsRow() {
           resetAction={
             singleThreadOpens !== DEFAULT_CLIENT_SETTINGS.sidebarTabSingleThreadOpens ? (
               <SettingResetButton
-                label="single-thread tabs"
+                ariaLabel="Reset single-thread tabs to default"
                 onClick={() =>
                   update({
                     sidebarTabSingleThreadOpens:

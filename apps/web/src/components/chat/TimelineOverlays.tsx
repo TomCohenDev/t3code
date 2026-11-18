@@ -1,4 +1,4 @@
-import { T } from "gt-react";
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
 
 import { ShortcutTooltip } from "../focusLevels/ShortcutHint";
@@ -30,6 +30,7 @@ export function ScrollToEndButton(props: {
   readonly summary: string | null;
   readonly onScrollToEnd: () => void;
 }) {
+  const gt = useGT();
   return (
     <div
       className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
@@ -37,7 +38,7 @@ export function ScrollToEndButton(props: {
     >
       <ShortcutTooltip
         command="timeline.jumpToLatest"
-        label="Scroll to end"
+        label={gt("Scroll to end")}
         side="top"
         render={
           <Button

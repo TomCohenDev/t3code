@@ -1570,7 +1570,7 @@ function TerminalSidebarGroup({
                   onClick={() => onCloseTerminal(terminalId)}
                   tooltip={
                     <>
-                      Close {terminalLabel}
+                      {gt("Close {terminal}", { terminal: terminalLabel })}
                       {isActive ? (
                         <ShortcutHint command="terminal.close" context={TERMINAL_CONTEXT} />
                       ) : null}
@@ -1949,7 +1949,7 @@ export default function ThreadTerminalDrawer({
             onClick={onNewTerminalAction}
             disabled={!canOperateTerminal}
           >
-            New Terminal
+            <T>New Terminal</T>
             <ShortcutHint command="terminal.new" context={TERMINAL_CONTEXT} />
           </Button>
         </div>
@@ -1984,7 +1984,7 @@ export default function ThreadTerminalDrawer({
               onClick={onSplitTerminalAction}
               label={splitTerminalActionLabel}
               tooltipLabel={
-                hasReachedSplitLimit ? splitTerminalActionLabel : "Split Terminal Horizontally"
+                hasReachedSplitLimit ? splitTerminalActionLabel : gt("Split Terminal Horizontally")
               }
               shortcutCommand={hasReachedSplitLimit ? null : "terminal.split"}
             >
@@ -2003,7 +2003,7 @@ export default function ThreadTerminalDrawer({
               tooltipLabel={
                 hasReachedSplitLimit
                   ? splitTerminalVerticalActionLabel
-                  : "Split Terminal Vertically"
+                  : gt("Split Terminal Vertically")
               }
               shortcutCommand={hasReachedSplitLimit ? null : "terminal.splitVertical"}
             >
@@ -2015,7 +2015,7 @@ export default function ThreadTerminalDrawer({
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={onNewTerminalAction}
               label={newTerminalActionLabel}
-              tooltipLabel="New Terminal"
+              tooltipLabel={gt("New Terminal")}
               shortcutCommand="terminal.new"
             >
               <Plus className="size-3.25" />
@@ -2027,8 +2027,8 @@ export default function ThreadTerminalDrawer({
                   disabled={!canOperateTerminal}
                   className="p-1 text-foreground/90 transition-colors hover:bg-accent"
                   onClick={() => onMoveTerminalToThread(resolvedActiveTerminalId)}
-                  label="Move to a terminal thread"
-                  tooltipLabel="Move to a terminal thread: the shell goes on there"
+                  label={gt("Move to a terminal thread")}
+                  tooltipLabel={gt("Move to a terminal thread: the shell goes on there")}
                 >
                   <SquareArrowOutUpRight className="size-3.25" />
                 </TerminalActionButton>
@@ -2040,7 +2040,7 @@ export default function ThreadTerminalDrawer({
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
-              tooltipLabel="Close Terminal"
+              tooltipLabel={gt("Close Terminal")}
               shortcutCommand="terminal.close"
             >
               <Trash2 className="size-3.25" />
@@ -2091,7 +2091,7 @@ export default function ThreadTerminalDrawer({
                     tooltipLabel={
                       hasReachedSplitLimit
                         ? splitTerminalActionLabel
-                        : "Split Terminal Horizontally"
+                        : gt("Split Terminal Horizontally")
                     }
                     shortcutCommand={hasReachedSplitLimit ? null : "terminal.split"}
                   >
@@ -2109,7 +2109,7 @@ export default function ThreadTerminalDrawer({
                     tooltipLabel={
                       hasReachedSplitLimit
                         ? splitTerminalVerticalActionLabel
-                        : "Split Terminal Vertically"
+                        : gt("Split Terminal Vertically")
                     }
                     shortcutCommand={hasReachedSplitLimit ? null : "terminal.splitVertical"}
                   >
@@ -2120,7 +2120,7 @@ export default function ThreadTerminalDrawer({
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={onNewTerminalAction}
                     label={newTerminalActionLabel}
-                    tooltipLabel="New Terminal"
+                    tooltipLabel={gt("New Terminal")}
                     shortcutCommand="terminal.new"
                   >
                     <Plus className="size-3.25" />
@@ -2130,8 +2130,8 @@ export default function ThreadTerminalDrawer({
                       disabled={!canOperateTerminal}
                       className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                       onClick={() => onMoveTerminalToThread(resolvedActiveTerminalId)}
-                      label="Move to a terminal thread"
-                      tooltipLabel="Move to a terminal thread: the shell goes on there"
+                      label={gt("Move to a terminal thread")}
+                      tooltipLabel={gt("Move to a terminal thread: the shell goes on there")}
                     >
                       <SquareArrowOutUpRight className="size-3.25" />
                     </TerminalActionButton>
@@ -2141,7 +2141,7 @@ export default function ThreadTerminalDrawer({
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
                     label={closeTerminalActionLabel}
-                    tooltipLabel="Close Terminal"
+                    tooltipLabel={gt("Close Terminal")}
                     shortcutCommand="terminal.close"
                   >
                     <Trash2 className="size-3.25" />

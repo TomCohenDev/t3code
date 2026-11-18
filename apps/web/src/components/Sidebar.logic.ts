@@ -1198,7 +1198,7 @@ export function resolveThreadStatusPill(input: {
   const terminalLabel = terminalThreadStatusLabel(thread.terminal, thread.lastVisitedAt);
   if (terminalLabel === "Awaiting Input") {
     return {
-      label: "Awaiting Input",
+      label: msg("Awaiting Input"),
       colorClass: "text-indigo-600 dark:text-indigo-300/90",
       dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
       pulse: false,
@@ -1208,7 +1208,7 @@ export function resolveThreadStatusPill(input: {
   // Fork: a shell that failed to start, or a program that failed, shows the Failed of a run.
   if (terminalLabel === "Error") {
     return {
-      label: "Failed",
+      label: msg("Failed", { $context: "thread status" }),
       colorClass: "text-red-600 dark:text-red-300/90",
       dotClass: "bg-red-500 dark:bg-red-300/90",
       pulse: false,

@@ -169,7 +169,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   };
 
   const planEntries = [
-    { label: isCopied ? gt("Copied!") : gt("Copy to clipboard"), icon: "copy", run: handleCopyPlan },
+    {
+      label: isCopied ? gt("Copied!") : gt("Copy to clipboard"),
+      icon: "copy",
+      run: handleCopyPlan,
+    },
     { label: gt("Download as markdown"), run: handleDownload },
     {
       label: gt("Save to workspace"),

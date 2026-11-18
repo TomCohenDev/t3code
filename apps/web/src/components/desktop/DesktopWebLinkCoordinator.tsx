@@ -174,14 +174,18 @@ export function DesktopWebLinkCoordinator() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not join kitshn",
+          title: gt("Could not join kitshn"),
           description: result.message,
         }),
       );
       return;
     }
     pairedUrlsRef.current.add(inviteUrl);
-    toastManager.add({ type: "success", title: "Joined kitshn", description: result.message });
+    toastManager.add({
+      type: "success",
+      title: gt("Joined kitshn"),
+      description: result.message,
+    });
   };
 
   const startThread = async (url: string): Promise<ScopedThreadRef | null> => {
@@ -243,7 +247,7 @@ export function DesktopWebLinkCoordinator() {
   // Revisit if users report it; the link would then wait for the environment catalog.
   const openThreadLink = async (url: string, address: ThreadAddress) => {
     if (!knownEnvironmentIds.includes(address.environmentId)) {
-      reportFailure(url, "Thread on another machine. Connect to its environment to open it.");
+      reportFailure(url, gt("Thread on another machine. Connect to its environment to open it."));
       return;
     }
     await router.navigate({

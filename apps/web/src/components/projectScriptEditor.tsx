@@ -369,7 +369,12 @@ function ProjectScriptEditorForm({
     }
     const trimmedName = name.trim();
     if (global && globalShortcut.trim() && !isElectronAccelerator(globalShortcut.trim())) {
-      setValidationError("Use an Electron accelerator, for example F18 or CommandOrControl+Alt+N.");
+      setValidationError(
+        gt("Use an Electron accelerator, for example {first} or {second}.", {
+          first: "F18",
+          second: "CommandOrControl+Alt+N",
+        }),
+      );
       return;
     }
     const trimmedCommand = command.trim();
@@ -456,7 +461,9 @@ function ProjectScriptEditorForm({
             ? gt(
                 "Global scripts run in the current thread's worktree or project folder, in every project.",
               )
-            : gt("Actions are project-scoped commands you can run from the top bar or keybindings.")}
+            : gt(
+                "Actions are project-scoped commands you can run from the top bar or keybindings.",
+              )}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -522,6 +529,7 @@ function ProjectScriptEditorForm({
                 </Label>
                 <Input
                   id="script-global-shortcut"
+                  // oxlint-disable-next-line t3code/no-untranslated-copy -- An Electron accelerator stays English.
                   placeholder="CommandOrControl+Alt+N"
                   value={globalShortcut}
                   onChange={(event) => setGlobalShortcut(event.target.value)}
@@ -654,7 +662,9 @@ function ProjectScriptEditorForm({
               />
             </label>
             <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
-              <span>Run in background (do not open the terminal)</span>
+              <span>
+                <T>Run in background (do not open the terminal)</T>
+              </span>
               <Switch
                 checked={runInBackground}
                 onCheckedChange={(checked) => setRunInBackground(Boolean(checked))}

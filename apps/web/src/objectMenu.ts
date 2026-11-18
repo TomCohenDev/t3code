@@ -2,7 +2,7 @@ import type { ContextMenuItem, KeybindingCommand } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
 import { requestForkContextMenu } from "./forkContextMenu";
-import { writeTextToClipboard } from "./hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "./hooks/useCopyToClipboard";
 import { bindableElement, selectionInside } from "./keybindingsMenu";
 
 /**
@@ -214,14 +214,16 @@ export function showObjectMenu(
 
 /** Copies `value` for an object menu entry named `label`, and reports a failure. */
 export function copyFromObjectMenu(value: string, label: string): void {
-  writeTextToClipboard(value, label.toLowerCase()).catch(async (error: unknown) => {
-    // The toast module imports app stores; low in the import graph, a static import risks a
-    // cycle at start, as `connectionAtomRuntime` showed.
-    const { toastManager } = await import("./components/ui/toast");
-    toastManager.add({
-      type: "error",
-      title: `Failed to ${label.toLowerCase()}`,
-      description: error instanceof Error ? error.message : "An error occurred.",
-    });
-  });
+  writeTextToClipboard(value, namedClipboardTarget(label.toLowerCase())).catch(
+    async (error: unknown) => {
+      // The toast module imports app stores; low in the import graph, a static import risks a
+      // cycle at start, as `connectionAtomRuntime` showed.
+      const { toastManager } = await import("./components/ui/toast");
+      toastManager.add({
+        type: "error",
+        title: `Failed to ${label.toLowerCase()}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    },
+  );
 }

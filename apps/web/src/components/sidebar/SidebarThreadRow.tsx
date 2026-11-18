@@ -65,7 +65,7 @@ import {
 } from "react";
 import { msg, T, useGT, useMessages, Var } from "gt-react";
 
-import type { MessageResolver } from "../../i18n/messages";
+import { m, type MessageResolver } from "../../i18n/messages";
 
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
@@ -141,7 +141,7 @@ import {
 } from "@t3tools/client-runtime/state/fork-terminal-threads";
 import { Button, InlineButton } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
+import { namedClipboardTarget, writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuItemDetail, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { PreviewCard, PreviewCardTrigger } from "../ui/preview-card";
@@ -297,13 +297,14 @@ function HoverCardRow(props: {
 }
 
 function copyBranchName(branch: string) {
-  writeTextToClipboard(branch, "branch name").then(
-    () => toastManager.add({ type: "success", title: "Branch copied", description: branch }),
+  writeTextToClipboard(branch, namedClipboardTarget("branch name")).then(
+    () =>
+      toastManager.add({ type: "success", title: m(msg("Branch copied")), description: branch }),
     (error: unknown) =>
       toastManager.add({
         type: "error",
-        title: "Failed to copy branch",
-        description: error instanceof Error ? error.message : "An error occurred.",
+        title: m(msg("Failed to copy branch")),
+        description: error instanceof Error ? error.message : m(msg("An error occurred.")),
       }),
   );
 }
@@ -371,7 +372,7 @@ function SidebarThreadTooltip({
       >
         {projectDisplayName ? (
           <HoverCardRow
-            label="Show only this project"
+            label={gt("Show only this project")}
             onClick={onShowOnly && canShowOnlyProject ? () => onShowOnly("project") : undefined}
           >
             {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
@@ -380,7 +381,7 @@ function SidebarThreadTooltip({
         ) : null}
         {environmentLabel ? (
           <HoverCardRow
-            label="Show only this machine"
+            label={gt("Show only this machine")}
             onClick={onShowOnly ? () => onShowOnly("machine") : undefined}
           >
             <EnvironmentMachineIcon
@@ -391,7 +392,10 @@ function SidebarThreadTooltip({
           </HoverCardRow>
         ) : null}
         {thread.branch ? (
-          <HoverCardRow label="Copy branch name" onClick={() => copyBranchName(thread.branch!)}>
+          <HoverCardRow
+            label={gt("Copy branch name")}
+            onClick={() => copyBranchName(thread.branch!)}
+          >
             <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
             <MiddleTruncate value={thread.branch} className="flex" />
           </HoverCardRow>
@@ -406,7 +410,7 @@ function SidebarThreadTooltip({
         ) : null}
         {driverKind ? (
           <HoverCardRow
-            label="Show only this model"
+            label={gt("Show only this model")}
             onClick={onShowOnly ? () => onShowOnly("model") : undefined}
           >
             <ProviderInstanceIcon

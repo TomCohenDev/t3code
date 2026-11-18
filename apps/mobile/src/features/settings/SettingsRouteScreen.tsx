@@ -297,19 +297,19 @@ function useSettingsIndexSections(): SettingsListSection[] {
     },
     // Fork: the fork settings pages.
     {
-      title: "Fork",
+      title: gt("Fork", { $context: "settings section for the fork of T3 Code" }),
       rows: [
         {
           id: "SettingsFork",
           icon: "arrow.branch",
-          label: "Fork settings",
+          label: gt("Fork settings"),
           target: "SettingsFork",
           disabled: noServerTargets,
         },
         {
           id: "SettingsAssistant",
           icon: "speaker.wave.2",
-          label: "Assistant",
+          label: gt("Assistant"),
           target: "SettingsAssistant",
         },
         ...(pinCount === 0
@@ -318,7 +318,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
               {
                 id: "SettingsForkPins",
                 icon: "pin",
-                label: "Pinned messages",
+                label: gt("Pinned messages"),
                 value: String(pinCount),
                 target: "SettingsForkPins",
               } satisfies SettingsListRow,

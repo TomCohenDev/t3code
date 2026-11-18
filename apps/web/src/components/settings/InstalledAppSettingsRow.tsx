@@ -4,12 +4,13 @@ import { isElectron } from "../../env";
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectInstalledAppEnabled = (settings: ClientSettings) => settings.installedAppEnabled;
 
 /** Fork setting: the service worker of the installed web app. The desktop app does not need it. */
 export function InstalledAppSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectInstalledAppEnabled);
   if (isElectron) return null;
 
@@ -20,7 +21,7 @@ export function InstalledAppSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.installedAppEnabled ? (
           <SettingResetButton
-            label="installed app"
+            ariaLabel="Reset installed app to default"
             onClick={() =>
               void updateClientSettings({
                 installedAppEnabled: DEFAULT_CLIENT_SETTINGS.installedAppEnabled,

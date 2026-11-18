@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -11,6 +11,7 @@ import {
 
 /** Fork: `previewLocalServerGroups`, the groups of the browser "Local servers" list. */
 export function PreviewLocalServerGroupsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["previewLocalServerGroups"]);
@@ -25,7 +26,7 @@ export function PreviewLocalServerGroupsSettingsRow() {
         mixed ||
         settings.previewLocalServerGroups !== DEFAULT_SERVER_SETTINGS.previewLocalServerGroups ? (
           <SettingResetButton
-            label="all local servers"
+            ariaLabel="Reset all local servers to default"
             onClick={() =>
               updateSettings({
                 previewLocalServerGroups: DEFAULT_SERVER_SETTINGS.previewLocalServerGroups,

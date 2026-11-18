@@ -297,7 +297,7 @@ export function QueuedRunsControl({
       {workflow?.isHeld && queued.length > 0 ? (
         <div className="flex min-h-5 items-center gap-1.5 px-1 text-xs text-muted-foreground [&_svg]:size-3.5">
           <PauseIcon aria-hidden />
-          Queue paused
+          <T>Queue paused</T>
           <Tooltip>
             <TooltipTrigger render={<span className="flex shrink-0" />}>
               <Button
@@ -306,15 +306,15 @@ export function QueuedRunsControl({
                 disabled={resuming || busyRunId !== null || resumeBlockedByEdit}
                 onClick={() => void resume()}
               >
-                Resume queue
+                <T>Resume queue</T>
               </Button>
             </TooltipTrigger>
             <TooltipPopup>
               {resumeBlockedByEdit
-                ? "Save or cancel the queued message edit first"
+                ? gt("Save or cancel the queued message edit first")
                 : workflow.heldByUsageLimit
-                  ? "Continue the limited thread, then the queue"
-                  : "Send the next queued message"}
+                  ? gt("Continue the limited thread, then the queue")
+                  : gt("Send the next queued message")}
             </TooltipPopup>
           </Tooltip>
         </div>
@@ -337,7 +337,7 @@ export function QueuedRunsControl({
               aria-posinset={position + 1}
               aria-setsize={items.length}
               aria-current={isEditing ? "true" : undefined}
-              {...objectMenuProps([{ label: "Copy text", value: previewText }])}
+              {...objectMenuProps([{ label: gt("Copy text"), value: previewText }])}
               {...objectMenuActionsProps}
               className="group/queued flex w-full flex-col items-end gap-1"
             >

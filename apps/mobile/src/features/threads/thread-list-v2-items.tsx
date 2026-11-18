@@ -250,6 +250,7 @@ function ThreadListV2Section(props: {
     readonly accessibilityHint: string;
   };
 }) {
+  const gt = useGT();
   const snoozed = props.tone === "snoozed";
   const sidebarPane = props.pane === "sidebar";
   const className = cn(
@@ -301,7 +302,7 @@ function ThreadListV2Section(props: {
           ? null
           : {
               id: "toggle",
-              title: props.disclosure.expanded ? "Hide threads" : "Show threads",
+              title: props.disclosure.expanded ? gt("Hide threads") : gt("Show threads"),
               image: props.disclosure.expanded ? "chevron.up" : "chevron.down",
               run: props.disclosure.onToggle,
             },

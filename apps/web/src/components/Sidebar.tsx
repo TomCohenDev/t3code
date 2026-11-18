@@ -859,7 +859,6 @@ function isOptimisticDropReleased(input: {
 
 // Build maps in a hook so the compiler can prove they are frozen and cache them.
 function useSidebarLookups() {
-  const gt = useGT();
   const projects = useProjects();
   const environments = useEnvironmentIdentities();
   const serverConfigs = useServerConfigs();
@@ -3293,7 +3292,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ) : settledCount === 0 &&
                 (filters.listFilter.projectKeys !== null ||
                   filters.listFilter.filters.length > 0) ? (
-                "No threads match the filters"
+                gt("No threads match the filters")
               ) : scopedProjectGroups.length > 0 ? (
                 <>
                   <span>

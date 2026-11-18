@@ -129,7 +129,7 @@ function WorkflowMemberRow({
               canOpen ? (
                 <ThreadHoverCardActions>
                   <ThreadHoverCardAction onClick={() => onOpen(threadId)}>
-                    Open chat
+                    <T>Open chat</T>
                   </ThreadHoverCardAction>
                 </ThreadHoverCardActions>
               ) : undefined

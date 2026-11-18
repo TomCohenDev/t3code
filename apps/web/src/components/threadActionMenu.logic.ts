@@ -138,7 +138,10 @@ export const THREAD_ARCHIVE_BLOCK_REASON: Record<
   },
 };
 
-function forkArchiveThreadLabel(block: ThreadArchiveBlock | null, resolve: MessageResolver): string {
+function forkArchiveThreadLabel(
+  block: ThreadArchiveBlock | null,
+  resolve: MessageResolver,
+): string {
   return resolve(block === null ? msg("Archive thread") : THREAD_ARCHIVE_BLOCK_REASON[block].menu);
 }
 

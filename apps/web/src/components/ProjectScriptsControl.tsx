@@ -253,7 +253,9 @@ export default function ProjectScriptsControl({
         <>
           <MenuSeparator />
           <MenuGroup>
-            <MenuGroupLabel>Global scripts</MenuGroupLabel>
+            <MenuGroupLabel>
+              <T>Global scripts</T>
+            </MenuGroupLabel>
             {globalScripts.map((script) => (
               <MenuItem
                 density={presentation === "menu" ? "touch" : "default"}

@@ -779,8 +779,12 @@ export function HomeScreen(props: HomeScreenProps) {
       />
     ) : sidebarTabs ? (
       <EmptyState
-        title={`No threads in ${sidebarTabs.tabs.find((tab) => tab.id === sidebarTabs.listTabId)?.name ?? "this tab"}`}
-        detail="Choose another tab or create a new task."
+        title={gt("No threads in {tab}", {
+          tab:
+            sidebarTabs.tabs.find((tab) => tab.id === sidebarTabs.listTabId)?.name ??
+            gt("this tab"),
+        })}
+        detail={gt("Choose another tab or create a new task.")}
         variant={Platform.OS === "android" ? "plain" : undefined}
       />
     ) : (

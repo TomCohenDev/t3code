@@ -208,7 +208,7 @@ function WorkflowMemberRow(props: {
               threadId !== null ? (
                 <ThreadHoverCardActions>
                   <ThreadHoverCardAction onClick={() => props.onOpenThread(threadId)}>
-                    Open chat
+                    <T>Open chat</T>
                   </ThreadHoverCardAction>
                 </ThreadHoverCardActions>
               ) : undefined

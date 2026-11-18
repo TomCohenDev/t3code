@@ -208,6 +208,12 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsOpenSourceLicenses: msg("Open source licenses"),
   SettingsOpenSourceLicense: msg("License notice"),
   SettingsUsage: msg("Usage"),
+  // Fork: the fork settings pages.
+  SettingsFork: msg("Fork", { $context: "settings page for the fork of T3 Code" }),
+  SettingsForkPins: msg("Pinned messages"),
+  SettingsAssistant: msg("Assistant"),
+  SettingsAssistantProject: msg("Project", { $context: "settings page of one project" }),
+  SettingsSidebarTab: msg("Tab", { $context: "settings page of one sidebar tab" }),
   ComponentCatalog: msg("UI components"),
   NewTaskProject: msg("Choose project"),
   NewTaskEnvironment: msg("Environment"),
@@ -330,26 +336,26 @@ const SETTINGS_SCREENS = {
   SettingsFork: createNativeStackScreen({
     screen: SettingsForkRouteScreen,
     linking: "settings/fork",
-    options: settingsPage("Fork"),
+    options: settingsPage(),
   }),
   SettingsForkPins: createNativeStackScreen({
     screen: SettingsForkPinsRouteScreen,
     linking: "settings/fork/pins",
-    options: settingsPage("Pinned messages"),
+    options: settingsPage(),
   }),
   SettingsAssistant: createNativeStackScreen({
     screen: SettingsAssistantRouteScreen,
     linking: "settings/assistant",
-    options: settingsPage("Assistant"),
+    options: settingsPage(),
   }),
   SettingsAssistantProject: createNativeStackScreen({
     screen: SettingsAssistantProjectRouteScreen,
     linking: "settings/assistant/project",
-    options: settingsPage("Project"),
+    options: settingsPage(),
   }),
   SettingsSidebarTab: createNativeStackScreen({
     screen: SettingsSidebarTabRouteScreen,
-    options: settingsPage("Tab"),
+    options: settingsPage(),
   }),
   SettingsAppearance: createNativeStackScreen({
     screen: SettingsAppearanceRouteScreen,

@@ -184,21 +184,21 @@ export function PullRequestChecksRow(props: RowProps) {
                     url
                       ? {
                           id: "open",
-                          title: "Open check details",
+                          title: gt("Open check details"),
                           image: "arrow.up.right",
                           run: () => void Linking.openURL(url),
                         }
                       : null,
                     {
                       id: "copy-name",
-                      title: "Copy name",
+                      title: gt("Copy name"),
                       image: "doc.on.doc",
                       run: () => void tryCopyTextWithHaptic(check.name, { target: "check name" }),
                     },
                     url
                       ? {
                           id: "copy-link",
-                          title: "Copy link",
+                          title: gt("Copy link"),
                           image: "link",
                           run: () => void tryCopyTextWithHaptic(url, { target: "check link" }),
                         }
