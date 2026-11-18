@@ -622,6 +622,7 @@ it.effect("a paused one-time task run by hand before its time is kept", () =>
           }),
           NodeCrypto.layer,
           Scheduler.layer,
+          ServerSettings.layerTest(),
         ),
       ),
     );
