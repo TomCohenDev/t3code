@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
@@ -35,6 +36,7 @@ export const THREAD_FIND_BAR_RESERVED_HEIGHT = 36 + THREAD_DETAILS_CARD_GAP;
 
 export function ThreadFindBar(props: ThreadFindBarProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const gt = useGT();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses and selects the input DOM node when the bar opens or a find shortcut fires
   useEffect(() => {
@@ -53,8 +55,8 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
   if (hasQuery) {
     label = props.counting ? "1/…" : formatThreadFindCount(props.activeIndex, props.matchCount);
   }
-  if (props.status === "loading") label = "Searching…";
-  if (props.status === "error") label = "Search failed";
+  if (props.status === "loading") label = gt("Searching…");
+  if (props.status === "error") label = gt("Search failed");
   const [storedAnnouncement, setAnnouncement] = useState<ThreadFindAnnouncement | null>(null);
   const announcement = nextThreadFindAnnouncement(storedAnnouncement, {
     navigationId: props.navigationId,
@@ -88,7 +90,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
         size="lg"
         onContextMenu={(event) => event.stopPropagation()}
         role="search"
-        aria-label="Find in thread"
+        aria-label={gt("Find in thread")}
         aria-busy={props.status === "loading" || props.counting === true}
         className="w-full"
       >
@@ -97,8 +99,8 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
           type="search"
           size="sm"
           value={props.query}
-          aria-label="Find in thread"
-          placeholder="Find in thread"
+          aria-label={gt("Find in thread")}
+          placeholder={gt("Find in thread")}
           maxLength={200}
           spellCheck={false}
           autoComplete="off"
@@ -120,7 +122,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
           </span>
           {props.status === "error" ? (
             <Button size="xs" variant="ghost" onClick={props.onRetry}>
-              Retry
+              <T>Retry</T>
             </Button>
           ) : null}
           <Tooltip>
@@ -129,7 +131,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  aria-label="Previous match"
+                  aria-label={gt("Previous match")}
                   disabled={navigationDisabled}
                   onClick={props.onPrevious}
                 />
@@ -138,7 +140,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
               <ChevronUpIcon />
             </TooltipTrigger>
             <TooltipPopup>
-              Previous match <Kbd>⇧</Kbd>
+              {gt("Previous match")} <Kbd>⇧</Kbd>
               <Kbd>↵</Kbd>
             </TooltipPopup>
           </Tooltip>
@@ -148,7 +150,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  aria-label="Next match"
+                  aria-label={gt("Next match")}
                   disabled={navigationDisabled}
                   onClick={props.onNext}
                 />
@@ -157,7 +159,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
               <ChevronDownIcon />
             </TooltipTrigger>
             <TooltipPopup>
-              Next match <Kbd>↵</Kbd>
+              {gt("Next match")} <Kbd>↵</Kbd>
             </TooltipPopup>
           </Tooltip>
           <Tooltip>
@@ -166,7 +168,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  aria-label="Close find"
+                  aria-label={gt("Close find")}
                   onClick={props.onClose}
                 />
               }
@@ -174,7 +176,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
               <XIcon />
             </TooltipTrigger>
             <TooltipPopup>
-              Close <Kbd>Esc</Kbd>
+              {gt("Close", { $context: "verb, closes the find bar" })} <Kbd>Esc</Kbd>
             </TooltipPopup>
           </Tooltip>
         </InputGroupAddon>

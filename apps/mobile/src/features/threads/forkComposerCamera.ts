@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { MenuAction } from "@react-native-menu/menu";
+import { msg } from "gt-react-native";
 import { Atom } from "effect/reactivity";
 
 import { environmentServerConfigsAtom } from "../../state/server";
@@ -28,7 +29,7 @@ export function withTakePhoto(
   return actions.flatMap((action) => {
     if (action.id === "files" && !supportsFiles) return [];
     return action.id === "photos"
-      ? [action, { id: TAKE_PHOTO_ACTION_ID, title: "Take Photo", image: "camera" }]
+      ? [action, { id: TAKE_PHOTO_ACTION_ID, title: msg("Take Photo"), image: "camera" }]
       : [action];
   });
 }

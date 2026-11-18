@@ -35,8 +35,7 @@ import { filterSettingsSections } from "./settings-search";
 import { forkMobileMessagePins } from "./SettingsForkPinsRouteScreen";
 import { useServerConfigs } from "../../state/entities";
 import { usePaneRole } from "../../components/ui/Pane";
-import { useGT } from "gt-react-native";
-import { I18nProvider } from "../../i18n/I18nProvider";
+import { useGT, useMessages } from "gt-react-native";
 
 export function SettingsRouteScreen() {
   const list = useSettingsListPlacement();
@@ -49,9 +48,7 @@ export function WorkspaceSettingsList() {
   return (
     <SettingsSidebarContext value={list.sidebar ? { selected: list.selected } : null}>
       <View className="flex-1 bg-screen">
-        <I18nProvider>
-          <SettingsListContent />
-        </I18nProvider>
+        <SettingsListContent />
       </View>
     </SettingsSidebarContext>
   );
@@ -76,17 +73,6 @@ function SettingsListContent() {
 }
 
 export function SettingsListScreen(props: {
-  readonly sidebar: boolean;
-  readonly selected: string | null;
-}) {
-  return (
-    <I18nProvider>
-      <TranslatedSettingsListScreen {...props} />
-    </I18nProvider>
-  );
-}
-
-function TranslatedSettingsListScreen(props: {
   readonly sidebar: boolean;
   readonly selected: string | null;
 }) {
@@ -183,6 +169,7 @@ function environmentsRow(label: string, count: number): SettingsListRow {
 
 function SettingsList(props: { readonly connections: readonly SettingsListRow[] }) {
   const gt = useGT();
+  const m = useMessages();
   // UIKit's scroll-edge material takes the scroll view's own color; like the chat list, match
   // the sidebar's surface so the bar doesn't darken over content at rest.
   // Grouped cards only lift off the screen surface; the drawer is as dark as they are.
@@ -201,6 +188,7 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
       ...indexSections,
     ],
     query,
+    m,
   );
 
   return (
@@ -349,6 +337,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
 }
 
 function useOverflowRows(): SettingsListRow[] {
+  const m = useMessages();
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const { layout } = useAdaptiveWorkspaceLayout();
@@ -358,7 +347,7 @@ function useOverflowRows(): SettingsListRow[] {
   return tabs.map((tab) => ({
     id: tab,
     icon: NAVIGATION_TAB_ICONS[tab],
-    label: WORKSPACE_TAB_LABELS[tab],
+    label: m(WORKSPACE_TAB_LABELS[tab]),
     onPress: () => selectTab(tab),
   }));
 }

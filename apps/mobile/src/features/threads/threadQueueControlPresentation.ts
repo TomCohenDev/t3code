@@ -1,11 +1,12 @@
 import type { EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
+import { msg } from "gt-react-native";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import {
   isAttachmentOnlyBootstrapPrompt,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 
-export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = "Remove queued message";
+export const REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL = msg("Remove queued message");
 
 export interface ThreadQueueRowControls {
   readonly canDismiss: boolean;
@@ -14,7 +15,8 @@ export interface ThreadQueueRowControls {
   readonly dismissAccessibilityLabel: string;
   readonly displayText: string;
   readonly isEditing: boolean;
-  readonly sendLabel: "Send now" | "Skip compaction and send";
+  /** A `msg()` string; display sites resolve it. */
+  readonly sendLabel: string;
 }
 
 export function resolveThreadQueueRowControls(input: {
@@ -48,7 +50,8 @@ export function resolveThreadQueueRowControls(input: {
           replaceComposerContextReferences(input.text, (reference) => reference.label),
         ).trim(),
     isEditing,
-    sendLabel: input.promoteSkipsCompaction === true ? "Skip compaction and send" : "Send now",
+    sendLabel:
+      input.promoteSkipsCompaction === true ? msg("Skip compaction and send") : msg("Send now"),
   };
 }
 
