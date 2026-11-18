@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
 
 import { ShortcutTooltip } from "../focusLevels/ShortcutHint";
@@ -14,7 +15,7 @@ export function WorkspaceFileDropOverlay() {
         className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
       >
         <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-        Drop files to attach
+        <T>Drop files to attach</T>
       </div>
     </div>
   );
@@ -29,6 +30,7 @@ export function ScrollToEndButton(props: {
   readonly summary: string | null;
   readonly onScrollToEnd: () => void;
 }) {
+  const gt = useGT();
   return (
     <div
       className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
@@ -36,7 +38,7 @@ export function ScrollToEndButton(props: {
     >
       <ShortcutTooltip
         command="timeline.jumpToLatest"
-        label="Scroll to end"
+        label={gt("Scroll to end")}
         side="top"
         render={
           <Button
@@ -50,7 +52,7 @@ export function ScrollToEndButton(props: {
         }
       >
         <ChevronDownIcon className="size-3.5" />
-        Scroll to end
+        <T>Scroll to end</T>
         {props.summary === null ? null : (
           <span className="text-muted-foreground">
             <span aria-hidden>· </span>

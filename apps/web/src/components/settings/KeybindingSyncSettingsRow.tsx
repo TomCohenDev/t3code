@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -11,6 +11,7 @@ import {
 
 /** Fork: `keybindingSync`, the keybindings of this machine sync through kitshn. */
 export function KeybindingSyncSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["keybindingSync"]);
@@ -24,7 +25,7 @@ export function KeybindingSyncSettingsRow() {
       resetAction={
         mixed || settings.keybindingSync !== DEFAULT_SERVER_SETTINGS.keybindingSync ? (
           <SettingResetButton
-            label="keybinding sync"
+            ariaLabel="Reset keybinding sync to default"
             onClick={() =>
               updateSettings({ keybindingSync: DEFAULT_SERVER_SETTINGS.keybindingSync })
             }

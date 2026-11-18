@@ -8,11 +8,12 @@ import {
 
 import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
 /** Fork: `terminalHistoryLines` and `terminalHistoryMegabytes`, the output kept for each terminal. */
 export function TerminalHistorySettingsRows() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -25,7 +26,7 @@ export function TerminalHistorySettingsRows() {
         settings.terminalHistoryLines !== DEFAULT_SERVER_SETTINGS.terminalHistoryLines ||
         settings.terminalHistoryMegabytes !== DEFAULT_SERVER_SETTINGS.terminalHistoryMegabytes ? (
           <SettingResetButton
-            label="terminal history"
+            ariaLabel="Reset terminal history to default"
             onClick={() =>
               updateSettings({
                 terminalHistoryLines: DEFAULT_SERVER_SETTINGS.terminalHistoryLines,

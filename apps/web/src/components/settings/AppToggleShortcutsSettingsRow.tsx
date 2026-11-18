@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useClientSettings, updateClientSettings } from "../../hooks/useSettings";
 import { Input } from "../ui/input";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectAppToggleShortcuts = (settings: ClientSettings) => settings.appToggleShortcuts;
 
@@ -21,6 +21,7 @@ const parseShortcuts = (text: string) => [
 
 /** Fork, desktop only: `appToggleShortcuts`, global keys that show and hide the app. */
 export function AppToggleShortcutsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const shortcuts = useClientSettings(selectAppToggleShortcuts);
   const saved = shortcuts.join(", ");
   // The field keeps what the user typed until it saves, so a rejected key stays visible.
@@ -52,7 +53,7 @@ export function AppToggleShortcutsSettingsRow() {
       resetAction={
         shortcuts.length > 0 ? (
           <SettingResetButton
-            label="app toggle shortcuts"
+            ariaLabel="Reset app toggle shortcuts to default"
             onClick={() => {
               setDraft(null);
               setInvalid([]);

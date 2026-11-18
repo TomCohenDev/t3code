@@ -1,4 +1,5 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import { useGT } from "gt-react";
 
 import { cn } from "~/lib/utils";
 import { objectMenuProps } from "~/objectMenu";
@@ -33,6 +34,7 @@ export function ConnectionStatusDot({
   dotClassName,
   pingClassName,
 }: ConnectionStatusDotProps) {
+  const gt = useGT();
   const dotContent = (
     <>
       {pingClassName ? (
@@ -58,7 +60,7 @@ export function ConnectionStatusDot({
   const dot = (
     <button
       type="button"
-      {...objectMenuProps([{ label: "Copy status", value: tooltipText }])}
+      {...objectMenuProps([{ label: gt("Copy status"), value: tooltipText }])}
       aria-label={tooltipText}
       className="relative flex size-3 shrink-0 cursor-help items-center justify-center rounded-full outline-hidden"
     >

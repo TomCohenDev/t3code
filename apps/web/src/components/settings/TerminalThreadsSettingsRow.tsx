@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -11,6 +11,7 @@ import {
 
 /** Fork: `terminalThreads`, threads whose main view is a terminal. */
 export function TerminalThreadsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["terminalThreads"]);
@@ -24,7 +25,7 @@ export function TerminalThreadsSettingsRow() {
       resetAction={
         mixed || settings.terminalThreads !== DEFAULT_SERVER_SETTINGS.terminalThreads ? (
           <SettingResetButton
-            label="terminal threads"
+            ariaLabel="Reset terminal threads to default"
             onClick={() =>
               updateSettings({ terminalThreads: DEFAULT_SERVER_SETTINGS.terminalThreads })
             }

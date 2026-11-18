@@ -2,7 +2,7 @@ import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -11,6 +11,7 @@ import {
 
 /** Fork: `threadAddressing`, thread link chips, Copy message link and the desktop app handoff. */
 export function ThreadAddressingSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["threadAddressing"]);
@@ -24,7 +25,7 @@ export function ThreadAddressingSettingsRow() {
       resetAction={
         mixed || settings.threadAddressing !== DEFAULT_SERVER_SETTINGS.threadAddressing ? (
           <SettingResetButton
-            label="thread addressing"
+            ariaLabel="Reset thread addressing to default"
             onClick={() =>
               updateSettings({ threadAddressing: DEFAULT_SERVER_SETTINGS.threadAddressing })
             }

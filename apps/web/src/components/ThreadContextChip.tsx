@@ -2,6 +2,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { MessageId, ProjectId, ThreadContextRecord } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { HashIcon, MessagesSquareIcon } from "lucide-react";
+import { useGT } from "gt-react";
 
 import { forkMessageLinkNavigation } from "./chat/forkMessageLinkNavigation";
 import { useProject, useThreadShell } from "~/state/entities";
@@ -19,6 +20,7 @@ export function ThreadContextChip(props: {
   /** Fork: the link opens the thread at this message. */
   messageId?: MessageId | null;
 }) {
+  const gt = useGT();
   const { environmentId, threadId } = props.record;
   const shell = useThreadShell({ environmentId, threadId });
   const lookup = useEnvironmentQuery(
@@ -48,7 +50,11 @@ export function ThreadContextChip(props: {
                 draggable={false}
               />
             }
-            aria-label={`${props.messageId ? "Message in thread" : "Thread"}, ${title}`}
+            aria-label={
+              props.messageId
+                ? gt("Message in thread, {title}", { title })
+                : gt("Thread, {title}", { title })
+            }
             data-markdown-copy={props.copyMarkdown}
             className="no-underline"
           >
@@ -64,10 +70,12 @@ export function ThreadContextChip(props: {
       />
       <TooltipPopup side="top">
         {props.unreadable
-          ? "On another machine, so this machine's agent can't read it. Remove it or switch back to send."
+          ? gt(
+              "On another machine, so this machine's agent can't read it. Remove it or switch back to send.",
+            )
           : props.messageId
-            ? "Open message"
-            : "Open thread"}
+            ? gt("Open message")
+            : gt("Open thread")}
       </TooltipPopup>
     </Tooltip>
   );

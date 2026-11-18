@@ -1,8 +1,9 @@
 import { SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 /** Fork: how this machine joins other machines: through kitshn, not in T3 (K-602). */
 export function MachineMapSettingsRows() {
+  const searchableSetting = useSearchableSetting();
   return (
     <SettingsRow
       {...searchableSetting("machine-map")}

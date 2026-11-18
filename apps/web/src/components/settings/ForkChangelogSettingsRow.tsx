@@ -6,12 +6,13 @@ import { ForkChangelogDialog } from "../forkChangelog/ForkChangelogDialog";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectForkChangelogEnabled = (settings: ClientSettings) => settings.forkChangelogEnabled;
 
 /** Fork setting: turns on the changelog, and opens it from the About section. */
 export function ForkChangelogSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectForkChangelogEnabled);
   const [open, setOpen] = useState(false);
 
@@ -22,7 +23,7 @@ export function ForkChangelogSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.forkChangelogEnabled ? (
           <SettingResetButton
-            label="fork changelog"
+            ariaLabel="Reset fork changelog to default"
             onClick={() =>
               void updateClientSettings({
                 forkChangelogEnabled: DEFAULT_CLIENT_SETTINGS.forkChangelogEnabled,

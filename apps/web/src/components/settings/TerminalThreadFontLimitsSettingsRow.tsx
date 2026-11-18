@@ -8,7 +8,7 @@ import {
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { BoundedIntegerInput } from "./BoundedIntegerInput";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectLimits = (settings: ClientSettings) => ({
   min: settings.terminalThreadFontSizeMin,
@@ -20,6 +20,7 @@ const selectLimits = (settings: ClientSettings) => ({
  * keys of every terminal reach.
  */
 export function TerminalThreadFontLimitsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const limits = useClientSettings(selectLimits);
   return (
     <SettingsRow
@@ -29,7 +30,7 @@ export function TerminalThreadFontLimitsSettingsRow() {
         limits.min !== DEFAULT_CLIENT_SETTINGS.terminalThreadFontSizeMin ||
         limits.max !== DEFAULT_CLIENT_SETTINGS.terminalThreadFontSizeMax ? (
           <SettingResetButton
-            label="terminal zoom limits"
+            ariaLabel="Reset terminal zoom limits to default"
             onClick={() =>
               void updateClientSettings({
                 terminalThreadFontSizeMin: DEFAULT_CLIENT_SETTINGS.terminalThreadFontSizeMin,

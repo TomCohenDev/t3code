@@ -5,7 +5,7 @@ import { Input } from "../ui/input";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsRow, SettingResetButton } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -16,6 +16,7 @@ type MessageKey = "recoverInterruptedTurnsMessage" | "recoverInterruptedTurnsSub
 
 /** Fork: the switch and the two messages of `recoverInterruptedTurns`. */
 export function RecoverInterruptedTurnsSettings() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const switchMixed = useScopedSettingsMixed(["recoverInterruptedTurns"]);
@@ -31,7 +32,7 @@ export function RecoverInterruptedTurnsSettings() {
           switchMixed ||
           settings.recoverInterruptedTurns !== DEFAULT_SERVER_SETTINGS.recoverInterruptedTurns ? (
             <SettingResetButton
-              label="recover interrupted agents"
+              ariaLabel="Reset recover interrupted agents to default"
               onClick={() =>
                 updateSettings({
                   recoverInterruptedTurns: DEFAULT_SERVER_SETTINGS.recoverInterruptedTurns,
@@ -92,7 +93,7 @@ function RecoveryMessageRow(props: {
       resetAction={
         mixed || value !== defaultValue ? (
           <SettingResetButton
-            label={props.title.toLowerCase()}
+            ariaLabel={`Reset ${props.title.toLowerCase()} to default`}
             onClick={() => updateSettings({ [props.settingKey]: defaultValue })}
           />
         ) : null

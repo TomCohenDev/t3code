@@ -1,9 +1,11 @@
 import type { VoiceInputState } from "@t3tools/client-runtime/voice-input";
+import { msg, useGT, useMessages } from "gt-react";
 import { CheckIcon, MicIcon, XIcon } from "lucide-react";
 import { useEffect, useState, type PointerEvent, type ReactElement } from "react";
 
 import { VoiceInputErrorPill } from "./VoiceInputErrorPill";
 import { VoiceInputPill, VoiceWaveform } from "./VoiceInputPill";
+import { m, type MessageResolver } from "~/i18n/messages";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -18,25 +20,33 @@ const keepFocus = (event: PointerEvent) => event.preventDefault();
 export function resolveSpeechPresentation(
   state: VoiceInputState,
   progress: DownloadProgress,
+  resolve: MessageResolver = m,
 ): { status: string | null; active: boolean } {
   switch (state.phase) {
     case "idle":
       return { status: null, active: false };
     case "error":
-      return { status: state.error ?? "Voice input failed", active: false };
+      return { status: state.error ?? resolve(msg("Voice input failed")), active: false };
     case "preparing":
       return {
         status: progress
-          ? `Downloading model ${Math.round((progress.downloaded / Math.max(1, progress.total)) * 100)}%`
-          : "Starting…",
+          ? resolve(
+              msg("Downloading model {percent}%", {
+                percent: Math.round((progress.downloaded / Math.max(1, progress.total)) * 100),
+              }),
+            )
+          : resolve(msg("Starting…")),
         active: true,
       };
     case "recording":
-      return { status: "Recording", active: true };
+      return {
+        status: resolve(msg("Recording", { $context: "voice input status" })),
+        active: true,
+      };
     case "transcribing":
-      return { status: "Transcribing…", active: true };
+      return { status: resolve(msg("Transcribing…")), active: true };
     case "post-processing":
-      return { status: "Cleaning up…", active: true };
+      return { status: resolve(msg("Cleaning up…")), active: true };
   }
 }
 
@@ -111,8 +121,9 @@ export function ComposerSpeechButton(props: {
   size?: "default" | "compact";
   onStart(): void;
 }) {
+  const gt = useGT();
   if (props.state.phase !== "idle") return null;
-  const label = "Start voice input";
+  const label = gt("Start voice input");
 
   return (
     <DictationTooltip label={label}>
@@ -148,6 +159,8 @@ export function ComposerSpeechRecordingPill(props: {
   onCancel(): void;
   onSkipPostProcessing(): void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const { phase } = props.state;
   const compact = props.size === "compact";
   if (phase === "error") {
@@ -156,25 +169,26 @@ export function ComposerSpeechRecordingPill(props: {
         size={props.size}
         error={props.state.error}
         errorAction={props.state.errorAction}
+        errorCode={props.state.errorCode}
         disabled={props.disabled ?? false}
         onRetry={props.onStart}
         onDismiss={props.onCancel}
       />
     );
   }
-  const presentation = resolveSpeechPresentation(props.state, props.progress);
+  const presentation = resolveSpeechPresentation(props.state, props.progress, m);
   if (!presentation.active) return null;
   const recording = phase === "recording";
   const trailing = recording || phase === "post-processing";
 
   return (
     <VoiceInputPill size={props.size}>
-      <CancelTooltip label="Cancel voice input">
+      <CancelTooltip label={gt("Cancel voice input")}>
         <Button
           type="button"
           size={compact ? "icon-xs" : "icon-sm-pill"}
           variant="ghost"
-          aria-label="Cancel voice input"
+          aria-label={gt("Cancel voice input")}
           onPointerDown={keepFocus}
           onClick={props.onCancel}
           className="shrink-0"
@@ -215,14 +229,14 @@ export function ComposerSpeechRecordingPill(props: {
           onClick={props.onSkipPostProcessing}
           className="shrink-0"
         >
-          Skip
+          {gt("Skip", { $context: "verb, skips cleaning up the transcript" })}
         </Button>
       ) : recording ? (
-        <DictationTooltip label="Finish voice input">
+        <DictationTooltip label={gt("Finish voice input")}>
           <Button
             type="button"
             size={compact ? "icon-xs" : "icon-sm-pill"}
-            aria-label="Finish voice input"
+            aria-label={gt("Finish voice input")}
             onPointerDown={keepFocus}
             onClick={props.onStop}
             className="shrink-0"

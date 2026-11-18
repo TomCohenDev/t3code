@@ -1,3 +1,4 @@
+import { useGT } from "gt-react-native";
 import { RegistryContext } from "@effect/atom-react";
 import { offersLinkedEnvironments } from "@t3tools/client-runtime/link-request";
 import { peerLinkHealth } from "@t3tools/client-runtime/state/peerLinks";
@@ -19,6 +20,7 @@ export function LinkedEnvironmentsSection(props: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
 }) {
+  const gt = useGT();
   const config = useEnvironmentServerConfig(props.environmentId);
   const canRead = useEnvironmentScope(props.environmentId, AuthAccessReadScope);
   const supported = canRead && offersLinkedEnvironments(config);
@@ -63,7 +65,9 @@ export function LinkedEnvironmentsSection(props: {
   const now = DateTime.makeUnsafe(nowMs);
   return (
     <View className="mt-5 gap-3">
-      <SettingsSection title={`Linked from ${props.environmentLabel}`}>
+      <SettingsSection
+        title={gt("Linked from {environment}", { environment: props.environmentLabel })}
+      >
         {links.data.links.map((link) => {
           const health = peerLinkHealth(link, now);
           const status = arrowLinkStatus(link, health);

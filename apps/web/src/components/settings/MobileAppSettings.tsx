@@ -7,7 +7,7 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -21,6 +21,7 @@ const NEW_THREAD_LABELS = {
 } satisfies Record<MobileNewThreadProjectValue, string>;
 
 export function MobilePublishedThemesSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["mobilePublishedThemes"]);
@@ -34,7 +35,7 @@ export function MobilePublishedThemesSettingsRow() {
       resetAction={
         mixed || settings.mobilePublishedThemes !== fallback ? (
           <SettingResetButton
-            label="themes on mobile"
+            ariaLabel="Reset themes on mobile to default"
             onClick={() => updateSettings({ mobilePublishedThemes: fallback })}
           />
         ) : null
@@ -52,6 +53,7 @@ export function MobilePublishedThemesSettingsRow() {
 }
 
 export function MobileComposerCameraSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["mobileComposerCamera"]);
@@ -65,7 +67,7 @@ export function MobileComposerCameraSettingsRow() {
       resetAction={
         mixed || settings.mobileComposerCamera !== fallback ? (
           <SettingResetButton
-            label="camera on mobile"
+            ariaLabel="Reset camera on mobile to default"
             onClick={() => updateSettings({ mobileComposerCamera: fallback })}
           />
         ) : null
@@ -83,6 +85,7 @@ export function MobileComposerCameraSettingsRow() {
 }
 
 export function MobileMessagePinsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["mobileMessagePins"]);
@@ -96,7 +99,7 @@ export function MobileMessagePinsSettingsRow() {
       resetAction={
         mixed || settings.mobileMessagePins !== fallback ? (
           <SettingResetButton
-            label="message pins on mobile"
+            ariaLabel="Reset message pins on mobile to default"
             onClick={() => updateSettings({ mobileMessagePins: fallback })}
           />
         ) : null
@@ -114,6 +117,7 @@ export function MobileMessagePinsSettingsRow() {
 }
 
 export function MobileNewThreadProjectSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["mobileNewThreadProject"]);
@@ -127,7 +131,7 @@ export function MobileNewThreadProjectSettingsRow() {
       resetAction={
         mixed || settings.mobileNewThreadProject !== fallback ? (
           <SettingResetButton
-            label="new thread on mobile"
+            ariaLabel="Reset new thread on mobile to default"
             onClick={() => updateSettings({ mobileNewThreadProject: fallback })}
           />
         ) : null
@@ -162,6 +166,7 @@ export function MobileNewThreadProjectSettingsRow() {
 }
 
 export function MobileSidebarTabsSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const mixed = useScopedSettingsMixed(["mobileSidebarTabs"]);
@@ -175,7 +180,7 @@ export function MobileSidebarTabsSettingsRow() {
       resetAction={
         mixed || settings.mobileSidebarTabs !== fallback ? (
           <SettingResetButton
-            label="sidebar tabs on mobile"
+            ariaLabel="Reset sidebar tabs on mobile to default"
             onClick={() => updateSettings({ mobileSidebarTabs: fallback })}
           />
         ) : null

@@ -15,12 +15,13 @@ import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const selectWebPushEnabled = (settings: ClientSettings) => settings.webPushEnabled;
 
 /** Fork setting: Web Push from each connected server (`src/webPush.ts`). */
 export function WebPushSettingsRow() {
+  const searchableSetting = useSearchableSetting();
   const enabled = useClientSettings(selectWebPushEnabled);
   const wanted = useClientSettings(webPushWanted);
   const environmentIds = useEnvironmentIds();
@@ -85,7 +86,7 @@ export function WebPushSettingsRow() {
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.webPushEnabled ? (
           <SettingResetButton
-            label="Web Push"
+            ariaLabel="Reset Web Push to default"
             onClick={() =>
               void updateClientSettings({ webPushEnabled: DEFAULT_CLIENT_SETTINGS.webPushEnabled })
             }
