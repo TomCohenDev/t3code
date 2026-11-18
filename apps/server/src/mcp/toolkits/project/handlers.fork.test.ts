@@ -2,6 +2,7 @@ import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  GitCommandError,
   ProjectId,
   ProviderInstanceId,
   type Project as ProjectRecord,
@@ -92,7 +93,13 @@ it.effect("project settings written by t3_project_update are the ones the app re
         getById: (id) => Effect.succeed(id === projectId ? Option.some(project) : Option.none()),
       }),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
-      Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+      // A repository without commits, so the worktree default keeps the launch in the shared checkout.
+      Layer.mock(GitVcsDriver.GitVcsDriver)({
+        resolveCommit: ({ cwd }) =>
+          Effect.fail(
+            new GitCommandError({ operation: "test", command: "git", cwd, detail: "no HEAD" }),
+          ),
+      }),
       Layer.succeed(ServerSettings.ServerSettingsService, settingsService),
       DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer)),
       ServerConfig.layerTest(process.cwd(), { prefix: "t3-project-actions-" }).pipe(
