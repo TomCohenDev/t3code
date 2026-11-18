@@ -1,7 +1,9 @@
 import * as Dialog from "../../components/ui/Dialog";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useRef, useState } from "react";
+import { msg, useGT } from "gt-react-native";
 
+import { m } from "../../i18n/messages";
 import { SettingsActionRow } from "../settings/components/SettingsActionRow";
 import {
   type AppUpdateCheckState,
@@ -16,6 +18,7 @@ import {
 export function AppUpdateCheckRow() {
   const [updateState, setUpdateState] = useState<AppUpdateCheckState>("idle");
   const updateInFlight = useRef(false);
+  const gt = useGT();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer clears the "Up to date" label
   useEffect(() => {
@@ -30,21 +33,21 @@ export function AppUpdateCheckRow() {
     updateState === "checking" || updateState === "downloading" || updateState === "restarting";
   const statusLabel =
     updateState === "checking"
-      ? "Checking…"
+      ? gt("Checking…")
       : updateState === "downloading"
-        ? "Downloading…"
+        ? gt("Downloading…")
         : updateState === "ready"
-          ? "Update ready"
+          ? gt("Update ready")
           : updateState === "restarting"
-            ? "Restarting…"
+            ? gt("Restarting…")
             : updateState === "current"
-              ? "Up to date"
+              ? gt("Up to date")
               : null;
 
   return (
     <SettingsActionRow
       icon="arrow.clockwise"
-      label="Check for updates"
+      label={gt("Check for updates")}
       description={statusLabel ?? undefined}
       disabled={busy}
       loading={busy}
@@ -54,7 +57,7 @@ export function AppUpdateCheckRow() {
         void settlePromise(() =>
           runAppUpdateCheck({
             applyMode: "immediate",
-            onFailure: (message) => Dialog.alert("Update failed", message),
+            onFailure: (message) => Dialog.alert(m(msg("Update failed")), message),
             onStateChange: setUpdateState,
           }),
         ).finally(() => {

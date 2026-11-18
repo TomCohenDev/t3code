@@ -23,6 +23,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadTranscriptJsonl } from "@t3tools/shared/threadTranscript";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useCallback, useEffect } from "react";
 
 import { Button } from "../../components/ui/Button";
@@ -37,12 +38,11 @@ import { useQuietThreadShell } from "../../state/entities";
 import { environmentProjects } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
+import { m } from "../../i18n/messages";
 import { addIncomingShare } from "../sharing/IncomingShareProvider";
 
 const CONTINUE_EVENT = "fork-continue-elsewhere";
-const MENU_ITEMS: MenuAction[] = [
-  { id: CONTINUE_EVENT, title: "Continue on another machine", image: "arrow.triangle.branch" },
-];
+const CONTINUE_TITLE = msg("Continue on another machine");
 
 async function writeTranscriptFile(
   name: string,
@@ -79,8 +79,8 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
         if (isAtomCommandInterrupted(result)) return;
         const error = squashAtomCommandFailure(result);
         Dialog.alert(
-          "No copy of this thread",
-          `Its machine is not connected, and neither this phone nor another machine has a copy. To keep a copy for next time, set "Thread backups" in Settings > Fork on that machine. ${error instanceof Error ? error.message : ""}`.trim(),
+          m(msg("No copy of this thread")),
+          `${m(msg('Its machine is not connected, and neither this phone nor another machine has a copy. To keep a copy for next time, set "Thread backups" in Settings > Fork on that machine.'))} ${error instanceof Error ? error.message : ""}`.trim(),
         );
         return;
       }
@@ -114,7 +114,10 @@ function useContinueThreadElsewhere(): (thread: EnvironmentThreadShell) => Promi
       });
       const contents = threadTranscriptJsonl(thread.environmentId, continuation.transcript);
       if (new TextEncoder().encode(contents).byteLength > PROVIDER_SEND_TURN_MAX_FILE_BYTES) {
-        Dialog.alert("Thread too long", "This thread exceeds the attachment size limit.");
+        Dialog.alert(
+          m(msg("Thread too long")),
+          m(msg("This thread exceeds the attachment size limit.")),
+        );
         return;
       }
       const title = continuation.transcript.title || "Thread";
@@ -156,6 +159,7 @@ export function useContinueElsewhereMenu(thread: EnvironmentThreadShell): {
   readonly items: MenuAction[];
   readonly handle: (event: string) => boolean;
 } {
+  const messages = useMessages();
   const handle = useCallback(
     (event: string) => {
       if (event !== CONTINUE_EVENT) return false;
@@ -164,7 +168,12 @@ export function useContinueElsewhereMenu(thread: EnvironmentThreadShell): {
     },
     [thread],
   );
-  return { items: MENU_ITEMS, handle };
+  return {
+    items: [
+      { id: CONTINUE_EVENT, title: messages(CONTINUE_TITLE), image: "arrow.triangle.branch" },
+    ],
+    handle,
+  };
 }
 
 /** Mounted once: runs each request of a row menu. */
@@ -185,11 +194,12 @@ export function ContinueElsewhereButton(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const gt = useGT();
   const thread = useQuietThreadShell(scopeThreadRef(props.environmentId, props.threadId));
   if (thread === null) return null;
   return (
     <Button
-      label="Continue on another machine"
+      label={gt("Continue on another machine")}
       icon="arrow.triangle.branch"
       tone="secondary"
       onPress={() => appAtomRegistry.set(continueRequestAtom, thread)}

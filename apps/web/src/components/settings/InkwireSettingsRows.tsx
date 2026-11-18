@@ -1,4 +1,5 @@
 import { type ClientSettings, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { Switch } from "../ui/switch";
@@ -9,16 +10,19 @@ const selectWhiteFrame = (settings: ClientSettings) => settings.inkwireWhiteFram
 
 /** Fork: `inkwireWhiteFrame`, a chalk outline while an Inkwire theme is on. */
 export function InkwireWhiteFrameSettingsRow() {
+  const gt = useGT();
   const setting = useSearchableSetting();
   const enabled = useClientSettings(selectWhiteFrame);
   return (
     <SettingsRow
       {...setting("inkwire-white-frame")}
-      description="While an Inkwire theme is selected, draw a white chalk frame around the window and sketched controls. Static CSS only, so it does not affect scrolling."
+      description={gt(
+        "While an Inkwire theme is selected, draw a white chalk frame around the window and sketched controls. Static CSS only, so it does not affect scrolling.",
+      )}
       resetAction={
         enabled !== DEFAULT_CLIENT_SETTINGS.inkwireWhiteFrame ? (
           <SettingResetButton
-            ariaLabel="Reset Inkwire white frame to default"
+            ariaLabel={gt("Reset Inkwire white frame to default")}
             onClick={() =>
               void updateClientSettings({
                 inkwireWhiteFrame: DEFAULT_CLIENT_SETTINGS.inkwireWhiteFrame,
@@ -33,7 +37,7 @@ export function InkwireWhiteFrameSettingsRow() {
           onCheckedChange={(checked) =>
             void updateClientSettings({ inkwireWhiteFrame: Boolean(checked) })
           }
-          aria-ariaLabel="Reset Inkwire white frame to default"
+          aria-label={gt("Inkwire white frame")}
         />
       }
     />

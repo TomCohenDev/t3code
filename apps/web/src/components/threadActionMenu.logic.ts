@@ -221,7 +221,11 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     // Fork: works while the thread's machine is offline (lib/forkContinueElsewhere.ts).
-    { id: "continue-elsewhere" as const, label: "Continue on another machine", icon: "git-branch" },
+    {
+      id: "continue-elsewhere" as const,
+      label: resolve(msg("Continue on another machine")),
+      icon: "git-branch",
+    },
     ...(state.supports.pinning
       ? [
           state.isPinned

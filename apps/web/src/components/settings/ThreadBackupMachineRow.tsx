@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useRef } from "react";
 
 import { Input } from "../ui/input";
@@ -11,6 +12,7 @@ import {
 
 /** Fork: the `threadBackupMachine` setting (fork/threadBackup/ThreadBackups.ts). */
 export function ThreadBackupMachineRow() {
+  const gt = useGT();
   const setting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -19,13 +21,15 @@ export function ThreadBackupMachineRow() {
   return (
     <SettingsRow
       {...setting("thread-backup-machine")}
-      description="The kitshn name of a machine that keeps a copy of this machine's thread transcripts, for Continue on another machine while this one is offline. Needs standard access. Empty keeps no copy."
+      description={gt(
+        "The kitshn name of a machine that keeps a copy of this machine's thread transcripts, for Continue on another machine while this one is offline. Needs standard access. Empty keeps no copy.",
+      )}
       serverScoped
       settingKeys={["threadBackupMachine"]}
       resetAction={
         mixed || settings.threadBackupMachine !== "" ? (
           <SettingResetButton
-            ariaLabel="Reset thread backups to default"
+            ariaLabel={gt("Reset thread backups to default")}
             onClick={() => updateSettings({ threadBackupMachine: "" })}
           />
         ) : null
@@ -33,10 +37,14 @@ export function ThreadBackupMachineRow() {
       control={
         <Input
           key={`${mixed}:${settings.threadBackupMachine}`}
-          aria-label="Thread backup machine"
+          aria-label={gt("Thread backup machine")}
           autoCapitalize="none"
           spellCheck={false}
-          placeholder={mixed ? "Mixed" : "Off"}
+          placeholder={
+            mixed
+              ? gt("Mixed", { $context: "setting value differs between machines" })
+              : gt("Off", { $context: "setting state" })
+          }
           defaultValue={mixed ? "" : settings.threadBackupMachine}
           onChange={() => {
             edited.current = true;
